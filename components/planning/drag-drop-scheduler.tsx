@@ -82,6 +82,12 @@ interface Technician {
   shiftEnd: number;
 }
 
+interface NoteItem {
+  id: string;
+  text: string;
+  createdAt: Date;
+}
+
 interface DragDropSchedulerProps {
   selectedDate: Date;
 }
@@ -216,7 +222,7 @@ const initialUnbilled: UnbilledJob[] = [
   },
 ];
 
-const initialNotes: StickyNote[] = [
+const initialNotes: NoteItem[] = [
   {
     id: "note1",
     text: "Обади се на Иванов за части",
@@ -335,7 +341,7 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
   const [unassigned, setUnassigned] =
     useState<UnassignedOrder[]>(initialUnassigned);
   const [unbilled, setUnbilled] = useState<UnbilledJob[]>(initialUnbilled);
-  const [notes, setNotes] = useState<StickyNote[]>(initialNotes);
+  const [notes, setNotes] = useState<NoteItem[]>(initialNotes);
   // Get clocking activities from shared context
   const { clockingActivities } = useClocking();
   const [newNoteText, setNewNoteText] = useState("");
@@ -812,7 +818,7 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
   // Add new note
   const handleAddNote = useCallback(() => {
     if (!newNoteText.trim()) return;
-    const newNote: StickyNote = {
+    const newNote: NoteItem = {
       id: `note-${Date.now()}`,
       text: newNoteText.trim(),
       createdAt: new Date(),
