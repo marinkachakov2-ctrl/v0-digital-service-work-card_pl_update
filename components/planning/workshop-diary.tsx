@@ -17,10 +17,20 @@ interface WorkshopDiaryProps {
   onSelectDay: (date: Date) => void;
 }
 
+// Seeded pseudo-random number generator for deterministic output
+function seededRandom(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s = (s * 16807 + 0) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+
 // Generate sample data for a month
 function generateMonthData(year: number, month: number): DayData[] {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const data: DayData[] = [];
+  const random = seededRandom(year * 100 + month + 1);
 
   for (let day = 1; day <= daysInMonth; day++) {
     const date = new Date(year, month, day);
@@ -32,7 +42,7 @@ function generateMonthData(year: number, month: number): DayData[] {
     }
 
     const totalCapacity = 57.5; // Total workshop capacity in hours
-    const reserved = Math.random() * 45 + 5; // Random between 5-50 hours
+    const reserved = random() * 45 + 5; // Deterministic between 5-50 hours
     const available = totalCapacity - reserved;
     const utilization = reserved / totalCapacity;
 
