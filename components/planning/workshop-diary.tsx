@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Check, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -17,20 +17,25 @@ interface WorkshopDiaryProps {
   onSelectDay: (date: Date) => void;
 }
 
-// Seeded pseudo-random number generator for deterministic output
-function seededRandom(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s = (s * 16807 + 0) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
-}
+// Static Bulgarian month and weekday names to avoid locale-dependent formatting
+const BG_MONTHS = [
+  "януари", "февруари", "март", "април", "май", "юни",
+  "юли", "август", "септември", "октомври", "ноември", "декември",
+];
+const BG_WEEKDAYS_SHORT = ["нд", "пн", "вт", "ср", "чт", "пт", "сб"];
+
+// Fixed sample data per day-of-month index to avoid any randomness
+const FIXED_RESERVED_VALUES = [
+  32.1, 45.8, 12.5, 38.7, 50.2, 27.3, 41.6, 19.4, 35.9, 48.1,
+  22.7, 43.2, 15.8, 37.4, 46.5, 29.6, 40.3, 18.1, 33.7, 47.9,
+  25.4, 42.8, 14.2, 36.1, 49.3, 28.5, 39.7, 17.6, 34.8, 44.6,
+  23.9,
+];
 
 // Generate sample data for a month
 function generateMonthData(year: number, month: number): DayData[] {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const data: DayData[] = [];
-  const random = seededRandom(year * 100 + month + 1);
 
   for (let day = 1; day <= daysInMonth; day++) {
     const date = new Date(year, month, day);
@@ -42,7 +47,7 @@ function generateMonthData(year: number, month: number): DayData[] {
     }
 
     const totalCapacity = 57.5; // Total workshop capacity in hours
-    const reserved = random() * 45 + 5; // Deterministic between 5-50 hours
+    const reserved = FIXED_RESERVED_VALUES[(day - 1) % FIXED_RESERVED_VALUES.length];
     const available = totalCapacity - reserved;
     const utilization = reserved / totalCapacity;
 
@@ -66,17 +71,20 @@ function generateMonthData(year: number, month: number): DayData[] {
 }
 
 export function WorkshopDiary({ onSelectDay }: WorkshopDiaryProps) {
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [mounted, setMounted] = useState(false);
+  const [currentDate, setCurrentDate] = useState(() => new Date(2026, 1, 1));
   const [viewMode, setViewMode] = useState<"month" | "week">("month");
+
+  useEffect(() => {
+    setMounted(true);
+    setCurrentDate(new Date());
+  }, []);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const monthData = generateMonthData(year, month);
 
-  const monthName = currentDate.toLocaleDateString("bg-BG", {
-    month: "long",
-    year: "numeric",
-  });
+  const monthName = `${BG_MONTHS[month]} ${year}`;
 
   const goToPreviousMonth = () => {
     setCurrentDate(new Date(year, month - 1, 1));
@@ -119,11 +127,15 @@ export function WorkshopDiary({ onSelectDay }: WorkshopDiaryProps) {
     }
   }
 
-  const today = new Date();
-  const isToday = (date: Date) =>
-    date.getDate() === today.getDate() &&
-    date.getMonth() === today.getMonth() &&
-    date.getFullYear() === today.getFullYear();
+  const isToday = (date: Date) => {
+    if (!mounted) return false;
+    const now = new Date();
+    return (
+      date.getDate() === now.getDate() &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear()
+    );
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -244,7 +256,7 @@ export function WorkshopDiary({ onSelectDay }: WorkshopDiaryProps) {
                   >
                     {dayNumber.toString().padStart(2, "0")}{" "}
                     <span className="text-xs text-muted-foreground">
-                      {dayData.date.toLocaleDateString("bg-BG", { weekday: "short" })}
+                      {BG_WEEKDAYS_SHORT[dayData.date.getDay()]}
                     </span>
                   </span>
                   {dayData.status === "complete" && (
