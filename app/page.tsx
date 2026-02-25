@@ -7,6 +7,7 @@ import { DiagnosticsSection, type FaultPhoto } from "@/components/work-card/diag
 import { PartsTable } from "@/components/work-card/parts-table";
 import { LaborTable } from "@/components/work-card/labor-table";
 import { Footer } from "@/components/work-card/footer";
+import { useClocking } from "@/lib/clocking-context";
 
 export interface PartItem {
   id: string;
@@ -24,27 +25,37 @@ export interface LaborItem {
 }
 
 export interface ClientData {
-  clientName: string;
+  machineOwner: string;
+  billingEntity: string;
   location: string;
   machineModel: string;
   serialNo: string;
   engineSN: string;
-  vin: string;
+  previousEngineHours: number | null;
 }
 
 export default function WorkCardPage() {
+  const { isAdmin, setIsAdmin, signJobCard } = useClocking();
+
   const [searchValue, setSearchValue] = useState("");
   const [clientData, setClientData] = useState<ClientData | null>(null);
   const [isScanned, setIsScanned] = useState(false);
 
-  // Technicians
-  const [technician1, setTechnician1] = useState("");
-  const [technician2, setTechnician2] = useState("");
+  // Order hierarchy
+  const [orderNumber, setOrderNumber] = useState("");
+  const [jobCardNumber, setJobCardNumber] = useState("");
+  const [jobType, setJobType] = useState<"warranty" | "repair" | "internal">("repair");
+
+  // Technicians — dynamic list
+  const [assignedTechnicians, setAssignedTechnicians] = useState<string[]>([""]);
+  const [leadTechnicianId, setLeadTechnicianId] = useState<string | null>(null);
+  const [clockAtJobLevel, setClockAtJobLevel] = useState(false);
+
+  // Signature
+  const [isSigned, setIsSigned] = useState(false);
 
   // Timer
-  const [timerStatus, setTimerStatus] = useState<"idle" | "running" | "paused">(
-    "idle"
-  );
+  const [timerStatus, setTimerStatus] = useState<"idle" | "running" | "paused">("idle");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -68,7 +79,6 @@ export default function WorkCardPage() {
         intervalRef.current = null;
       }
     }
-
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -83,10 +93,10 @@ export default function WorkCardPage() {
     setElapsedSeconds(0);
   };
 
-  // Checkboxes
-  const [warranty, setWarranty] = useState(false);
-  const [repair, setRepair] = useState(false);
-  const [internalLabor, setInternalLabor] = useState(false);
+  // Job type handlers
+  const handleJobTypeChange = (type: "warranty" | "repair" | "internal") => {
+    setJobType(type);
+  };
 
   // Diagnostics
   const [reasonCode, setReasonCode] = useState("");
@@ -107,15 +117,36 @@ export default function WorkCardPage() {
 
   const handleSimulateScan = () => {
     setClientData({
-      clientName: "Agro Farm Ltd.",
+      machineOwner: "Агроинвест ЕООД",
+      billingEntity: "Агроинвест ЕООД",
       location: "София, България",
       machineModel: "John Deere 8370R",
       serialNo: "RW8370R001234",
       engineSN: "PE6068T123456",
-      vin: "RW8370R001234",
+      previousEngineHours: 4520,
     });
     setSearchValue("RW8370R001234");
     setIsScanned(true);
+    setOrderNumber("ON-5521");
+    setJobCardNumber("JC-0018");
+  };
+
+  const handleBillingEntityChange = (value: string) => {
+    if (clientData) {
+      setClientData({ ...clientData, billingEntity: value });
+    }
+  };
+
+  const handleSign = () => {
+    setIsSigned(true);
+    // Auto-stop timer on signature
+    if (timerStatus === "running" || timerStatus === "paused") {
+      setTimerStatus("idle");
+      setElapsedSeconds(0);
+    }
+    if (jobCardNumber) {
+      signJobCard(jobCardNumber);
+    }
   };
 
   // Calculate totals
@@ -138,27 +169,31 @@ export default function WorkCardPage() {
           searchValue={searchValue}
           onSearchChange={setSearchValue}
           onSimulateScan={handleSimulateScan}
-          technician1={technician1}
-          technician2={technician2}
-          onTechnician1Change={setTechnician1}
-          onTechnician2Change={setTechnician2}
+          orderNumber={orderNumber}
+          jobCardNumber={jobCardNumber}
+          assignedTechnicians={assignedTechnicians}
+          onAssignedTechniciansChange={setAssignedTechnicians}
+          leadTechnicianId={leadTechnicianId}
+          onLeadTechnicianIdChange={setLeadTechnicianId}
+          clockAtJobLevel={clockAtJobLevel}
+          onClockAtJobLevelChange={setClockAtJobLevel}
           timerStatus={timerStatus}
           elapsedTime={elapsedTime}
           onTimerStart={handleTimerStart}
           onTimerPause={handleTimerPause}
           onTimerStop={handleTimerStop}
+          isAdmin={isAdmin}
+          onAdminToggle={setIsAdmin}
+          isSigned={isSigned}
         />
 
         <div className="mt-6 space-y-6">
           <ClientSection
             clientData={clientData}
             isScanned={isScanned}
-            warranty={warranty}
-            repair={repair}
-            internalLabor={internalLabor}
-            onWarrantyChange={setWarranty}
-            onRepairChange={setRepair}
-            onInternalLaborChange={setInternalLabor}
+            jobType={jobType}
+            onJobTypeChange={handleJobTypeChange}
+            onBillingEntityChange={handleBillingEntityChange}
           />
 
           <DiagnosticsSection
@@ -178,11 +213,16 @@ export default function WorkCardPage() {
             onRepairEndChange={setRepairEnd}
             onEngineHoursChange={setEngineHours}
             onPhotosChange={setFaultPhotos}
+            previousEngineHours={clientData?.previousEngineHours ?? null}
           />
 
           <PartsTable parts={parts} onPartsChange={setParts} />
 
-          <LaborTable laborItems={laborItems} onLaborItemsChange={setLaborItems} />
+          <LaborTable
+            laborItems={laborItems}
+            onLaborItemsChange={setLaborItems}
+            isAdmin={isAdmin}
+          />
 
           <Footer
             paymentMethod={paymentMethod}
@@ -191,6 +231,9 @@ export default function WorkCardPage() {
             partsTotal={partsTotal}
             vat={vat}
             grandTotal={grandTotal}
+            isSigned={isSigned}
+            onSign={handleSign}
+            timerStatus={timerStatus}
           />
         </div>
       </div>

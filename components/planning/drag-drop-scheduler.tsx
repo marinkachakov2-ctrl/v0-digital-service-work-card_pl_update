@@ -50,8 +50,11 @@ import { useClocking, type ClockingActivity } from "@/lib/clocking-context";
 interface ScheduledTask {
   id: string;
   orderId: string;
+  orderNumber: string;
+  jobCardNumber: string;
   technicianId: string;
   type: "service" | "repair" | "inspection" | "custom";
+  status: "active" | "overdue" | "completed" | "pending";
   startHour: number;
   startMinute: number;
   durationMinutes: number;
@@ -62,6 +65,8 @@ interface ScheduledTask {
 interface UnassignedOrder {
   id: string;
   orderId: string;
+  orderNumber: string;
+  jobCardNumber: string;
   description: string;
   estimatedHours: number;
   type: "service" | "repair" | "inspection";
@@ -70,6 +75,8 @@ interface UnassignedOrder {
 interface UnbilledJob {
   id: string;
   orderId: string;
+  orderNumber: string;
+  jobCardNumber: string;
   clientName: string;
   dateFinished: string;
   description: string;
@@ -118,8 +125,11 @@ const initialTasks: ScheduledTask[] = [
   {
     id: "t1",
     orderId: "#12345",
+    orderNumber: "ON-5521",
+    jobCardNumber: "JC-0012",
     technicianId: "tech-1",
     type: "service",
+    status: "completed",
     startHour: 8,
     startMinute: 0,
     durationMinutes: 120,
@@ -128,8 +138,11 @@ const initialTasks: ScheduledTask[] = [
   {
     id: "t2",
     orderId: "#12346",
+    orderNumber: "ON-5521",
+    jobCardNumber: "JC-0013",
     technicianId: "tech-1",
     type: "repair",
+    status: "active",
     startHour: 13,
     startMinute: 0,
     durationMinutes: 180,
@@ -138,8 +151,11 @@ const initialTasks: ScheduledTask[] = [
   {
     id: "t3",
     orderId: "#12347",
+    orderNumber: "ON-5523",
+    jobCardNumber: "JC-0014",
     technicianId: "tech-2",
     type: "inspection",
+    status: "completed",
     startHour: 9,
     startMinute: 30,
     durationMinutes: 90,
@@ -148,8 +164,11 @@ const initialTasks: ScheduledTask[] = [
   {
     id: "t4",
     orderId: "#12348",
+    orderNumber: "ON-5524",
+    jobCardNumber: "JC-0015",
     technicianId: "tech-3",
     type: "service",
+    status: "overdue",
     startHour: 7,
     startMinute: 0,
     durationMinutes: 240,
@@ -158,8 +177,11 @@ const initialTasks: ScheduledTask[] = [
   {
     id: "t5",
     orderId: "#12349",
+    orderNumber: "ON-5525",
+    jobCardNumber: "JC-0016",
     technicianId: "tech-4",
     type: "repair",
+    status: "pending",
     startHour: 10,
     startMinute: 0,
     durationMinutes: 150,
@@ -171,6 +193,8 @@ const initialUnassigned: UnassignedOrder[] = [
   {
     id: "u1",
     orderId: "#999",
+    orderNumber: "ON-5530",
+    jobCardNumber: "JC-0020",
     description: "Смяна на масло - John Deere",
     estimatedHours: 2,
     type: "service",
@@ -178,6 +202,8 @@ const initialUnassigned: UnassignedOrder[] = [
   {
     id: "u2",
     orderId: "#1001",
+    orderNumber: "ON-5531",
+    jobCardNumber: "JC-0021",
     description: "Диагностика - Claas",
     estimatedHours: 1,
     type: "inspection",
@@ -185,6 +211,8 @@ const initialUnassigned: UnassignedOrder[] = [
   {
     id: "u3",
     orderId: "#1002",
+    orderNumber: "ON-5532",
+    jobCardNumber: "JC-0022",
     description: "Ремонт на спирачки - Fendt",
     estimatedHours: 3,
     type: "repair",
@@ -192,6 +220,8 @@ const initialUnassigned: UnassignedOrder[] = [
   {
     id: "u4",
     orderId: "#1003",
+    orderNumber: "ON-5533",
+    jobCardNumber: "JC-0023",
     description: "Смяна на филтри - New Holland",
     estimatedHours: 1.5,
     type: "service",
@@ -202,6 +232,8 @@ const initialUnbilled: UnbilledJob[] = [
   {
     id: "ub1",
     orderId: "#12340",
+    orderNumber: "ON-5510",
+    jobCardNumber: "JC-0005",
     clientName: "Агро ООД",
     dateFinished: "28.01.2026",
     description: "Ремонт на комбайн",
@@ -209,6 +241,8 @@ const initialUnbilled: UnbilledJob[] = [
   {
     id: "ub2",
     orderId: "#12341",
+    orderNumber: "ON-5511",
+    jobCardNumber: "JC-0006",
     clientName: "Фермер ЕООД",
     dateFinished: "27.01.2026",
     description: "Смяна на хидравлика",
@@ -216,6 +250,8 @@ const initialUnbilled: UnbilledJob[] = [
   {
     id: "ub3",
     orderId: "#12342",
+    orderNumber: "ON-5512",
+    jobCardNumber: "JC-0007",
     clientName: "Зърно АД",
     dateFinished: "26.01.2026",
     description: "Годишен сервиз",
@@ -277,6 +313,14 @@ const customColorOptions = [
   { name: "Лилав", value: "#6b7280" },
 ];
 
+// Status-based color coding: RED=overdue, GREEN=active, ORANGE=unscheduled, GRAY=completed
+const statusColors: Record<ScheduledTask["status"], { bg: string; border: string; text: string }> = {
+  overdue: { bg: "bg-red-600", border: "border-red-400", text: "text-white" },
+  active: { bg: "bg-emerald-600", border: "border-emerald-400", text: "text-white" },
+  completed: { bg: "bg-muted", border: "border-muted-foreground/30", text: "text-muted-foreground" },
+  pending: { bg: "bg-orange-500", border: "border-orange-400", text: "text-white" },
+};
+
 function getTaskStyle(task: ScheduledTask) {
   if (task.type === "custom" && task.color) {
     return {
@@ -288,11 +332,11 @@ function getTaskStyle(task: ScheduledTask) {
 }
 
 function getTaskClasses(task: ScheduledTask) {
-  const colors = taskColors[task.type];
   if (task.type === "custom" && task.color) {
     return "border text-white";
   }
-  return `${colors.bg} ${colors.border} ${colors.text}`;
+  const sc = statusColors[task.status];
+  return `${sc.bg} ${sc.border} ${sc.text}`;
 }
 
 function snapToGrid(minutes: number): number {
@@ -481,34 +525,39 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
           const order = unassigned.find((u) => u.id === unassignedId);
           if (order) {
             const newTask: ScheduledTask = {
-              id: `task-${Date.now()}`,
-              orderId: order.orderId,
-              technicianId: techId,
-              type: order.type,
-              startHour: dropTarget.hour,
-              startMinute: dropTarget.minute,
-              durationMinutes: order.estimatedHours * 60,
-              description: order.description,
-            };
-            setTasks((prev) => [...prev, newTask]);
-            // Remove from unassigned after assignment
-            setUnassigned((prev) => prev.filter((u) => u.id !== unassignedId));
+  id: `task-${Date.now()}`,
+  orderId: order.orderId,
+  orderNumber: order.orderNumber,
+  jobCardNumber: order.jobCardNumber,
+  technicianId: techId,
+  type: order.type,
+  status: "pending",
+  startHour: dropTarget.hour,
+  startMinute: dropTarget.minute,
+  durationMinutes: order.estimatedHours * 60,
+  description: order.description,
+  };
+  setTasks((prev) => [...prev, newTask]);
+  setUnassigned((prev) => prev.filter((u) => u.id !== unassignedId));
           }
         } else if (noteId) {
           // Create new task from sticky note
           const note = notes.find((n) => n.id === noteId);
           if (note) {
             const newTask: ScheduledTask = {
-              id: `task-${Date.now()}`,
-              orderId: "Бележка",
-              technicianId: techId,
-              type: "custom",
-              startHour: dropTarget.hour,
-              startMinute: dropTarget.minute,
-              durationMinutes: 60, // Default 1 hour
-              description: note.text,
-              color: "#fbbf24", // Yellow for notes
-            };
+  id: `task-${Date.now()}`,
+  orderId: "Бележка",
+  orderNumber: "-",
+  jobCardNumber: "-",
+  technicianId: techId,
+  type: "custom",
+  status: "pending",
+  startHour: dropTarget.hour,
+  startMinute: dropTarget.minute,
+  durationMinutes: 60,
+  description: note.text,
+  color: "#fbbf24",
+  };
             setTasks((prev) => [...prev, newTask]);
             // Remove from notes after assignment
             setNotes((prev) => prev.filter((n) => n.id !== noteId));
@@ -518,16 +567,19 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
           const job = unbilled.find((j) => j.id === unbilledId);
           if (job) {
             const newTask: ScheduledTask = {
-              id: `task-${Date.now()}`,
-              orderId: job.orderId,
-              technicianId: techId,
-              type: "custom",
-              startHour: dropTarget.hour,
-              startMinute: dropTarget.minute,
-              durationMinutes: 60, // Default 1 hour
-              description: `${job.clientName} - ${job.description}`,
-              color: "#22c55e", // Green for unbilled
-            };
+  id: `task-${Date.now()}`,
+  orderId: job.orderId,
+  orderNumber: job.orderNumber,
+  jobCardNumber: job.jobCardNumber,
+  technicianId: techId,
+  type: "custom",
+  status: "pending",
+  startHour: dropTarget.hour,
+  startMinute: dropTarget.minute,
+  durationMinutes: 60,
+  description: `${job.clientName} - ${job.description}`,
+  color: "#22c55e",
+  };
             setTasks((prev) => [...prev, newTask]);
             // Remove from unbilled after assignment
             setUnbilled((prev) => prev.filter((j) => j.id !== unbilledId));
@@ -659,17 +711,20 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
   const handleQuickCreate = useCallback(() => {
     if (!quickCreateModal || !quickCreateDesc.trim()) return;
 
-    const newTask: ScheduledTask = {
-      id: `custom-${Date.now()}`,
-      orderId: "Без №",
-      technicianId: quickCreateModal.techId,
-      type: "custom",
-      startHour: quickCreateModal.hour,
-      startMinute: quickCreateModal.minute,
-      durationMinutes: quickCreateDuration,
-      description: quickCreateDesc,
-      color: quickCreateColor,
-    };
+  const newTask: ScheduledTask = {
+  id: `custom-${Date.now()}`,
+  orderId: "Без №",
+  orderNumber: "-",
+  jobCardNumber: "-",
+  technicianId: quickCreateModal.techId,
+  type: "custom",
+  status: "pending",
+  startHour: quickCreateModal.hour,
+  startMinute: quickCreateModal.minute,
+  durationMinutes: quickCreateDuration,
+  description: quickCreateDesc,
+  color: quickCreateColor,
+  };
 
     setTasks((prev) => [...prev, newTask]);
     setQuickCreateModal(null);
@@ -800,13 +855,16 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
       const newTask: ScheduledTask = {
         id: `task-${Date.now()}`,
         orderId: job.orderId,
+        orderNumber: job.orderNumber,
+        jobCardNumber: job.jobCardNumber,
         technicianId: technicianId,
         type: "custom",
+        status: "pending",
         startHour,
         startMinute,
-        durationMinutes: 60, // Default 1 hour
+        durationMinutes: 60,
         description: `${job.clientName} - ${job.description}`,
-        color: "#22c55e", // Green for unbilled
+        color: "#22c55e",
       };
 
       setTasks((prev) => [...prev, newTask]);
@@ -911,8 +969,11 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
       const newTask: ScheduledTask = {
         id: `task-${Date.now()}`,
         orderId: order.orderId,
+        orderNumber: order.orderNumber,
+        jobCardNumber: order.jobCardNumber,
         technicianId: technicianId,
         type: order.type,
+        status: "pending",
         startHour,
         startMinute,
         durationMinutes: order.estimatedHours * 60,
@@ -1002,7 +1063,7 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
           <span className="text-muted-foreground">Извън график</span>
         </div>
         <div className="ml-auto text-muted-foreground">
-          Двоен клик за бърза резервация
+          Дв��ен клик за бърза резервация
         </div>
       </div>
 
@@ -1220,11 +1281,17 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                               {/* Content */}
                               <div className="flex flex-1 items-center gap-1 overflow-hidden px-2">
                                 <GripVertical className="h-3 w-3 flex-shrink-0 opacity-50" />
-                                <span className="truncate text-xs font-medium">
-                                  {task.orderId}
+                                {task.status === "active" && (
+                                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white animate-pulse" />
+                                )}
+                                <span className="truncate text-[10px] font-medium">
+                                  {task.orderNumber}
                                 </span>
-                                {pos.width > 100 && (
-                                  <span className="truncate text-xs opacity-75">
+                                <span className="truncate text-[10px] opacity-70">
+                                  / {task.jobCardNumber}
+                                </span>
+                                {pos.width > 140 && (
+                                  <span className="truncate text-[10px] opacity-60">
                                     - {task.description}
                                   </span>
                                 )}
@@ -1403,10 +1470,10 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                                         "text-xs border-0"
                                       )}
                                     >
-                                      {order.orderId}
-                                    </Badge>
-                                  </div>
-                                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  {order.orderNumber} / {order.jobCardNumber}
+  </Badge>
+  </div>
+  <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                     <Clock className="h-3 w-3" />
                                     {order.estimatedHours}ч
                                   </div>
@@ -1474,9 +1541,9 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex items-center gap-2">
                                     <GripVertical className="h-4 w-4 text-green-600" />
-                                    <Badge className="bg-green-600 text-white text-xs border-0">
-                                      {job.orderId}
-                                    </Badge>
+  <Badge className="bg-green-600 text-white text-xs border-0">
+  {job.orderNumber} / {job.jobCardNumber}
+  </Badge>
                                   </div>
                                   <span className="text-xs text-muted-foreground">
                                     {job.dateFinished}

@@ -9,7 +9,10 @@ import { Badge } from "@/components/ui/badge";
 interface ScheduledTask {
   id: string;
   orderId: string;
+  orderNumber: string;
+  jobCardNumber: string;
   type: "service" | "repair" | "inspection";
+  status: "active" | "overdue" | "completed" | "pending";
   startHour: number;
   startMinute: number;
   durationMinutes: number;
@@ -27,6 +30,8 @@ interface ActualTime {
 interface UnassignedOrder {
   id: string;
   orderId: string;
+  orderNumber: string;
+  jobCardNumber: string;
   description: string;
   estimatedHours: number;
   type: "service" | "repair" | "inspection";
@@ -53,7 +58,10 @@ function getTechnicianData(technicianId: string) {
       {
         id: "p1",
         orderId: "#12345",
+        orderNumber: "ON-5521",
+        jobCardNumber: "JC-0012",
         type: "service",
+        status: "completed",
         startHour: 8,
         startMinute: 0,
         durationMinutes: 120,
@@ -62,7 +70,10 @@ function getTechnicianData(technicianId: string) {
       {
         id: "p2",
         orderId: "#12350",
+        orderNumber: "ON-5521",
+        jobCardNumber: "JC-0013",
         type: "repair",
+        status: "active",
         startHour: 13,
         startMinute: 0,
         durationMinutes: 180,
@@ -73,7 +84,10 @@ function getTechnicianData(technicianId: string) {
       {
         id: "p3",
         orderId: "#12346",
+        orderNumber: "ON-5523",
+        jobCardNumber: "JC-0014",
         type: "inspection",
+        status: "completed",
         startHour: 9,
         startMinute: 30,
         durationMinutes: 90,
@@ -82,7 +96,10 @@ function getTechnicianData(technicianId: string) {
       {
         id: "p4",
         orderId: "#12351",
+        orderNumber: "ON-5526",
+        jobCardNumber: "JC-0017",
         type: "service",
+        status: "pending",
         startHour: 14,
         startMinute: 0,
         durationMinutes: 120,
@@ -93,7 +110,10 @@ function getTechnicianData(technicianId: string) {
       {
         id: "p5",
         orderId: "#12347",
+        orderNumber: "ON-5524",
+        jobCardNumber: "JC-0015",
         type: "repair",
+        status: "overdue",
         startHour: 7,
         startMinute: 0,
         durationMinutes: 240,

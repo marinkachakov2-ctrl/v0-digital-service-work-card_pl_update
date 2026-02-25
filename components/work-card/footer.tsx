@@ -4,7 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
-import { Banknote, CreditCard, PenLine } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle } from "lucide-react";
 
 interface FooterProps {
   paymentMethod: "bank" | "cash";
@@ -13,6 +15,9 @@ interface FooterProps {
   partsTotal: number;
   vat: number;
   grandTotal: number;
+  isSigned: boolean;
+  onSign: () => void;
+  timerStatus: "idle" | "running" | "paused";
 }
 
 export function Footer({
@@ -22,7 +27,12 @@ export function Footer({
   partsTotal,
   vat,
   grandTotal,
+  isSigned,
+  onSign,
+  timerStatus,
 }: FooterProps) {
+  const hasActiveTimer = timerStatus === "running" || timerStatus === "paused";
+
   return (
     <div className="space-y-6">
       {/* Payment & Totals */}
@@ -102,14 +112,20 @@ export function Footer({
       </Card>
 
       {/* Signatures */}
-      <Card className="border-border bg-card">
+      <Card className={`border-border bg-card ${isSigned ? "border-emerald-500/40" : ""}`}>
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-base text-foreground">
             <PenLine className="h-4 w-4 text-primary" />
             Подписи (Signatures)
+            {isSigned && (
+              <Badge className="ml-2 bg-emerald-500/15 text-emerald-500 border-emerald-500/30">
+                <CheckCircle2 className="mr-1 h-3 w-3" />
+                Signed
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="grid gap-6 sm:grid-cols-2">
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Technician</Label>
@@ -119,11 +135,39 @@ export function Footer({
             </div>
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Client</Label>
-              <div className="flex h-24 items-center justify-center rounded-md border-2 border-dashed border-border bg-secondary">
-                <span className="text-sm text-muted-foreground">Signature Area</span>
-              </div>
+              {isSigned ? (
+                <div className="flex h-24 items-center justify-center rounded-md border-2 border-emerald-500/30 bg-emerald-500/5">
+                  <div className="flex items-center gap-2 text-emerald-500">
+                    <CheckCircle2 className="h-5 w-5" />
+                    <span className="text-sm font-medium">Signed</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex h-24 items-center justify-center rounded-md border-2 border-dashed border-border bg-secondary">
+                    <span className="text-sm text-muted-foreground">Signature Area</span>
+                  </div>
+                  <Button
+                    onClick={onSign}
+                    className="w-full gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                  >
+                    <PenLine className="h-4 w-4" />
+                    Client Sign
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Warning: signing auto-stops clocking */}
+          {!isSigned && hasActiveTimer && (
+            <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+              <p className="text-xs text-amber-500">
+                Signing will automatically stop all active clocking for this job card.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

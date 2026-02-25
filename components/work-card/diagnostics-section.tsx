@@ -81,6 +81,7 @@ interface DiagnosticsSectionProps {
   onRepairEndChange: (value: string) => void;
   onEngineHoursChange: (value: string) => void;
   onPhotosChange?: (photos: FaultPhoto[]) => void;
+  previousEngineHours?: number | null;
 }
 
 export function DiagnosticsSection({
@@ -92,6 +93,7 @@ export function DiagnosticsSection({
   repairEnd,
   engineHours,
   photos = [],
+  previousEngineHours,
   onReasonChange,
   onDefectChange,
   onDescriptionChange,
@@ -681,6 +683,11 @@ export function DiagnosticsSection({
                 placeholder="0"
                 className="bg-secondary text-foreground placeholder:text-muted-foreground"
               />
+              {previousEngineHours != null && (
+                <p className="text-[10px] text-muted-foreground">
+                  Previous: <span className="font-mono font-medium">{previousEngineHours.toLocaleString()} h</span>
+                </p>
+              )}
             </div>
           </div>
         </CardContent>
