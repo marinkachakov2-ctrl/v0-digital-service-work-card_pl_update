@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Wrench, ChevronRight, Home, Calendar, Users, Clock, ArrowLeft } from "lucide-react";
+import { Wrench, ChevronRight, Home, Calendar, Users, Clock, ArrowLeft, LayoutGrid, GanttChart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 import { WorkshopDiary } from "@/components/planning/workshop-diary";
 import { TechnicianRoster } from "@/components/planning/technician-roster";
 import { DragDropScheduler } from "@/components/planning/drag-drop-scheduler";
-import { HourlyGantt } from "@/components/planning/hourly-gantt"; // Import HourlyGantt
+import { HourlyGantt } from "@/components/planning/hourly-gantt";
+import { WeeklyTaskView, type WeeklyTask, type WeeklyNote } from "@/components/planning/weekly-task-view";
 
 type ViewLevel = "diary" | "roster" | "gantt";
 
@@ -31,7 +33,58 @@ const technicianNames: Record<string, string> = {
   "tech-6": "Стефан Георгиев",
 };
 
+// Technician list for weekly task view
+const weeklyTechnicians = [
+  { id: "tech-1", name: "Иван Петров" },
+  { id: "tech-2", name: "Георги Иванов" },
+  { id: "tech-3", name: "Петър Стоянов" },
+  { id: "tech-4", name: "Стефан Георгиев" },
+];
+
+// Initial weekly tasks (synced from DragDropScheduler data)
+const initialWeeklyTasks: WeeklyTask[] = [
+  {
+    id: "wt1", orderId: "#12345", orderNumber: "ON-5521", jobCardNumber: "JC-0012",
+    technicianId: "tech-1", type: "service", status: "completed",
+    startHour: 8, startMinute: 0, durationMinutes: 120,
+    description: "Смяна на масло", dayIndex: 0,
+  },
+  {
+    id: "wt2", orderId: "#12346", orderNumber: "ON-5521", jobCardNumber: "JC-0013",
+    technicianId: "tech-1", type: "repair", status: "active",
+    startHour: 13, startMinute: 0, durationMinutes: 180,
+    description: "Ремонт на двигател", dayIndex: 0,
+  },
+  {
+    id: "wt3", orderId: "#12347", orderNumber: "ON-5523", jobCardNumber: "JC-0014",
+    technicianId: "tech-2", type: "inspection", status: "completed",
+    startHour: 9, startMinute: 30, durationMinutes: 90,
+    description: "Годишен преглед", dayIndex: 1,
+  },
+  {
+    id: "wt4", orderId: "#12348", orderNumber: "ON-5524", jobCardNumber: "JC-0015",
+    technicianId: "tech-3", type: "service", status: "overdue",
+    startHour: 7, startMinute: 0, durationMinutes: 240,
+    description: "Ремонт на хидравлика", dayIndex: 2,
+  },
+  {
+    id: "wt5", orderId: "#12349", orderNumber: "ON-5525", jobCardNumber: "JC-0016",
+    technicianId: "tech-4", type: "repair", status: "pending",
+    startHour: 10, startMinute: 0, durationMinutes: 150,
+    description: "Ремонт на трансмисия", dayIndex: 3,
+  },
+];
+
+const initialWeeklyNotes: WeeklyNote[] = [
+  { id: "wn1", text: "Обади се на Иванов за части", dayIndex: 0 },
+  { id: "wn2", text: "Провери наличност на филтри", dayIndex: 2 },
+];
+
 export default function PlanningBoardPage() {
+  const [planView, setPlanView] = useState<"gantt" | "task">("gantt");
+  const [weeklyTasks, setWeeklyTasks] = useState<WeeklyTask[]>(initialWeeklyTasks);
+  const [weeklyNotes, setWeeklyNotes] = useState<WeeklyNote[]>(initialWeeklyNotes);
+
   const [navigation, setNavigation] = useState<NavigationState>({
     level: "diary",
     selectedDate: null,
@@ -175,19 +228,68 @@ export default function PlanningBoardPage() {
           />
         )}
 
-        {/* Level 3: Drag & Drop Scheduler */}
+        {/* Level 3: Scheduler with Gantt/Task toggle */}
         {navigation.level === "gantt" &&
           navigation.selectedDate && (
             <div className="flex h-[calc(100vh-220px)] flex-col gap-4">
-              <Button
-                onClick={navigateToDiary}
-                variant="outline"
-                className="w-fit gap-2 bg-transparent"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Обратно към Дневник
-              </Button>
-              <DragDropScheduler selectedDate={navigation.selectedDate} />
+              {/* Top bar: Back button + View toggle */}
+              <div className="flex items-center justify-between">
+                <Button
+                  onClick={navigateToDiary}
+                  variant="outline"
+                  className="w-fit gap-2 bg-transparent"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Обратно към Дневник
+                </Button>
+
+                {/* View toggle */}
+                <div className="flex items-center gap-1 rounded-lg border border-border bg-secondary/30 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setPlanView("gantt")}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all",
+                      planView === "gantt"
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <GanttChart className="h-3.5 w-3.5" />
+                    Gantt View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPlanView("task")}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all",
+                      planView === "task"
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <LayoutGrid className="h-3.5 w-3.5" />
+                    Task View
+                  </button>
+                </div>
+              </div>
+
+              {/* Gantt View */}
+              {planView === "gantt" && (
+                <DragDropScheduler selectedDate={navigation.selectedDate} />
+              )}
+
+              {/* Task View (Weekly Columns) */}
+              {planView === "task" && (
+                <WeeklyTaskView
+                  tasks={weeklyTasks}
+                  onTasksChange={setWeeklyTasks}
+                  notes={weeklyNotes}
+                  onNotesChange={setWeeklyNotes}
+                  technicians={weeklyTechnicians}
+                  selectedDate={navigation.selectedDate}
+                />
+              )}
             </div>
           )}
       </main>
@@ -217,7 +319,7 @@ export default function PlanningBoardPage() {
             <div
               className={`h-2 w-2 rounded-full ${navigation.level === "gantt" ? "bg-primary" : "bg-muted"}`}
             />
-            <span>Часова схема</span>
+            <span>{navigation.level === "gantt" && planView === "task" ? "Седмичен план" : "Часова схема"}</span>
           </div>
         </div>
       </footer>
