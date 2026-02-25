@@ -18,6 +18,7 @@ import {
   StickyNote,
   ArrowUpRight,
   Split,
+  ChevronDown,
   Trash2,
   Pencil,
   Play,
@@ -453,6 +454,9 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
   // Progress note state (technician view)
   const [progressNoteInput, setProgressNoteInput] = useState<Record<string, string>>({});
 
+  // Recently converted note IDs (for highlight animation)
+  const [recentlyConverted, setRecentlyConverted] = useState<Set<string>>(new Set());
+
   const gridRef = useRef<HTMLDivElement>(null);
   const resizeStartRef = useRef<{
     startX: number;
@@ -832,7 +836,7 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
 
   // Split reservation handler (admin only)
   const handleSplitTask = useCallback(() => {
-    if (!editingTask || !isAdmin) return;
+    if (!editingTask) return;
     if (splitMode === "technicians" && splitTargetTech) {
       const halfDuration = Math.max(30, Math.floor(editingTask.durationMinutes / 2));
       // Shorten original
@@ -883,8 +887,16 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
       type: convertType,
     };
     setUnassigned(prev => [...prev, newUnassigned]);
-    // Remove note
+    // Remove note and show highlight
     setNotes(prev => prev.filter(n => n.id !== convertNoteDialog.id));
+    setRecentlyConverted(prev => new Set(prev).add(newUnassigned.id));
+    setTimeout(() => {
+      setRecentlyConverted(prev => {
+        const next = new Set(prev);
+        next.delete(newUnassigned.id);
+        return next;
+      });
+    }, 3000);
     setConvertNoteDialog(null);
   }, [convertNoteDialog, convertType, convertHours, convertNoteToOrder]);
 
@@ -1395,6 +1407,20 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                                 )}
                               </div>
 
+                              {/* Split button (visible on hover) */}
+                              <button
+                                type="button"
+                                className="mr-0.5 flex-shrink-0 rounded p-0.5 opacity-0 hover:bg-black/20 group-hover:opacity-100 transition-opacity"
+                                title="Split Reservation"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenTaskEdit(task);
+                                  setSplitDialogOpen(true);
+                                }}
+                              >
+                                <Split className="h-3 w-3" />
+                              </button>
+
                               {/* Delete button */}
                               <button
                                 type="button"
@@ -1542,6 +1568,7 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                       unassigned.map((order) => {
                         const colors = taskColors[order.type];
                         const isDragging = draggingUnassigned === order.id;
+                        const isNew = recentlyConverted.has(order.id);
 
                         return (
                           <ContextMenu key={order.id}>
@@ -1552,7 +1579,8 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                                   colors.border,
                                   isDragging
                                     ? "opacity-50 scale-95"
-                                    : "cursor-grab hover:shadow-md"
+                                    : "cursor-grab hover:shadow-md",
+                                  isNew && "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background animate-pulse"
                                 )}
                                 draggable
                                 onDragStart={(e) => handleUnassignedDragStart(e, order.id)}
@@ -1740,20 +1768,19 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                                     <StickyNote className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                                   </div>
                                   <div className="flex items-center gap-1">
-                                    {isAdmin && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setConvertNoteDialog(note);
-                                          setConvertType("repair");
-                                          setConvertHours("1");
-                                        }}
-                                        className="text-amber-700 dark:text-amber-300 hover:text-foreground transition-colors"
-                                        title="Convert to Work Order"
-                                      >
-                                        <ArrowUpRight className="h-3.5 w-3.5" />
-                                      </button>
-                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setConvertNoteDialog(note);
+                                        setConvertType("repair");
+                                        setConvertHours("1");
+                                      }}
+                                      className="flex items-center gap-1 rounded bg-emerald-600/90 px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-emerald-600 transition-colors"
+                                      title="Convert to Work Order"
+                                    >
+                                      <ArrowUpRight className="h-3 w-3" />
+                                      Order
+                                    </button>
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteNote(note.id)}
@@ -2069,8 +2096,8 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
               </div>
             </div>
 
-            {/* Admin-only: Split Reservation */}
-            {isAdmin && editingTask && (
+            {/* Split Reservation */}
+            {editingTask && (
               <div className="space-y-3 rounded-lg border border-border p-3">
                 <button
                   type="button"
