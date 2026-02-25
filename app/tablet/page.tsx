@@ -193,6 +193,11 @@ export default function TabletSystemPage() {
               Към графика
             </Button>
           </Link>
+          <Link href="/admin">
+            <Button variant="ghost" size="sm" className="bg-transparent text-muted-foreground hover:text-foreground text-xs">
+              Admin
+            </Button>
+          </Link>
           <div className="bg-emerald-500 p-2 rounded-lg text-black">
             <Wrench size={20} />
           </div>

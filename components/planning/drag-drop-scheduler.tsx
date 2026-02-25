@@ -16,6 +16,8 @@ import {
   CalendarPlus,
   FileText,
   StickyNote,
+  ArrowUpRight,
+  Split,
   Trash2,
   Pencil,
   Play,
@@ -710,6 +712,7 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
   // Double-click for quick create
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent, techId: string) => {
+      if (!isAdmin) return; // Read-only for non-admin
       if (gridRef.current) {
         const rect = gridRef.current.getBoundingClientRect();
         const x = e.clientX - rect.left - SIDEBAR_WIDTH;
@@ -826,6 +829,74 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
     setEditTaskStartHour(Math.floor(newMinutes / 60));
     setEditTaskStartMinute(newMinutes % 60);
   }, [editTaskStartHour, editTaskStartMinute]);
+
+  // Split reservation handler (admin only)
+  const handleSplitTask = useCallback(() => {
+    if (!editingTask || !isAdmin) return;
+    if (splitMode === "technicians" && splitTargetTech) {
+      const halfDuration = Math.max(30, Math.floor(editingTask.durationMinutes / 2));
+      // Shorten original
+      setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, durationMinutes: halfDuration } : t));
+      // Create second half for target tech
+      const newTask: ScheduledTask = {
+        ...editingTask,
+        id: `split-${Date.now()}`,
+        technicianId: splitTargetTech,
+        durationMinutes: editingTask.durationMinutes - halfDuration,
+        progressNotes: [],
+      };
+      setTasks(prev => [...prev, newTask]);
+    } else if (splitMode === "days") {
+      const perDay = Math.max(30, Math.floor(editingTask.durationMinutes / splitDays));
+      setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, durationMinutes: perDay } : t));
+      for (let i = 1; i < splitDays; i++) {
+        const newTask: ScheduledTask = {
+          ...editingTask,
+          id: `split-day-${Date.now()}-${i}`,
+          durationMinutes: perDay,
+          description: `${editingTask.description} (Ден ${i + 1})`,
+          progressNotes: [],
+        };
+        setTasks(prev => [...prev, newTask]);
+      }
+    }
+    setSplitDialogOpen(false);
+    setEditingTask(null);
+  }, [editingTask, isAdmin, splitMode, splitTargetTech, splitDays]);
+
+  // Convert note to work order
+  const handleConvertNote = useCallback(() => {
+    if (!convertNoteDialog) return;
+    convertNoteToOrder({
+      text: convertNoteDialog.text,
+      type: convertType,
+      estimatedHours: Number(convertHours) || 1,
+    });
+    // Add to unassigned list as well
+    const newUnassigned: UnassignedOrder = {
+      id: `conv-${Date.now()}`,
+      orderId: `#${Date.now()}`,
+      orderNumber: `ON-UNSCH-${Date.now()}`,
+      jobCardNumber: `JC-NEW`,
+      description: convertNoteDialog.text,
+      estimatedHours: Number(convertHours) || 1,
+      type: convertType,
+    };
+    setUnassigned(prev => [...prev, newUnassigned]);
+    // Remove note
+    setNotes(prev => prev.filter(n => n.id !== convertNoteDialog.id));
+    setConvertNoteDialog(null);
+  }, [convertNoteDialog, convertType, convertHours, convertNoteToOrder]);
+
+  // Add progress note to a task
+  const handleAddProgressNote = useCallback((taskId: string) => {
+    const text = progressNoteInput[taskId]?.trim();
+    if (!text) return;
+    setTasks(prev => prev.map(t =>
+      t.id === taskId ? { ...t, progressNotes: [...(t.progressNotes || []), text] } : t
+    ));
+    setProgressNoteInput(prev => ({ ...prev, [taskId]: "" }));
+  }, [progressNoteInput]);
 
   // Note drag handlers
   const handleNoteDragStart = useCallback(
@@ -1085,8 +1156,12 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
           <div className="h-3 w-6 rounded bg-orange-400" />
           <span className="text-muted-foreground">Извън график</span>
         </div>
-        <div className="ml-auto text-muted-foreground">
-          Дв��ен клик за бърза резервация
+        <div className="ml-auto flex items-center gap-2 text-muted-foreground">
+          {isAdmin ? (
+            <span>Двоен клик за бърза резервация</span>
+          ) : (
+            <Badge variant="secondary" className="text-[10px]">Read-only</Badge>
+          )}
         </div>
       </div>
 
@@ -1664,13 +1739,29 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                                     <GripVertical className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                                     <StickyNote className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteNote(note.id)}
-                                    className="text-muted-foreground hover:text-destructive transition-colors"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
+                                  <div className="flex items-center gap-1">
+                                    {isAdmin && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setConvertNoteDialog(note);
+                                          setConvertType("repair");
+                                          setConvertHours("1");
+                                        }}
+                                        className="text-amber-700 dark:text-amber-300 hover:text-foreground transition-colors"
+                                        title="Convert to Work Order"
+                                      >
+                                        <ArrowUpRight className="h-3.5 w-3.5" />
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteNote(note.id)}
+                                      className="text-muted-foreground hover:text-destructive transition-colors"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
                                 </div>
                                 <p className="mt-2 text-xs text-amber-900 dark:text-amber-100">
                                   {note.text}
@@ -1977,6 +2068,79 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                 </span>
               </div>
             </div>
+
+            {/* Admin-only: Split Reservation */}
+            {isAdmin && editingTask && (
+              <div className="space-y-3 rounded-lg border border-border p-3">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 text-sm font-medium text-foreground"
+                  onClick={() => setSplitDialogOpen(prev => !prev)}
+                >
+                  <Split className="h-4 w-4" />
+                  Split Reservation
+                  <ChevronDown className={cn("ml-auto h-4 w-4 transition-transform", splitDialogOpen && "rotate-180")} />
+                </button>
+                {splitDialogOpen && (
+                  <div className="space-y-3 pt-2">
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant={splitMode === "technicians" ? "default" : "outline"}
+                        onClick={() => setSplitMode("technicians")}
+                        className={splitMode !== "technicians" ? "bg-transparent" : ""}
+                      >
+                        Across Technicians
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={splitMode === "days" ? "default" : "outline"}
+                        onClick={() => setSplitMode("days")}
+                        className={splitMode !== "days" ? "bg-transparent" : ""}
+                      >
+                        Across Days
+                      </Button>
+                    </div>
+                    {splitMode === "technicians" ? (
+                      <Select value={splitTargetTech} onValueChange={setSplitTargetTech}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Select second technician..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {technicians
+                            .filter(t => t.id !== editingTask.technicianId)
+                            .map(t => (
+                              <SelectItem key={t.id} value={t.id}>
+                                {t.name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-muted-foreground">Days:</Label>
+                        <Button size="sm" variant="outline" className="h-7 w-7 bg-transparent" onClick={() => setSplitDays(d => Math.max(2, d - 1))}>
+                          <Minus className="h-3 w-3" />
+                        </Button>
+                        <span className="w-8 text-center text-sm font-medium">{splitDays}</span>
+                        <Button size="sm" variant="outline" className="h-7 w-7 bg-transparent" onClick={() => setSplitDays(d => Math.min(5, d + 1))}>
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <Button
+                      size="sm"
+                      onClick={handleSplitTask}
+                      disabled={splitMode === "technicians" && !splitTargetTech}
+                      className="w-full"
+                    >
+                      <Split className="mr-1.5 h-3.5 w-3.5" />
+                      Split
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
@@ -2005,6 +2169,59 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
               className="bg-foreground text-background hover:bg-foreground/90"
             >
               Запази
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Convert Note to Work Order Dialog */}
+      <Dialog
+        open={!!convertNoteDialog}
+        onOpenChange={() => setConvertNoteDialog(null)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+              <ArrowUpRight className="h-5 w-5" />
+              Convert Note to Work Order
+            </DialogTitle>
+          </DialogHeader>
+          {convertNoteDialog && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg bg-amber-100 dark:bg-amber-900/30 p-3 text-xs text-amber-900 dark:text-amber-100">
+                {convertNoteDialog.text}
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Type</Label>
+                <Select value={convertType} onValueChange={(v: "service" | "repair" | "inspection") => setConvertType(v)}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="service">Service</SelectItem>
+                    <SelectItem value="repair">Repair</SelectItem>
+                    <SelectItem value="inspection">Inspection</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Estimated Hours</Label>
+                <Input
+                  type="number"
+                  value={convertHours}
+                  onChange={(e) => setConvertHours(e.target.value)}
+                  min="0.5"
+                  step="0.5"
+                  className="h-9"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" onClick={() => setConvertNoteDialog(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConvertNote}>
+              Create Order
             </Button>
           </DialogFooter>
         </DialogContent>

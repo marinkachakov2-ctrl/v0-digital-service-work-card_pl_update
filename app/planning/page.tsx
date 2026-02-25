@@ -99,11 +99,18 @@ export default function PlanningBoardPage() {
             </div>
           </div>
 
-          <Link href="/">
-            <Button variant="outline" size="sm" className="bg-transparent">
-              Работна Карта
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/admin">
+              <Button variant="outline" size="sm" className="bg-transparent">
+                Admin
+              </Button>
+            </Link>
+            <Link href="/">
+              <Button variant="outline" size="sm" className="bg-transparent">
+                Работна Карта
+              </Button>
+            </Link>
+          </div>
         </div>
       </header>
 
