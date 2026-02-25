@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -41,18 +41,32 @@ import {
   Play,
   Square,
   PlusCircle,
-  LayoutDashboard,
-  Truck,
+  LayoutGrid,
   BarChart3,
   ArrowLeft,
   ListChecks,
   Search,
   Wrench,
-  LayoutGrid,
+  Users,
+  Crown,
+  Shield,
+  FileSignature,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { useClocking } from "@/lib/clocking-context";
+import {
+  useClocking,
+  getStatusColor,
+  getStatusBgClass,
+  getStatusDotClass,
+  reverseTechnicianMapping,
+} from "@/lib/clocking-context";
+import { cn } from "@/lib/utils";
+
+const BG_MONTHS = [
+  "януари","февруари","март","април","май","юни",
+  "юли","август","септември","октомври","ноември","декември",
+];
 
 const technicians = [
   { id: "tech-1", name: "Иван Иванов" },
@@ -61,73 +75,120 @@ const technicians = [
   { id: "tech-4", name: "Димитър Димитров" },
 ];
 
+function StatusDot({ order }: { order: { status: string; actualHours: number; plannedHours: number; startTime: number | null; isSigned: boolean } }) {
+  const color = getStatusColor(order as any);
+  return <span className={cn("inline-block h-2 w-2 rounded-full shrink-0", getStatusDotClass(color))} />;
+}
+
+function StatusBadge({ order }: { order: { status: string; actualHours: number; plannedHours: number; startTime: number | null; isSigned: boolean } }) {
+  const color = getStatusColor(order as any);
+  const labels: Record<string, string> = {
+    red: "Закъсняла",
+    green: "Активна",
+    orange: "Непланирана",
+    gray: "Завършена",
+    default: "Чакаща",
+  };
+  const classes: Record<string, string> = {
+    red: "bg-red-600 text-white",
+    green: "bg-emerald-600 text-white animate-pulse",
+    orange: "bg-orange-500 text-white",
+    gray: "bg-muted text-muted-foreground",
+    default: "bg-secondary text-secondary-foreground",
+  };
+  return <Badge className={classes[color]}>{labels[color]}</Badge>;
+}
+
 export default function TabletSystemPage() {
   const {
     workOrders,
     clockingActivities,
+    isAdmin,
+    setIsAdmin,
     addWorkOrder,
     updateWorkOrderStatus,
+    globalClockIn,
+    globalClockOut,
+    signJobCard,
   } = useClocking();
 
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState("mobile");
   const [searchTerm, setSearchTerm] = useState("");
   const [newOrder, setNewOrder] = useState({
-    id: "",
-    customer: "",
+    orderNumber: "",
+    machineOwner: "",
     machine: "",
-    technicianId: "",
-    technicianName: "",
+    serialNo: "",
+    technicianIds: [] as string[],
+    leadTechnicianId: "",
     plannedHours: 4,
     description: "",
+    type: "repair" as "warranty" | "repair" | "internal",
   });
 
+  useEffect(() => { setMounted(true); }, []);
+
   const saveNewOrder = () => {
-    if (!newOrder.id || !newOrder.technicianId) return;
+    if (!newOrder.orderNumber || newOrder.technicianIds.length === 0) return;
     addWorkOrder({
-      id: newOrder.id,
-      customer: newOrder.customer,
+      id: "", // will be generated
+      orderNumber: newOrder.orderNumber,
+      type: newOrder.type,
+      machineOwner: newOrder.machineOwner,
+      billingEntity: newOrder.machineOwner,
       machine: newOrder.machine,
-      technicianId: newOrder.technicianId,
-      technicianName: newOrder.technicianName,
+      serialNo: newOrder.serialNo || "-",
+      previousEngineHours: null,
+      engineHours: 0,
       plannedHours: newOrder.plannedHours,
-      description: newOrder.description || `${newOrder.machine} - ${newOrder.customer}`,
+      technicianIds: newOrder.technicianIds,
+      leadTechnicianId: newOrder.leadTechnicianId || newOrder.technicianIds[0],
+      clockAtJobLevel: newOrder.technicianIds.length > 1,
+      description: newOrder.description || `${newOrder.machine} - ${newOrder.machineOwner}`,
     });
     setNewOrder({
-      id: "",
-      customer: "",
+      orderNumber: "",
+      machineOwner: "",
       machine: "",
-      technicianId: "",
-      technicianName: "",
+      serialNo: "",
+      technicianIds: [],
+      leadTechnicianId: "",
       plannedHours: 4,
       description: "",
+      type: "repair",
     });
   };
 
-  // Filtered orders for registry
   const filteredOrders = workOrders.filter(
     (o) =>
       o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      o.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      o.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      o.machineOwner.toLowerCase().includes(searchTerm.toLowerCase()) ||
       o.technicianName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // KPI data from work orders
   const kpiData = workOrders
     .filter((o) => o.status !== "Pending")
     .map((o) => ({
-      name: o.id,
+      name: `${o.orderNumber}/${o.id}`,
       Планирано: o.plannedHours,
       Отчетено: o.actualHours || 0,
     }));
 
-  const hours = Array.from({ length: 11 }, (_, i) => i + 8); // 8:00 - 18:00
+  const hours = Array.from({ length: 11 }, (_, i) => i + 8);
+
+  const dateLabel = mounted
+    ? `${new Date().getDate()} ${BG_MONTHS[new Date().getMonth()]}`
+    : "";
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white p-4 font-sans">
-      <header className="flex flex-col md:flex-row justify-between items-center bg-[#111] p-4 rounded-xl border border-gray-800 mb-6 gap-4">
+    <div className="min-h-screen bg-background text-foreground p-4 font-sans">
+      {/* Header */}
+      <header className="flex flex-col md:flex-row justify-between items-center bg-card p-4 rounded-xl border border-border mb-6 gap-4">
         <div className="flex items-center gap-4">
           <Link href="/planning">
-            <Button variant="ghost" size="sm" className="gap-2 bg-transparent text-gray-400 hover:text-white hover:bg-gray-800">
+            <Button variant="ghost" size="sm" className="gap-2 bg-transparent text-muted-foreground hover:text-foreground">
               <ArrowLeft className="h-4 w-4" />
               Към графика
             </Button>
@@ -135,16 +196,22 @@ export default function TabletSystemPage() {
           <div className="bg-emerald-500 p-2 rounded-lg text-black">
             <Wrench size={20} />
           </div>
-          <h1 className="text-lg font-bold tracking-tighter">
-            MEGATRON <span className="text-gray-500 text-sm font-normal">SERVICE OS</span>
+          <h1 className="text-lg font-bold tracking-tighter text-foreground">
+            MEGATRON <span className="text-muted-foreground text-sm font-normal">SERVICE OS</span>
           </h1>
+          {/* Admin Toggle */}
+          <Button
+            variant={isAdmin ? "default" : "outline"}
+            size="sm"
+            className={cn("gap-1 text-xs", isAdmin && "bg-red-600 hover:bg-red-700 text-white")}
+            onClick={() => setIsAdmin(!isAdmin)}
+          >
+            <Shield className="h-3.5 w-3.5" />
+            {isAdmin ? "Admin ON" : "Admin"}
+          </Button>
         </div>
-        <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="w-full md:w-auto"
-        >
-          <TabsList className="grid grid-cols-4 bg-[#1a1a1a]">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full md:w-auto">
+          <TabsList className="grid grid-cols-4 bg-secondary">
             <TabsTrigger value="dispatch" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-black">
               <LayoutGrid size={16} className="mr-2" />
               Борд
@@ -165,53 +232,65 @@ export default function TabletSystemPage() {
         </Tabs>
       </header>
 
-      {/* МОБИЛЕН КЛОКИНГ */}
+      {/* CLOCKING TAB */}
       {activeTab === "mobile" && (
         <div className="space-y-6">
           {/* Quick Add Card */}
-          <Card className="bg-[#111] border-gray-800 border-l-4 border-l-emerald-500">
+          <Card className="bg-card border-border border-l-4 border-l-emerald-500">
             <CardHeader>
-              <CardTitle className="text-gray-300">Нова работна карта</CardTitle>
+              <CardTitle className="text-foreground">Нова работна карта</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Input
-                  placeholder="Поръчка №"
-                  className="bg-[#1a1a1a] border-gray-800"
-                  value={newOrder.id}
-                  onChange={(e) =>
-                    setNewOrder({ ...newOrder, id: e.target.value })
-                  }
+                  placeholder="Order Number (ON)"
+                  className="bg-secondary border-border"
+                  value={newOrder.orderNumber}
+                  onChange={(e) => setNewOrder({ ...newOrder, orderNumber: e.target.value })}
                 />
                 <Input
-                  placeholder="Клиент"
-                  className="bg-[#1a1a1a] border-gray-800"
-                  value={newOrder.customer}
-                  onChange={(e) =>
-                    setNewOrder({ ...newOrder, customer: e.target.value })
-                  }
+                  placeholder="Собственик на машина"
+                  className="bg-secondary border-border"
+                  value={newOrder.machineOwner}
+                  onChange={(e) => setNewOrder({ ...newOrder, machineOwner: e.target.value })}
                 />
                 <Input
                   placeholder="Машина"
-                  className="bg-[#1a1a1a] border-gray-800"
+                  className="bg-secondary border-border"
                   value={newOrder.machine}
-                  onChange={(e) =>
-                    setNewOrder({ ...newOrder, machine: e.target.value })
-                  }
+                  onChange={(e) => setNewOrder({ ...newOrder, machine: e.target.value })}
                 />
                 <Select
-                  value={newOrder.technicianId}
-                  onValueChange={(val) => {
-                    const tech = technicians.find((t) => t.id === val);
+                  value={newOrder.type}
+                  onValueChange={(val: "warranty" | "repair" | "internal") =>
+                    setNewOrder({ ...newOrder, type: val })
+                  }
+                >
+                  <SelectTrigger className="bg-secondary border-border">
+                    <SelectValue placeholder="Тип" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="repair">Ремонт</SelectItem>
+                    <SelectItem value="warranty">Гаранция</SelectItem>
+                    <SelectItem value="internal">Вътрешно</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Select
+                  value={newOrder.leadTechnicianId}
+                  onValueChange={(val) =>
                     setNewOrder({
                       ...newOrder,
-                      technicianId: val,
-                      technicianName: tech?.name || "",
-                    });
-                  }}
+                      leadTechnicianId: val,
+                      technicianIds: newOrder.technicianIds.includes(val)
+                        ? newOrder.technicianIds
+                        : [...newOrder.technicianIds, val],
+                    })
+                  }
                 >
-                  <SelectTrigger className="bg-[#1a1a1a] border-gray-800">
-                    <SelectValue placeholder="Избери техник" />
+                  <SelectTrigger className="bg-secondary border-border">
+                    <SelectValue placeholder="Водещ техник" />
                   </SelectTrigger>
                   <SelectContent>
                     {technicians.map((tech) => (
@@ -221,97 +300,226 @@ export default function TabletSystemPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Input
+                  placeholder="Описание"
+                  className="bg-secondary border-border md:col-span-2"
+                  value={newOrder.description}
+                  onChange={(e) => setNewOrder({ ...newOrder, description: e.target.value })}
+                />
+                <Input
+                  type="number"
+                  placeholder="Планирани часове"
+                  className="bg-secondary border-border"
+                  value={newOrder.plannedHours}
+                  onChange={(e) => setNewOrder({ ...newOrder, plannedHours: Number(e.target.value) || 0 })}
+                />
               </div>
+              {/* Selected techs */}
+              {newOrder.technicianIds.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted-foreground">Екип:</span>
+                  {newOrder.technicianIds.map((tid) => {
+                    const t = technicians.find((tt) => tt.id === tid);
+                    return (
+                      <Badge
+                        key={tid}
+                        variant="secondary"
+                        className="gap-1 cursor-pointer"
+                        onClick={() => setNewOrder({
+                          ...newOrder,
+                          technicianIds: newOrder.technicianIds.filter((id) => id !== tid),
+                          leadTechnicianId: newOrder.leadTechnicianId === tid ? "" : newOrder.leadTechnicianId,
+                        })}
+                      >
+                        {tid === newOrder.leadTechnicianId && <Crown className="h-3 w-3 text-amber-500" />}
+                        {t?.name || tid}
+                        <span className="text-muted-foreground ml-1">x</span>
+                      </Badge>
+                    );
+                  })}
+                  {/* Add more techs */}
+                  {technicians
+                    .filter((t) => !newOrder.technicianIds.includes(t.id))
+                    .map((t) => (
+                      <Button
+                        key={t.id}
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-xs bg-transparent"
+                        onClick={() => setNewOrder({
+                          ...newOrder,
+                          technicianIds: [...newOrder.technicianIds, t.id],
+                        })}
+                      >
+                        + {t.name}
+                      </Button>
+                    ))}
+                </div>
+              )}
               <Button className="bg-emerald-500 text-black hover:bg-emerald-600" onClick={saveNewOrder}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Добави поръчка
               </Button>
             </CardContent>
           </Card>
 
-          {/* Clocking Cards */}
+          {/* Clocking Cards -- status color coded */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {workOrders
+              .filter((o) => o.status !== "Completed" || (!o.isSigned && o.actualHours > 0))
               .filter((o) => o.status !== "Completed")
-              .map((order) => (
-                <Card
-                  key={order.id}
-                  className="bg-[#111] border-gray-800 border-l-4 border-l-emerald-500"
-                >
-                  <CardContent className="p-6 flex justify-between items-center">
-                    <div>
-                      <h3 className="text-lg font-bold text-emerald-400">
-                        {order.id}
-                      </h3>
-                      <p className="text-sm text-gray-500">
-                        {order.customer} - {order.machine}
-                      </p>
-                      <p className="text-xs text-gray-600 mt-1">
-                        {order.technicianName}
-                      </p>
-                      {order.status === "In Progress" && order.startTime && (
-                        <p className="text-xs text-emerald-400 mt-2 font-mono animate-pulse">
-                          Активно: {((Date.now() - order.startTime) / 3600000).toFixed(2)}h
+              .map((order) => {
+                const sc = getStatusColor(order);
+                const borderColor: Record<string, string> = {
+                  red: "border-l-red-500",
+                  green: "border-l-emerald-500",
+                  orange: "border-l-orange-500",
+                  gray: "border-l-muted-foreground/30",
+                  default: "border-l-border",
+                };
+                const isActive = order.status === "In Progress" || order.status === "Overdue";
+
+                return (
+                  <Card
+                    key={order.id}
+                    className={cn("bg-card border border-border border-l-4", borderColor[sc], getStatusBgClass(sc))}
+                  >
+                    <CardContent className="p-5 space-y-3">
+                      {/* Top: ON / JCN / Type */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <StatusDot order={order} />
+                          <span className="text-sm font-bold text-foreground">{order.orderNumber}</span>
+                          <span className="text-xs text-muted-foreground">/</span>
+                          <span className="text-sm font-medium text-muted-foreground">{order.id}</span>
+                        </div>
+                        <Badge variant="outline" className="text-[10px] uppercase">
+                          {order.type}
+                        </Badge>
+                      </div>
+
+                      {/* Middle: Machine / Owner */}
+                      <div>
+                        <p className="text-sm text-foreground">{order.machine} - {order.machineOwner}</p>
+                        {order.billingEntity !== order.machineOwner && (
+                          <p className="text-[10px] text-muted-foreground">Фактуриране: {order.billingEntity}</p>
+                        )}
+                      </div>
+
+                      {/* Technicians */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                        {order.technicianIds.map((tid) => (
+                          <Badge key={tid} variant="secondary" className="text-[10px] gap-0.5">
+                            {tid === order.leadTechnicianId && <Crown className="h-2.5 w-2.5 text-amber-500" />}
+                            {reverseTechnicianMapping[tid] || tid}
+                          </Badge>
+                        ))}
+                        {order.clockAtJobLevel && (
+                          <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-500">
+                            Job-level clock
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Active timer */}
+                      {isActive && order.startTime && mounted && (
+                        <p className="text-xs font-mono animate-pulse" style={{ color: sc === "red" ? "#ef4444" : "#10b981" }}>
+                          Активно: {((Date.now() - order.startTime) / 3600000).toFixed(2)}h / {order.plannedHours}h
                         </p>
                       )}
-                    </div>
-                    <Button
-                      onClick={() =>
-                        updateWorkOrderStatus(
-                          order.id,
-                          order.status === "In Progress" ? "stop" : "start"
-                        )
-                      }
-                      className={
-                        order.status === "In Progress"
-                          ? "bg-red-600 hover:bg-red-700"
-                          : "bg-emerald-500 text-black hover:bg-emerald-600"
-                      }
-                      size="lg"
-                    >
-                      {order.status === "In Progress" ? (
-                        <>
-                          <Square className="mr-2 h-5 w-5" />
-                          STOP
-                        </>
-                      ) : (
-                        <>
-                          <Play className="mr-2 h-5 w-5" />
-                          START
-                        </>
-                      )}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 pt-1">
+                        {order.clockAtJobLevel ? (
+                          <>
+                            <Button
+                              onClick={() => isActive ? globalClockOut(order.id) : globalClockIn(order.id)}
+                              className={cn(
+                                "flex-1",
+                                isActive
+                                  ? "bg-red-600 hover:bg-red-700 text-white"
+                                  : "bg-emerald-500 text-black hover:bg-emerald-600"
+                              )}
+                              size="sm"
+                            >
+                              {isActive ? (
+                                <><Square className="mr-1.5 h-4 w-4" /> STOP ALL</>
+                              ) : (
+                                <><Play className="mr-1.5 h-4 w-4" /> START ALL</>
+                              )}
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            onClick={() =>
+                              updateWorkOrderStatus(
+                                order.id,
+                                isActive ? "stop" : "start"
+                              )
+                            }
+                            className={cn(
+                              "flex-1",
+                              isActive
+                                ? "bg-red-600 hover:bg-red-700 text-white"
+                                : "bg-emerald-500 text-black hover:bg-emerald-600"
+                            )}
+                            size="sm"
+                          >
+                            {isActive ? (
+                              <><Square className="mr-1.5 h-4 w-4" /> STOP</>
+                            ) : (
+                              <><Play className="mr-1.5 h-4 w-4" /> START</>
+                            )}
+                          </Button>
+                        )}
+                        {isActive && !order.isSigned && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1 bg-transparent"
+                            onClick={() => signJobCard(order.id)}
+                          >
+                            <FileSignature className="h-4 w-4" />
+                            Подпис
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
           </div>
         </div>
       )}
 
-      {/* ДИСПЕЧЕРСКИ БОРД (GANTT) */}
+      {/* DISPATCH BOARD (GANTT) */}
       {activeTab === "dispatch" && (
-        <Card className="bg-[#111] border-gray-800">
-          <CardHeader className="flex flex-row items-center justify-between border-b border-gray-800">
-            <CardTitle className="text-sm text-gray-400">
-              График на техниците - {new Date().toLocaleDateString("bg-BG", { day: "2-digit", month: "long" })}
+        <Card className="bg-card border-border">
+          <CardHeader className="flex flex-row items-center justify-between border-b border-border">
+            <CardTitle className="text-sm text-muted-foreground">
+              {"График на техниците"}{dateLabel ? ` - ${dateLabel}` : ""}
             </CardTitle>
             <div className="flex gap-4 text-[10px]">
               <span className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-blue-600 rounded-sm" /> Planned
+                <div className="w-2 h-2 bg-emerald-500 rounded-sm animate-pulse" /> Активно
               </span>
               <span className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-emerald-500 rounded-sm animate-pulse" /> Actual (Live)
+                <div className="w-2 h-2 bg-red-600 rounded-sm" /> Закъсняло
               </span>
               <span className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-orange-500 rounded-sm" /> Извън график
+                <div className="w-2 h-2 bg-orange-500 rounded-sm" /> Непланирано
+              </span>
+              <span className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-muted-foreground/50 rounded-sm" /> Завършено
               </span>
             </div>
           </CardHeader>
           <CardContent className="p-6">
             <div className="relative">
               {/* Timeline Header */}
-              <div className="flex mb-6 ml-[160px] text-[10px] text-gray-600 font-mono">
+              <div className="flex mb-6 ml-[180px] text-[10px] text-muted-foreground font-mono">
                 {hours.map((h) => (
-                  <div key={h} className="flex-1 text-center border-l border-gray-900">
+                  <div key={h} className="flex-1 text-center border-l border-border/40">
                     {h}:00
                   </div>
                 ))}
@@ -321,34 +529,39 @@ export default function TabletSystemPage() {
               <div className="space-y-8">
                 {technicians.map((tech) => {
                   const techOrders = workOrders.filter(
-                    (o) => o.technicianId === tech.id
+                    (o) => o.technicianIds.includes(tech.id) || o.technicianId === tech.id
                   );
 
                   return (
                     <div key={tech.id} className="flex items-start">
-                      <div className="w-[160px] pr-4 pt-1">
-                        <div className="text-xs font-bold text-gray-300">
-                          {tech.name}
-                        </div>
-                        <div className="text-[10px] text-gray-500">
-                          Сервизен техник
+                      <div className="w-[180px] pr-4 pt-1">
+                        <div className="text-xs font-bold text-foreground">{tech.name}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {techOrders.filter((o) => o.status !== "Completed").length} активни
                         </div>
                       </div>
 
-                      <div className="flex-1 space-y-1 relative h-14 bg-gray-900/30 rounded-lg p-1 border border-gray-800/50">
-                        {techOrders.map((order) => {
-                          // Calculate positions (assuming 8-hour shift, each hour = 1/11 of width)
-                          const plannedStart = 8; // Default start at 8:00
-                          const plannedEnd = plannedStart + order.plannedHours;
+                      <div className="flex-1 space-y-1 relative h-14 bg-secondary/30 rounded-lg p-1 border border-border/50">
+                        {techOrders.map((order, idx) => {
+                          const plannedStart = 8 + idx * 2;
                           const startPos = ((plannedStart - 8) / 11) * 100;
                           const width = Math.min((order.plannedHours / 11) * 100, 100 - startPos);
-                          
+                          const sc = getStatusColor(order);
+
+                          const barBg: Record<string, string> = {
+                            red: "bg-red-600/80 border-red-400/60",
+                            green: "bg-emerald-600/80 border-emerald-400/60",
+                            orange: "bg-orange-500/80 border-orange-400/60",
+                            gray: "bg-muted border-muted-foreground/20",
+                            default: "bg-primary/30 border-primary/50",
+                          };
+
                           const actualHours =
-                            order.status === "In Progress" && order.startTime
+                            (order.status === "In Progress" || order.status === "Overdue") && order.startTime && mounted
                               ? (Date.now() - order.startTime) / 3600000
                               : order.actualHours;
                           const actualWidth = Math.min(
-                            (actualHours / order.plannedHours) * 100,
+                            (actualHours / Math.max(order.plannedHours, 1)) * 100,
                             100
                           );
 
@@ -361,31 +574,30 @@ export default function TabletSystemPage() {
                                 width: `${width}%`,
                               }}
                             >
-                              {/* Planned Bar (Top) */}
-                              <div className="h-5 bg-blue-600/30 border border-blue-500/50 rounded-t text-[9px] px-2 flex items-center overflow-hidden">
-                                <span className="truncate">
-                                  {order.id} (P: {order.plannedHours}h)
+                              {/* Planned Bar */}
+                              <div className={cn("h-5 border rounded-t text-[9px] px-2 flex items-center overflow-hidden", barBg[sc])}>
+                                <span className="truncate font-medium" style={{ color: sc === "gray" ? undefined : "white" }}>
+                                  {order.orderNumber} / {order.id}
                                 </span>
                               </div>
-                              {/* Actual Bar (Bottom) */}
+                              {/* Actual Bar */}
                               {actualHours > 0 && (
                                 <div
-                                  className={`h-5 ${
-                                    order.status === "In Progress"
+                                  className={cn(
+                                    "h-5 rounded-b border border-white/10 text-[9px] px-2 flex items-center",
+                                    (order.status === "In Progress" || order.status === "Overdue")
                                       ? "bg-emerald-500 animate-pulse"
-                                      : "bg-gray-600"
-                                  } rounded-b border border-white/10 text-[9px] px-2 flex items-center shadow-lg`}
-                                  style={{
-                                    width: `${actualWidth}%`,
-                                  }}
+                                      : "bg-muted-foreground/40"
+                                  )}
+                                  style={{ width: `${actualWidth}%` }}
                                 >
-                                  {order.status === "In Progress" ? (
-                                    <span className="flex items-center gap-1">
+                                  {(order.status === "In Progress" || order.status === "Overdue") ? (
+                                    <span className="flex items-center gap-1 text-white font-medium">
                                       <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
                                       LIVE
                                     </span>
                                   ) : (
-                                    `${actualHours.toFixed(1)}h`
+                                    <span className="text-foreground">{actualHours.toFixed(1)}h</span>
                                   )}
                                 </div>
                               )}
@@ -393,9 +605,8 @@ export default function TabletSystemPage() {
                           );
                         })}
 
-                        {/* Empty state */}
                         {techOrders.length === 0 && (
-                          <div className="absolute inset-0 flex items-center justify-center text-[10px] text-gray-600">
+                          <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground">
                             Няма планирани задачи
                           </div>
                         )}
@@ -409,18 +620,16 @@ export default function TabletSystemPage() {
         </Card>
       )}
 
-      {/* РЕГИСТЪР */}
+      {/* REGISTRY TAB */}
       {activeTab === "registry" && (
-        <Card className="bg-[#111] border-gray-800">
+        <Card className="bg-card border-border">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-            <CardTitle className="text-gray-300">
-              Архив и активни поръчки
-            </CardTitle>
+            <CardTitle className="text-foreground">Архив и активни поръчки</CardTitle>
             <div className="relative w-64">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Търсене..."
-                className="pl-8 bg-[#1a1a1a] border-gray-800"
+                placeholder="Търсене по ON, JCN, клиент..."
+                className="pl-8 bg-secondary border-border"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -428,50 +637,47 @@ export default function TabletSystemPage() {
           </CardHeader>
           <CardContent>
             <Table>
-              <TableHeader className="bg-gray-900/50">
-                <TableRow className="border-gray-800">
-                  <TableHead className="text-gray-400">№</TableHead>
-                  <TableHead className="text-gray-400">Клиент</TableHead>
-                  <TableHead className="text-gray-400">Машина</TableHead>
-                  <TableHead className="text-gray-400">Техник</TableHead>
-                  <TableHead className="text-gray-400">Статус</TableHead>
-                  <TableHead className="text-gray-400 text-right">Часове</TableHead>
+              <TableHeader className="bg-secondary/50">
+                <TableRow className="border-border">
+                  <TableHead className="text-muted-foreground">ON</TableHead>
+                  <TableHead className="text-muted-foreground">JCN</TableHead>
+                  <TableHead className="text-muted-foreground">Тип</TableHead>
+                  <TableHead className="text-muted-foreground">Собственик</TableHead>
+                  <TableHead className="text-muted-foreground">Машина</TableHead>
+                  <TableHead className="text-muted-foreground">Екип</TableHead>
+                  <TableHead className="text-muted-foreground">Статус</TableHead>
+                  <TableHead className="text-muted-foreground text-right">Часове</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredOrders.map((order) => (
-                  <TableRow
-                    key={order.id}
-                    className="border-gray-800 hover:bg-white/5 transition-colors"
-                  >
-                    <TableCell className="font-bold text-emerald-400">
-                      {order.id}
-                    </TableCell>
-                    <TableCell className="text-gray-300">{order.customer}</TableCell>
-                    <TableCell className="text-gray-400">{order.machine}</TableCell>
-                    <TableCell className="text-gray-300">{order.technicianName}</TableCell>
+                  <TableRow key={order.id} className="border-border hover:bg-secondary/30 transition-colors">
+                    <TableCell className="font-bold text-emerald-500">{order.orderNumber}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{order.id}</TableCell>
                     <TableCell>
-                      <Badge
-                        className={
-                          order.status === "Completed"
-                            ? "bg-gray-700"
-                            : order.status === "In Progress"
-                              ? "bg-emerald-600 animate-pulse"
-                              : "bg-gray-800"
-                        }
-                      >
-                        {order.status === "Completed"
-                          ? "Завършена"
-                          : order.status === "In Progress"
-                            ? "В процес"
-                            : "Чакаща"}
-                      </Badge>
+                      <Badge variant="outline" className="text-[10px] uppercase">{order.type}</Badge>
                     </TableCell>
-                    <TableCell className="text-right font-mono text-xs text-gray-400">
-                      {order.status === "In Progress" && order.startTime
+                    <TableCell className="text-foreground">{order.machineOwner}</TableCell>
+                    <TableCell className="text-muted-foreground">{order.machine}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {order.technicianIds.map((tid) => (
+                          <span key={tid} className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                            {tid === order.leadTechnicianId && <Crown className="h-2.5 w-2.5 text-amber-500" />}
+                            {reverseTechnicianMapping[tid] || tid}
+                          </span>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell><StatusBadge order={order} /></TableCell>
+                    <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                      {(order.status === "In Progress" || order.status === "Overdue") && order.startTime && mounted
                         ? ((Date.now() - order.startTime) / 3600000).toFixed(1)
                         : order.actualHours}
                       h / {order.plannedHours}h
+                      {order.isSigned && (
+                        <FileSignature className="inline-block ml-1.5 h-3.5 w-3.5 text-emerald-500" />
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -481,18 +687,18 @@ export default function TabletSystemPage() {
         </Card>
       )}
 
-      {/* KPI АНАЛИЗ */}
+      {/* KPI TAB */}
       {activeTab === "kpi" && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className="bg-[#111] border-gray-800">
+          <Card className="bg-card border-border">
             <CardHeader>
-              <CardTitle className="text-gray-300">Ефективност по Поръчки (Часове)</CardTitle>
+              <CardTitle className="text-foreground">Ефективност по Поръчки (Часове)</CardTitle>
             </CardHeader>
             <CardContent className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={kpiData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                   <YAxis />
                   <Tooltip />
                   <Legend />
@@ -503,83 +709,73 @@ export default function TabletSystemPage() {
             </CardContent>
           </Card>
 
-          <Card className="bg-[#111] border-gray-800">
+          <Card className="bg-card border-border">
             <CardHeader>
-              <CardTitle className="text-gray-300">Тренд на утилизация</CardTitle>
+              <CardTitle className="text-foreground">Тренд на утилизация</CardTitle>
             </CardHeader>
             <CardContent className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={kpiData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                   <YAxis />
                   <Tooltip />
-                  <Line
-                    type="monotone"
-                    dataKey="Отчетено"
-                    stroke="#22c55e"
-                    strokeWidth={3}
-                  />
+                  <Line type="monotone" dataKey="Отчетено" stroke="#22c55e" strokeWidth={3} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
 
           {/* Live Clocking Status */}
-          <Card className="md:col-span-2 bg-[#111] border-gray-800">
+          <Card className="md:col-span-2 bg-card border-border">
             <CardHeader>
-              <CardTitle className="text-gray-300">Активни клокинг сесии (Live)</CardTitle>
+              <CardTitle className="text-foreground">Активни клокинг сесии</CardTitle>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Техник</TableHead>
-                    <TableHead>Поръчка</TableHead>
-                    <TableHead>Описание</TableHead>
-                    <TableHead>Начало</TableHead>
-                    <TableHead>Край</TableHead>
-                    <TableHead>Статус</TableHead>
+                  <TableRow className="border-border">
+                    <TableHead className="text-muted-foreground">Техник</TableHead>
+                    <TableHead className="text-muted-foreground">JCN</TableHead>
+                    <TableHead className="text-muted-foreground">Описание</TableHead>
+                    <TableHead className="text-muted-foreground">Начало</TableHead>
+                    <TableHead className="text-muted-foreground">Край</TableHead>
+                    <TableHead className="text-muted-foreground">Статус</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {clockingActivities.map((activity) => (
-                    <TableRow key={activity.id}>
-                      <TableCell className="font-medium">
+                    <TableRow key={activity.id} className="border-border">
+                      <TableCell className="font-medium text-foreground">
                         {activity.technicianName}
                       </TableCell>
-                      <TableCell>{activity.orderId}</TableCell>
-                      <TableCell>{activity.description}</TableCell>
-                      <TableCell>
-                        {activity.clockInHour
-                          .toString()
-                          .padStart(2, "0")}
-                        :
-                        {activity.clockInMinute
-                          .toString()
-                          .padStart(2, "0")}
+                      <TableCell className="text-foreground">{activity.orderId}</TableCell>
+                      <TableCell className="text-muted-foreground">{activity.description}</TableCell>
+                      <TableCell className="font-mono text-foreground">
+                        {activity.clockInHour.toString().padStart(2, "0")}:
+                        {activity.clockInMinute.toString().padStart(2, "0")}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="font-mono text-foreground">
                         {activity.clockOutHour !== null
                           ? `${activity.clockOutHour.toString().padStart(2, "0")}:${activity.clockOutMinute?.toString().padStart(2, "0")}`
                           : "-"}
                       </TableCell>
                       <TableCell>
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs ${
+                        <Badge
+                          className={cn(
                             activity.status === "active"
-                              ? "bg-green-100 text-green-700 animate-pulse"
+                              ? "bg-emerald-600 text-white animate-pulse"
                               : activity.isScheduled
-                                ? "bg-slate-100 text-slate-700"
-                                : "bg-orange-100 text-orange-700"
-                          }`}
+                                ? "bg-muted text-muted-foreground"
+                                : "bg-orange-500 text-white"
+                          )}
                         >
                           {activity.status === "active"
                             ? "Активно"
                             : activity.isScheduled
                               ? "Завършено"
                               : "Извън график"}
-                        </span>
+                        </Badge>
                       </TableCell>
                     </TableRow>
                   ))}

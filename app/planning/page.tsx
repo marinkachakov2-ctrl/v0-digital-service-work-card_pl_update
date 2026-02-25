@@ -18,6 +18,9 @@ interface NavigationState {
   selectedTechnicianName: string | null;
 }
 
+const BG_WEEKDAYS = ["неделя","понеделник","вторник","сряда","четвъртък","петък","събота"];
+const BG_MONTHS = ["януари","февруари","март","април","май","юни","юли","август","септември","октомври","ноември","декември"];
+
 // Technician name lookup
 const technicianNames: Record<string, string> = {
   "tech-1": "Иван Петров",
@@ -72,14 +75,9 @@ export default function PlanningBoardPage() {
     }));
   };
 
-  // Format date for breadcrumb
+  // Format date for breadcrumb (deterministic to avoid hydration issues)
   const formatBreadcrumbDate = (date: Date) => {
-    return date.toLocaleDateString("bg-BG", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-      weekday: "long",
-    });
+    return `${BG_WEEKDAYS[date.getDay()]}, ${date.getDate()} ${BG_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
   };
 
   return (

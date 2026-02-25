@@ -42,6 +42,23 @@ interface HourlyGanttProps {
   selectedDate: Date;
 }
 
+const BG_WEEKDAYS = ["неделя","понеделник","вторник","сряда","четвъртък","петък","събота"];
+const BG_MONTHS = ["януари","февруари","март","април","май","юни","юли","август","септември","октомври","ноември","декември"];
+
+// Status-based color coding: RED=overdue, GREEN=active, ORANGE=pending, GRAY=completed
+function getStatusColor(status: ScheduledTask["status"]) {
+  switch (status) {
+    case "overdue":
+      return "bg-red-600 border-red-400 text-white";
+    case "active":
+      return "bg-emerald-600 border-emerald-400 text-white";
+    case "completed":
+      return "bg-muted border-muted-foreground/30 text-muted-foreground";
+    case "pending":
+      return "bg-orange-500 border-orange-400 text-white";
+  }
+}
+
 // Sample data for technician
 function getTechnicianData(technicianId: string) {
   const technicianNames: Record<string, string> = {
@@ -124,7 +141,10 @@ function getTechnicianData(technicianId: string) {
       {
         id: "p6",
         orderId: "#12348",
+        orderNumber: "ON-5527",
+        jobCardNumber: "JC-0018",
         type: "service",
+        status: "completed",
         startHour: 8,
         startMinute: 30,
         durationMinutes: 90,
@@ -133,7 +153,10 @@ function getTechnicianData(technicianId: string) {
       {
         id: "p7",
         orderId: "#12352",
+        orderNumber: "ON-5528",
+        jobCardNumber: "JC-0019",
         type: "inspection",
+        status: "active",
         startHour: 11,
         startMinute: 0,
         durationMinutes: 60,
@@ -142,7 +165,10 @@ function getTechnicianData(technicianId: string) {
       {
         id: "p8",
         orderId: "#12355",
+        orderNumber: "ON-5529",
+        jobCardNumber: "JC-0020",
         type: "repair",
+        status: "pending",
         startHour: 14,
         startMinute: 30,
         durationMinutes: 150,
@@ -153,54 +179,18 @@ function getTechnicianData(technicianId: string) {
 
   const actualTimes: Record<string, ActualTime[]> = {
     "tech-1": [
-      {
-        id: "a1",
-        orderId: "#12345",
-        startHour: 8,
-        startMinute: 15,
-        durationMinutes: 135,
-      },
-      {
-        id: "a2",
-        orderId: "#12350",
-        startHour: 13,
-        startMinute: 0,
-        durationMinutes: 90,
-      },
+      { id: "a1", orderId: "#12345", startHour: 8, startMinute: 15, durationMinutes: 135 },
+      { id: "a2", orderId: "#12350", startHour: 13, startMinute: 0, durationMinutes: 90 },
     ],
     "tech-2": [
-      {
-        id: "a3",
-        orderId: "#12346",
-        startHour: 9,
-        startMinute: 30,
-        durationMinutes: 75,
-      },
+      { id: "a3", orderId: "#12346", startHour: 9, startMinute: 30, durationMinutes: 75 },
     ],
     "tech-3": [
-      {
-        id: "a5",
-        orderId: "#12347",
-        startHour: 7,
-        startMinute: 0,
-        durationMinutes: 180,
-      },
+      { id: "a5", orderId: "#12347", startHour: 7, startMinute: 0, durationMinutes: 180 },
     ],
     "tech-6": [
-      {
-        id: "a6",
-        orderId: "#12348",
-        startHour: 8,
-        startMinute: 45,
-        durationMinutes: 75,
-      },
-      {
-        id: "a7",
-        orderId: "#12352",
-        startHour: 11,
-        startMinute: 0,
-        durationMinutes: 55,
-      },
+      { id: "a6", orderId: "#12348", startHour: 8, startMinute: 45, durationMinutes: 75 },
+      { id: "a7", orderId: "#12352", startHour: 11, startMinute: 0, durationMinutes: 55 },
     ],
   };
 
@@ -212,104 +202,55 @@ function getTechnicianData(technicianId: string) {
 }
 
 const unassignedOrders: UnassignedOrder[] = [
-  {
-    id: "u1",
-    orderId: "#999",
-    description: "Смяна на масло",
-    estimatedHours: 2,
-    type: "service",
-  },
-  {
-    id: "u2",
-    orderId: "#1001",
-    description: "Диагностика",
-    estimatedHours: 1,
-    type: "inspection",
-  },
-  {
-    id: "u3",
-    orderId: "#1002",
-    description: "Ремонт на спирачки",
-    estimatedHours: 3,
-    type: "repair",
-  },
+  { id: "u1", orderId: "#999", orderNumber: "ON-5530", jobCardNumber: "JC-0021", description: "Смяна на масло", estimatedHours: 2, type: "service" },
+  { id: "u2", orderId: "#1001", orderNumber: "ON-5531", jobCardNumber: "JC-0022", description: "Диагностика", estimatedHours: 1, type: "inspection" },
+  { id: "u3", orderId: "#1002", orderNumber: "ON-5532", jobCardNumber: "JC-0023", description: "Ремонт на спирачки", estimatedHours: 3, type: "repair" },
 ];
 
 // Constants
 const START_HOUR = 7;
 const END_HOUR = 20;
-const HOURS = Array.from(
-  { length: END_HOUR - START_HOUR },
-  (_, i) => START_HOUR + i
-);
+const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
 const CELL_WIDTH = 80;
 const SIDEBAR_WIDTH = 120;
 
-function getTaskColor(type: "service" | "repair" | "inspection") {
-  switch (type) {
-    case "service":
-      return "bg-blue-600 border-blue-500";
-    case "repair":
-      return "bg-green-600 border-green-500";
-    case "inspection":
-      return "bg-amber-600 border-amber-500";
-  }
-}
-
-function getTaskPosition(
-  startHour: number,
-  startMinute: number,
-  durationMinutes: number
-) {
-  const startOffset =
-    (startHour - START_HOUR) * CELL_WIDTH + (startMinute / 60) * CELL_WIDTH;
+function getTaskPosition(startHour: number, startMinute: number, durationMinutes: number) {
+  const startOffset = (startHour - START_HOUR) * CELL_WIDTH + (startMinute / 60) * CELL_WIDTH;
   const width = (durationMinutes / 60) * CELL_WIDTH;
   return { left: startOffset, width };
 }
 
 export function HourlyGantt({ technicianId, selectedDate }: HourlyGanttProps) {
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [mounted, setMounted] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => new Date(2026, 1, 1, 12, 0));
   const techData = getTechnicianData(technicianId);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 60000);
+    setMounted(true);
+    setCurrentTime(new Date());
+    const interval = setInterval(() => { setCurrentTime(new Date()); }, 60000);
     return () => clearInterval(interval);
   }, []);
 
   const currentHour = currentTime.getHours();
   const currentMinute = currentTime.getMinutes();
   const currentTimeOffset =
-    currentHour >= START_HOUR && currentHour < END_HOUR
-      ? (currentHour - START_HOUR) * CELL_WIDTH +
-        (currentMinute / 60) * CELL_WIDTH
+    mounted && currentHour >= START_HOUR && currentHour < END_HOUR
+      ? (currentHour - START_HOUR) * CELL_WIDTH + (currentMinute / 60) * CELL_WIDTH
       : null;
 
-  const dateString = selectedDate.toLocaleDateString("bg-BG", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
+  const dateString = `${BG_WEEKDAYS[selectedDate.getDay()]}, ${selectedDate.getDate()} ${BG_MONTHS[selectedDate.getMonth()]}`;
 
   // Calculate totals
-  const plannedMinutes = techData.planned.reduce(
-    (sum, t) => sum + t.durationMinutes,
-    0
-  );
-  const actualMinutes = techData.actual.reduce(
-    (sum, t) => sum + t.durationMinutes,
-    0
-  );
+  const plannedMinutes = techData.planned.reduce((sum, t) => sum + t.durationMinutes, 0);
+  const actualMinutes = techData.actual.reduce((sum, t) => sum + t.durationMinutes, 0);
 
   return (
     <div className="flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">
-            {techData.name}
-          </h2>
+          <h2 className="text-lg font-semibold text-foreground">{techData.name}</h2>
           <p className="text-sm capitalize text-muted-foreground">{dateString}</p>
         </div>
         <div className="flex items-center gap-4">
@@ -328,19 +269,23 @@ export function HourlyGantt({ technicianId, selectedDate }: HourlyGanttProps) {
         </div>
       </div>
 
-      {/* Legend */}
+      {/* Status Legend */}
       <div className="flex items-center gap-4 text-xs">
         <div className="flex items-center gap-1.5">
-          <div className="h-3 w-6 rounded bg-blue-600" />
-          <span className="text-muted-foreground">Сервиз</span>
+          <div className="h-3 w-6 rounded bg-emerald-600" />
+          <span className="text-muted-foreground">Активно</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="h-3 w-6 rounded bg-green-600" />
-          <span className="text-muted-foreground">Ремонт</span>
+          <div className="h-3 w-6 rounded bg-red-600" />
+          <span className="text-muted-foreground">Закъсняло</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="h-3 w-6 rounded bg-amber-600" />
-          <span className="text-muted-foreground">Инспекция</span>
+          <div className="h-3 w-6 rounded bg-orange-500" />
+          <span className="text-muted-foreground">Чакащо</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="h-3 w-6 rounded bg-muted" />
+          <span className="text-muted-foreground">Завършено</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="h-3 w-6 rounded bg-red-900" />
@@ -352,14 +297,9 @@ export function HourlyGantt({ technicianId, selectedDate }: HourlyGanttProps) {
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         <div className="flex">
           {/* Sidebar */}
-          <div
-            className="flex-shrink-0 border-r border-border"
-            style={{ width: SIDEBAR_WIDTH }}
-          >
+          <div className="flex-shrink-0 border-r border-border" style={{ width: SIDEBAR_WIDTH }}>
             <div className="flex h-10 items-center border-b border-border bg-secondary/50 px-3">
-              <span className="text-xs font-medium text-muted-foreground">
-                Тип
-              </span>
+              <span className="text-xs font-medium text-muted-foreground">Тип</span>
             </div>
             <div className="flex h-10 items-center border-b border-border px-3">
               <span className="text-xs text-foreground">Планирано</span>
@@ -392,30 +332,27 @@ export function HourlyGantt({ technicianId, selectedDate }: HourlyGanttProps) {
                 {/* Grid lines */}
                 <div className="absolute inset-0 flex">
                   {HOURS.map((hour) => (
-                    <div
-                      key={hour}
-                      className="flex-shrink-0 border-r border-border/30"
-                      style={{ width: CELL_WIDTH }}
-                    />
+                    <div key={hour} className="flex-shrink-0 border-r border-border/30" style={{ width: CELL_WIDTH }} />
                   ))}
                 </div>
 
-                {/* Tasks */}
+                {/* Tasks - now with status-based colors and ON/JCN labels */}
                 {techData.planned.map((task) => {
-                  const pos = getTaskPosition(
-                    task.startHour,
-                    task.startMinute,
-                    task.durationMinutes
-                  );
+                  const pos = getTaskPosition(task.startHour, task.startMinute, task.durationMinutes);
                   return (
                     <div
                       key={task.id}
-                      className={`absolute top-1 flex h-8 cursor-grab items-center gap-1 rounded border px-2 text-xs font-medium text-white shadow-sm ${getTaskColor(task.type)}`}
+                      className={`absolute top-1 flex h-8 cursor-grab items-center gap-1 rounded border px-1.5 text-xs font-medium shadow-sm ${getStatusColor(task.status)}`}
                       style={{ left: pos.left, width: pos.width }}
-                      title={`${task.description} (${task.durationMinutes} мин.)`}
+                      title={`${task.orderNumber} / ${task.jobCardNumber} - ${task.description} (${task.durationMinutes} мин.)`}
                     >
                       <GripVertical className="h-3 w-3 flex-shrink-0 opacity-60" />
-                      <span className="truncate">{task.orderId}</span>
+                      {task.status === "active" && (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white animate-pulse" />
+                      )}
+                      <span className="truncate text-[10px]">
+                        {task.orderNumber} / {task.jobCardNumber}
+                      </span>
                     </div>
                   );
                 })}
@@ -426,21 +363,13 @@ export function HourlyGantt({ technicianId, selectedDate }: HourlyGanttProps) {
                 {/* Grid lines */}
                 <div className="absolute inset-0 flex">
                   {HOURS.map((hour) => (
-                    <div
-                      key={hour}
-                      className="flex-shrink-0 border-r border-border/30"
-                      style={{ width: CELL_WIDTH }}
-                    />
+                    <div key={hour} className="flex-shrink-0 border-r border-border/30" style={{ width: CELL_WIDTH }} />
                   ))}
                 </div>
 
                 {/* Actual times */}
                 {techData.actual.map((actual) => {
-                  const pos = getTaskPosition(
-                    actual.startHour,
-                    actual.startMinute,
-                    actual.durationMinutes
-                  );
+                  const pos = getTaskPosition(actual.startHour, actual.startMinute, actual.durationMinutes);
                   return (
                     <div
                       key={actual.id}
@@ -475,17 +404,11 @@ export function HourlyGantt({ technicianId, selectedDate }: HourlyGanttProps) {
 
       {/* Task Details */}
       <div className="rounded-lg border border-border bg-card p-4">
-        <h3 className="mb-3 text-sm font-semibold text-foreground">
-          Детайли по задачи
-        </h3>
+        <h3 className="mb-3 text-sm font-semibold text-foreground">Детайли по задачи</h3>
         <div className="space-y-2">
           {techData.planned.map((task) => {
-            const actual = techData.actual.find(
-              (a) => a.orderId === task.orderId
-            );
-            const variance = actual
-              ? task.durationMinutes - actual.durationMinutes
-              : null;
+            const actual = techData.actual.find((a) => a.orderId === task.orderId);
+            const variance = actual ? task.durationMinutes - actual.durationMinutes : null;
 
             return (
               <div
@@ -493,48 +416,32 @@ export function HourlyGantt({ technicianId, selectedDate }: HourlyGanttProps) {
                 className="flex items-center justify-between rounded-md border border-border bg-secondary/30 px-3 py-2"
               >
                 <div className="flex items-center gap-3">
-                  <Badge
-                    className={`${getTaskColor(task.type)} border-0 text-white`}
-                  >
-                    {task.orderId}
+                  <Badge className={`${getStatusColor(task.status)} border-0`}>
+                    {task.orderNumber}
                   </Badge>
-                  <span className="text-sm text-foreground">
-                    {task.description}
-                  </span>
+                  <span className="text-xs text-muted-foreground">{task.jobCardNumber}</span>
+                  <span className="text-sm text-foreground">{task.description}</span>
                 </div>
                 <div className="flex items-center gap-4 text-xs">
                   <div>
                     <span className="text-muted-foreground">План: </span>
-                    <span className="text-foreground">
-                      {task.durationMinutes} мин.
-                    </span>
+                    <span className="text-foreground">{task.durationMinutes} мин.</span>
                   </div>
                   {actual && (
                     <>
                       <div>
                         <span className="text-muted-foreground">Факт: </span>
-                        <span className="text-red-400">
-                          {actual.durationMinutes} мин.
-                        </span>
+                        <span className="text-red-400">{actual.durationMinutes} мин.</span>
                       </div>
                       <div>
                         <span className="text-muted-foreground">Разлика: </span>
-                        <span
-                          className={
-                            variance && variance > 0
-                              ? "text-green-400"
-                              : "text-red-400"
-                          }
-                        >
-                          {variance && variance > 0 ? "+" : ""}
-                          {variance} мин.
+                        <span className={variance && variance > 0 ? "text-green-400" : "text-red-400"}>
+                          {variance && variance > 0 ? "+" : ""}{variance} мин.
                         </span>
                       </div>
                     </>
                   )}
-                  {!actual && (
-                    <span className="text-muted-foreground">В изпълнение</span>
-                  )}
+                  {!actual && <span className="text-muted-foreground">В изпълнение</span>}
                 </div>
               </div>
             );
@@ -554,17 +461,16 @@ export function HourlyGantt({ technicianId, selectedDate }: HourlyGanttProps) {
           {unassignedOrders.map((order) => (
             <div
               key={order.id}
-              className={`flex cursor-grab items-center gap-2 rounded-md border px-3 py-2 shadow-sm transition-colors hover:bg-secondary/50 ${getTaskColor(order.type)} bg-opacity-20`}
+              className="flex cursor-grab items-center gap-2 rounded-md border border-orange-400 bg-orange-500/10 px-3 py-2 shadow-sm transition-colors hover:bg-orange-500/20"
               draggable
             >
               <GripVertical className="h-4 w-4 text-muted-foreground" />
-              <Badge variant="outline" className="text-xs">
-                {order.orderId}
+              <Badge className="bg-orange-500 text-white text-xs border-0">
+                {order.orderNumber}
               </Badge>
+              <span className="text-xs text-muted-foreground">{order.jobCardNumber}</span>
               <span className="text-sm text-foreground">{order.description}</span>
-              <span className="text-xs text-muted-foreground">
-                ({order.estimatedHours}ч)
-              </span>
+              <span className="text-xs text-muted-foreground">({order.estimatedHours}ч)</span>
             </div>
           ))}
         </div>
