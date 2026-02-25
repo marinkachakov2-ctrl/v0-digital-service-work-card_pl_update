@@ -30,7 +30,7 @@ export interface WorkOrder {
   serialNo: string;
   previousEngineHours: number | null;
   engineHours: number;
-  status: "Pending" | "In Progress" | "Completed" | "Overdue";
+  status: "Pending" | "In Progress" | "Completed" | "Signed" | "Overdue";
   plannedHours: number;
   actualHours: number;
   startTime: number | null;
@@ -50,8 +50,9 @@ export type StatusColor = "red" | "green" | "orange" | "gray" | "default";
 export function getStatusColor(order: WorkOrder): StatusColor {
   if (order.status === "Overdue" || (order.status === "In Progress" && order.actualHours > order.plannedHours && order.plannedHours > 0)) return "red";
   if (order.status === "In Progress" && order.startTime) return "green";
-  if (order.status === "Completed" || order.isSigned) return "gray";
-  if (order.plannedHours === 0 && order.status !== "Completed") return "orange";
+  if (order.status === "Signed") return "gray";
+  if (order.status === "Completed") return "gray";
+  if (order.plannedHours === 0 && order.status !== "Completed" && order.status !== "Signed") return "orange";
   return "default";
 }
 
@@ -284,7 +285,7 @@ function workOrdersToClockingActivities(orders: WorkOrder[]): ClockingActivity[]
         const startDate = new Date(order.startTime);
         clockInHour = startDate.getHours();
         clockInMinute = startDate.getMinutes();
-      } else if (order.status === "Completed") {
+      } else if (order.status === "Completed" || order.status === "Signed") {
         const baseHour = techTimeSlots[techId] || 8;
         const seedIdx = (techSeedIdx[techId] || 0);
         techSeedIdx[techId] = seedIdx + 1;
@@ -342,6 +343,8 @@ interface ClockingContextType {
   getActiveActivity: (technicianId: string) => ClockingActivity | undefined;
   getOrderJobCards: (orderNumber: string) => WorkOrder[];
   getPreviousEngineHours: (machine: string) => number | null;
+  linkOrderToJobCard: (jcId: string, orderNumber: string) => void;
+  convertNoteToOrder: (note: { text: string; type?: "service" | "repair" | "inspection"; estimatedHours?: number }) => WorkOrder;
 }
 
 const ClockingContext = createContext<ClockingContextType | undefined>(undefined);
@@ -542,7 +545,7 @@ export function ClockingProvider({ children }: { children: React.ReactNode }) {
       prev.map(o => {
         if (o.id === orderId) {
           const actualHours = o.startTime ? Number(((Date.now() - o.startTime) / 3600000).toFixed(2)) : o.actualHours;
-          return { ...o, isSigned: true, status: "Completed" as const, actualHours, startTime: null };
+          return { ...o, isSigned: true, status: "Signed" as const, actualHours, startTime: null };
         }
         return o;
       })
@@ -629,12 +632,45 @@ export function ClockingProvider({ children }: { children: React.ReactNode }) {
   const getPreviousEngineHours = useCallback(
     (machine: string) => {
       const completed = workOrders
-        .filter(o => o.machine === machine && (o.status === "Completed" || o.isSigned) && o.previousEngineHours != null)
+        .filter(o => o.machine === machine && (o.status === "Completed" || o.status === "Signed" || o.isSigned) && o.previousEngineHours != null)
         .sort((a, b) => (b.engineHours || 0) - (a.engineHours || 0));
       return completed.length > 0 ? completed[0].engineHours : null;
     },
     [workOrders]
   );
+
+  const linkOrderToJobCard = useCallback((jcId: string, orderNumber: string) => {
+    setWorkOrders(prev => prev.map(o => (o.id === jcId ? { ...o, orderNumber } : o)));
+  }, []);
+
+  const convertNoteToOrder = useCallback((note: { text: string; type?: "service" | "repair" | "inspection"; estimatedHours?: number }): WorkOrder => {
+    const newId = `JC-${String(jcCounter++).padStart(4, "0")}`;
+    const newOrder: WorkOrder = {
+      id: newId,
+      orderNumber: `ON-UNSCH-${newId}`,
+      type: note.type || "repair",
+      machineOwner: "Непланирано",
+      billingEntity: "Непланирано",
+      machine: "-",
+      serialNo: "-",
+      previousEngineHours: null,
+      engineHours: 0,
+      status: "Pending",
+      plannedHours: note.estimatedHours || 1,
+      actualHours: 0,
+      startTime: null,
+      technicianIds: [],
+      leadTechnicianId: null,
+      clockAtJobLevel: false,
+      isSigned: false,
+      technicianId: "tech-1",
+      technicianName: "Иван Иванов",
+      customer: "Непланирано",
+      description: note.text,
+    };
+    setWorkOrders(prev => [...prev, newOrder]);
+    return newOrder;
+  }, []);
 
   return (
     <ClockingContext.Provider
@@ -656,6 +692,8 @@ export function ClockingProvider({ children }: { children: React.ReactNode }) {
         getActiveActivity,
         getOrderJobCards,
         getPreviousEngineHours,
+        linkOrderToJobCard,
+        convertNoteToOrder,
       }}
     >
       {children}

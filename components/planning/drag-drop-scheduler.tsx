@@ -45,6 +45,14 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import { useClocking, type ClockingActivity } from "@/lib/clocking-context";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 // Types
 interface ScheduledTask {
@@ -60,6 +68,7 @@ interface ScheduledTask {
   durationMinutes: number;
   description: string;
   color?: string;
+  progressNotes?: string[];
 }
 
 interface UnassignedOrder {
@@ -386,8 +395,8 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
     useState<UnassignedOrder[]>(initialUnassigned);
   const [unbilled, setUnbilled] = useState<UnbilledJob[]>(initialUnbilled);
   const [notes, setNotes] = useState<NoteItem[]>(initialNotes);
-  // Get clocking activities from shared context
-  const { clockingActivities } = useClocking();
+  // Get clocking activities and admin state from shared context
+  const { clockingActivities, isAdmin, convertNoteToOrder } = useClocking();
   const [newNoteText, setNewNoteText] = useState("");
   const [draggingTask, setDraggingTask] = useState<string | null>(null);
   const [draggingUnassigned, setDraggingUnassigned] = useState<string | null>(
@@ -427,6 +436,20 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
   const [editTaskDuration, setEditTaskDuration] = useState(60);
   const [editTaskStartHour, setEditTaskStartHour] = useState(8);
   const [editTaskStartMinute, setEditTaskStartMinute] = useState(0);
+
+  // Split reservation state (admin only)
+  const [splitDialogOpen, setSplitDialogOpen] = useState(false);
+  const [splitMode, setSplitMode] = useState<"days" | "technicians">("technicians");
+  const [splitTargetTech, setSplitTargetTech] = useState("");
+  const [splitDays, setSplitDays] = useState(2);
+
+  // Note-to-order conversion state
+  const [convertNoteDialog, setConvertNoteDialog] = useState<NoteItem | null>(null);
+  const [convertType, setConvertType] = useState<"service" | "repair" | "inspection">("repair");
+  const [convertHours, setConvertHours] = useState("1");
+
+  // Progress note state (technician view)
+  const [progressNoteInput, setProgressNoteInput] = useState<Record<string, string>>({});
 
   const gridRef = useRef<HTMLDivElement>(null);
   const resizeStartRef = useRef<{
