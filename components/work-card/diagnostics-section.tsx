@@ -30,7 +30,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AlertTriangle, Calendar, Clock, Gauge, Mic, MicOff, AlertCircle, Camera, X, ImageIcon } from "lucide-react";
+import { AlertTriangle, Calendar, Clock, Gauge, Mic, MicOff, AlertCircle, Camera, X, ImageIcon, Upload } from "lucide-react";
 
 // Web Speech API types are declared globally in /types/speech-recognition.d.ts
 
@@ -82,6 +82,10 @@ interface DiagnosticsSectionProps {
   onEngineHoursChange: (value: string) => void;
   onPhotosChange?: (photos: FaultPhoto[]) => void;
   previousEngineHours?: number | null;
+  engineHoursPhoto: FaultPhoto | null;
+  onEngineHoursPhotoChange: (photo: FaultPhoto | null) => void;
+  engineHoursPhotoMissingReason: string;
+  onEngineHoursPhotoMissingReasonChange: (reason: string) => void;
 }
 
 export function DiagnosticsSection({
@@ -94,6 +98,10 @@ export function DiagnosticsSection({
   engineHours,
   photos = [],
   previousEngineHours,
+  engineHoursPhoto,
+  onEngineHoursPhotoChange,
+  engineHoursPhotoMissingReason,
+  onEngineHoursPhotoMissingReasonChange,
   onReasonChange,
   onDefectChange,
   onDescriptionChange,
@@ -112,6 +120,7 @@ export function DiagnosticsSection({
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const descriptionRef = useRef(description);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const engineHoursFileRef = useRef<HTMLInputElement>(null);
 
   // Keep description ref updated
   useEffect(() => {
@@ -318,6 +327,26 @@ export function DiagnosticsSection({
   const openCamera = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
+
+  // Engine hours photo capture
+  const handleEngineHoursPhoto = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+      const file = files[0];
+      const url = URL.createObjectURL(file);
+      onEngineHoursPhotoChange({
+        id: `ehp-${Date.now()}`,
+        url,
+        name: file.name,
+        timestamp: new Date(),
+      });
+      if (engineHoursFileRef.current) {
+        engineHoursFileRef.current.value = "";
+      }
+    },
+    [onEngineHoursPhotoChange]
+  );
 
   return (
     <>
@@ -689,6 +718,91 @@ export function DiagnosticsSection({
                 </p>
               )}
             </div>
+          </div>
+
+          {/* Engine Hours Photo Validation */}
+          <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Camera className="h-3 w-3" />
+                Photo proof of engine hours meter
+                <span className="text-destructive">*</span>
+              </Label>
+              {engineHoursPhoto && (
+                <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30 text-[10px]">
+                  Photo attached
+                </Badge>
+              )}
+            </div>
+
+            {/* Hidden file input */}
+            <input
+              ref={engineHoursFileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleEngineHoursPhoto}
+              className="hidden"
+              aria-label="Engine hours meter photo"
+            />
+
+            {engineHoursPhoto ? (
+              <div className="flex items-center gap-3">
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border">
+                  <img
+                    src={engineHoursPhoto.url || "/placeholder.svg"}
+                    alt="Engine hours meter"
+                    className="h-full w-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      URL.revokeObjectURL(engineHoursPhoto.url);
+                      onEngineHoursPhotoChange(null);
+                    }}
+                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground"
+                    aria-label="Remove photo"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+                <div>
+                  <p className="text-xs text-foreground">{engineHoursPhoto.name}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {engineHoursPhoto.timestamp.toLocaleTimeString("bg-BG", { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => engineHoursFileRef.current?.click()}
+                  className="gap-2 bg-transparent"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Upload Photo of Engine Hours
+                </Button>
+
+                {/* Missing photo explanation */}
+                {!engineHoursPhoto && (
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] text-amber-500 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      If no photo is available, provide a reason:
+                    </Label>
+                    <Textarea
+                      value={engineHoursPhotoMissingReason}
+                      onChange={(e) => onEngineHoursPhotoMissingReasonChange(e.target.value)}
+                      placeholder="Explain why photo proof is missing..."
+                      className="min-h-12 bg-card text-foreground text-xs"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

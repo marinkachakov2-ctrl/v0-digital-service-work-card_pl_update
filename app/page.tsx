@@ -3,9 +3,11 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { WorkCardHeader } from "@/components/work-card/header";
 import { ClientSection } from "@/components/work-card/client-section";
+import { ChecklistModal, ChecklistButton, getDefaultChecklist, type ChecklistItem } from "@/components/work-card/checklist-modal";
 import { DiagnosticsSection, type FaultPhoto } from "@/components/work-card/diagnostics-section";
 import { PartsTable } from "@/components/work-card/parts-table";
 import { LaborTable } from "@/components/work-card/labor-table";
+import { UnresolvedIssuesAlert, UnresolvedIssuesSection, type UnresolvedIssue } from "@/components/work-card/unresolved-issues";
 import { Footer } from "@/components/work-card/footer";
 import { useClocking } from "@/lib/clocking-context";
 
@@ -22,6 +24,7 @@ export interface LaborItem {
   operationName: string;
   techCount: number;
   price: number;
+  notes: string;
 }
 
 export interface ClientData {
@@ -108,6 +111,37 @@ export default function WorkCardPage() {
   const [engineHours, setEngineHours] = useState("");
   const [faultPhotos, setFaultPhotos] = useState<FaultPhoto[]>([]);
 
+  // Engine hours photo validation
+  const [engineHoursPhoto, setEngineHoursPhoto] = useState<FaultPhoto | null>(null);
+  const [engineHoursPhotoMissingReason, setEngineHoursPhotoMissingReason] = useState("");
+
+  // Checklist
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>(getDefaultChecklist());
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [checklistCompleted, setChecklistCompleted] = useState(false);
+  const [checklistSkipped, setChecklistSkipped] = useState(false);
+  const [checklistSkipReason, setChecklistSkipReason] = useState("");
+
+  // Unresolved issues
+  const [unresolvedIssues, setUnresolvedIssues] = useState<UnresolvedIssue[]>([]);
+  // Simulated previous unresolved issues (would come from DB in production)
+  const [previousUnresolvedIssues] = useState<UnresolvedIssue[]>([
+    {
+      id: "prev-1",
+      description: "Хидравличен маркуч на десен цилиндър показва микропукнатини",
+      severity: "high",
+      fromPreviousCard: true,
+      previousCardId: "JC-0015",
+    },
+    {
+      id: "prev-2",
+      description: "Лек теч на масло при предната ос",
+      severity: "medium",
+      fromPreviousCard: true,
+      previousCardId: "JC-0012",
+    },
+  ]);
+
   // Parts & Labor
   const [parts, setParts] = useState<PartItem[]>([]);
   const [laborItems, setLaborItems] = useState<LaborItem[]>([]);
@@ -188,12 +222,36 @@ export default function WorkCardPage() {
         />
 
         <div className="mt-6 space-y-6">
+          {/* Unresolved Issues Alert Banner — prominent at top */}
+          {isScanned && (
+            <UnresolvedIssuesAlert previousIssues={previousUnresolvedIssues} />
+          )}
+
           <ClientSection
             clientData={clientData}
             isScanned={isScanned}
             jobType={jobType}
             onJobTypeChange={handleJobTypeChange}
             onBillingEntityChange={handleBillingEntityChange}
+          />
+
+          {/* Mandatory Checklist — between Client and Diagnostics */}
+          <ChecklistButton
+            completed={checklistCompleted}
+            skipped={checklistSkipped}
+            onOpen={() => setChecklistOpen(true)}
+          />
+          <ChecklistModal
+            open={checklistOpen}
+            onOpenChange={setChecklistOpen}
+            items={checklistItems}
+            onItemsChange={setChecklistItems}
+            completed={checklistCompleted}
+            onComplete={() => setChecklistCompleted(true)}
+            skipReason={checklistSkipReason}
+            onSkipReasonChange={setChecklistSkipReason}
+            onSkip={() => setChecklistSkipped(true)}
+            skipped={checklistSkipped}
           />
 
           <DiagnosticsSection
@@ -214,6 +272,10 @@ export default function WorkCardPage() {
             onEngineHoursChange={setEngineHours}
             onPhotosChange={setFaultPhotos}
             previousEngineHours={clientData?.previousEngineHours ?? null}
+            engineHoursPhoto={engineHoursPhoto}
+            onEngineHoursPhotoChange={setEngineHoursPhoto}
+            engineHoursPhotoMissingReason={engineHoursPhotoMissingReason}
+            onEngineHoursPhotoMissingReasonChange={setEngineHoursPhotoMissingReason}
           />
 
           <PartsTable parts={parts} onPartsChange={setParts} />
@@ -222,6 +284,13 @@ export default function WorkCardPage() {
             laborItems={laborItems}
             onLaborItemsChange={setLaborItems}
             isAdmin={isAdmin}
+          />
+
+          {/* Unresolved Issues — after Labor/Work Done */}
+          <UnresolvedIssuesSection
+            issues={unresolvedIssues}
+            onIssuesChange={setUnresolvedIssues}
+            previousIssues={previousUnresolvedIssues}
           />
 
           <Footer
