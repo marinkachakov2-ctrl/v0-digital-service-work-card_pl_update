@@ -196,6 +196,59 @@ export default function WorkCardPage() {
   const vat = subtotal * 0.2;
   const grandTotal = subtotal + vat;
 
+  // Save card handler
+  const handleSaveCard = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const payload = {
+        orderNumber,
+        jobCardNumber,
+        jobType,
+        assignedTechnicians,
+        leadTechnicianId,
+        clockAtJobLevel,
+        elapsedSeconds,
+        clientData,
+        diagnostics: {
+          reasonCode,
+          defectCode,
+          description,
+          faultDate,
+          repairStart,
+          repairEnd,
+          engineHours,
+        },
+        parts,
+        laborItems,
+        paymentMethod,
+        totals: {
+          partsTotal,
+          laborTotal,
+          vat,
+          grandTotal,
+        },
+        isSigned,
+        submittedAt: new Date().toISOString(),
+      };
+
+      const response = await fetch("/api/job-card", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+      return { success: result.success, message: result.message };
+    } catch (error) {
+      console.error("[v0] Error saving card:", error);
+      return { success: false, message: "Network error" };
+    }
+  }, [
+    orderNumber, jobCardNumber, jobType, assignedTechnicians, leadTechnicianId,
+    clockAtJobLevel, elapsedSeconds, clientData, reasonCode, defectCode,
+    description, faultDate, repairStart, repairEnd, engineHours, parts,
+    laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned
+  ]);
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 lg:px-8">
@@ -303,6 +356,7 @@ export default function WorkCardPage() {
             isSigned={isSigned}
             onSign={handleSign}
             timerStatus={timerStatus}
+            onSaveCard={handleSaveCard}
           />
         </div>
       </div>
