@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, RotateCcw } from "lucide-react";
+import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 interface SaveResult {
@@ -76,10 +76,16 @@ export function Footer({
     }
   };
 
-  const handleNewCard = () => {
-    setSavedResult(null);
-    onFormReset();
-  };
+  // Success screen after save - auto reset after 4 seconds
+  useEffect(() => {
+    if (savedResult?.success) {
+      const timer = setTimeout(() => {
+        setSavedResult(null);
+        onFormReset();
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [savedResult, onFormReset]);
 
   // Success screen after save
   if (savedResult?.success) {
@@ -91,14 +97,14 @@ export function Footer({
           </div>
           <div className="text-center space-y-2">
             <h2 className="text-2xl font-bold text-emerald-500">Успешно Записана!</h2>
-            <p className="text-muted-foreground">Работната карта е запазена в системата.</p>
+            <p className="text-muted-foreground">Работната карта е запазена в базата данни.</p>
           </div>
           
           {/* Job Card ID */}
           <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-6 py-4">
             <FileText className="h-5 w-5 text-primary" />
             <div>
-              <p className="text-xs text-muted-foreground">Job Card ID</p>
+              <p className="text-xs text-muted-foreground">Job Card ID (Supabase)</p>
               <p className="font-mono text-lg font-bold text-foreground">{savedResult.jobCardId}</p>
             </div>
           </div>
@@ -111,14 +117,7 @@ export function Footer({
             </Badge>
           )}
 
-          {/* New Card Button */}
-          <Button
-            onClick={handleNewCard}
-            className="gap-2 bg-primary px-8 py-6 text-lg text-primary-foreground hover:bg-primary/90"
-          >
-            <RotateCcw className="h-5 w-5" />
-            Нова Работна Карта
-          </Button>
+          <p className="text-xs text-muted-foreground">Формулярът ще се нулира автоматично...</p>
         </CardContent>
       </Card>
     );
