@@ -70,6 +70,9 @@ export default function WorkCardPage() {
   // Card status tracking (for read-only locking)
   const [cardStatus, setCardStatus] = useState<"new" | "draft" | "completed">("new");
 
+  // Supabase Job Card ID (for UPDATE instead of INSERT on subsequent saves)
+  const [savedJobCardId, setSavedJobCardId] = useState<string | null>(null);
+
   // Diagnostics (must be declared before localStorage hydration useEffect)
   const [reasonCode, setReasonCode] = useState("");
   const [defectCode, setDefectCode] = useState("");
@@ -127,6 +130,9 @@ export default function WorkCardPage() {
         if (form.parts) setParts(form.parts);
         if (form.laborItems) setLaborItems(form.laborItems);
         if (form.paymentMethod) setPaymentMethod(form.paymentMethod);
+        // Restore saved job card ID and status for UPDATE on subsequent saves
+        if (form.savedJobCardId) setSavedJobCardId(form.savedJobCardId);
+        if (form.cardStatus) setCardStatus(form.cardStatus);
       } catch {
         localStorage.removeItem(STORAGE_KEY_FORM);
       }
@@ -182,13 +188,17 @@ export default function WorkCardPage() {
       parts,
       laborItems,
       paymentMethod,
+      // Persist Supabase job card ID for UPDATE on subsequent saves
+      savedJobCardId,
+      cardStatus,
     };
 
     localStorage.setItem(STORAGE_KEY_FORM, JSON.stringify(formData));
   }, [
     isHydrated, orderNumber, jobCardNumber, jobType, clientData, isScanned, searchValue,
     assignedTechnicians, leadTechnicianId, clockAtJobLevel, reasonCode, defectCode,
-    description, faultDate, repairStart, repairEnd, engineHours, parts, laborItems, paymentMethod
+    description, faultDate, repairStart, repairEnd, engineHours, parts, laborItems, paymentMethod,
+    savedJobCardId, cardStatus
   ]);
 
   // Save timer state to localStorage whenever it changes
@@ -413,6 +423,8 @@ export default function WorkCardPage() {
 
     try {
       const payload = {
+        // Include existing job card ID for UPDATE instead of INSERT
+        existingJobCardId: savedJobCardId,
         orderNumber,
         jobCardNumber,
         jobType,
@@ -459,7 +471,13 @@ export default function WorkCardPage() {
       });
 
       const result = await response.json();
-      return { success: result.success, message: result.message };
+      
+      // Store the job card ID for subsequent UPDATE operations
+      if (result.success && result.jobCardId) {
+        setSavedJobCardId(result.jobCardId);
+      }
+      
+      return { success: result.success, message: result.message, jobCardId: result.jobCardId, pendingOrder: result.pendingOrder };
     } catch (error) {
       console.error("[v0] Error saving card:", error);
       return { success: false, message: "Network error" };
@@ -468,7 +486,7 @@ export default function WorkCardPage() {
     orderNumber, jobCardNumber, jobType, assignedTechnicians, leadTechnicianId,
     clockAtJobLevel, timerStatus, elapsedSeconds, clientData, reasonCode, defectCode,
     description, faultDate, repairStart, repairEnd, engineHours, parts,
-    laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned
+    laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned, savedJobCardId
   ]);
 
   // Show loading skeleton during hydration to prevent flickering

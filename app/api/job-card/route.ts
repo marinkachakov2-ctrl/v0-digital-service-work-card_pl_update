@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 export interface JobCardPayload {
+  existingJobCardId?: string; // If provided, UPDATE instead of INSERT
   orderNumber?: string;
   jobCardNumber: string;
   jobType: "warranty" | "repair" | "internal";
@@ -109,47 +110,79 @@ export async function POST(request: Request) {
       signature_data: data.signatureData || null, // Base64 signature or null
     };
 
-    console.log("SUPABASE INSERT DATA:", JSON.stringify(insertData, null, 2));
+    // Determine if this is an UPDATE or INSERT operation
+    const isUpdate = !!data.existingJobCardId;
+    
+    console.log(isUpdate ? "SUPABASE UPDATE DATA:" : "SUPABASE INSERT DATA:", JSON.stringify(insertData, null, 2));
 
-    // Insert into Supabase with explicit await
-    const { data: insertedData, error } = await supabase
-      .from("job_cards")
-      .insert(insertData)
-      .select("id")
-      .single();
+    let resultId: string;
 
-    // Check for errors BEFORE returning success
-    if (error) {
-      console.error("SUPABASE ERROR:", error);
-      console.error("SUPABASE ERROR MESSAGE:", error.message);
-      console.error("SUPABASE ERROR DETAILS:", error.details);
-      console.error("SUPABASE ERROR HINT:", error.hint);
-      return NextResponse.json(
-        { 
-          success: false, 
-          message: `Database error: ${error.message}`,
-          error: error.message 
-        },
-        { status: 500 }
-      );
+    if (isUpdate) {
+      // UPDATE existing job card
+      console.log("SUPABASE: Updating existing job card:", data.existingJobCardId);
+      
+      const { data: updatedData, error } = await supabase
+        .from("job_cards")
+        .update(insertData)
+        .eq("id", data.existingJobCardId)
+        .select("id")
+        .single();
+
+      if (error) {
+        console.error("SUPABASE UPDATE ERROR:", error);
+        return NextResponse.json(
+          { success: false, message: `Database error: ${error.message}` },
+          { status: 500 }
+        );
+      }
+
+      if (!updatedData?.id) {
+        console.error("SUPABASE ERROR: No ID returned from update");
+        return NextResponse.json(
+          { success: false, message: "Update succeeded but no ID returned" },
+          { status: 500 }
+        );
+      }
+
+      resultId = updatedData.id;
+      console.log("SUPABASE SUCCESS: Job Card updated with ID:", resultId);
+    } else {
+      // INSERT new job card
+      const { data: insertedData, error } = await supabase
+        .from("job_cards")
+        .insert(insertData)
+        .select("id")
+        .single();
+
+      if (error) {
+        console.error("SUPABASE INSERT ERROR:", error);
+        console.error("SUPABASE ERROR MESSAGE:", error.message);
+        console.error("SUPABASE ERROR DETAILS:", error.details);
+        console.error("SUPABASE ERROR HINT:", error.hint);
+        return NextResponse.json(
+          { success: false, message: `Database error: ${error.message}` },
+          { status: 500 }
+        );
+      }
+
+      if (!insertedData?.id) {
+        console.error("SUPABASE ERROR: No ID returned from insert");
+        return NextResponse.json(
+          { success: false, message: "Insert succeeded but no ID returned" },
+          { status: 500 }
+        );
+      }
+
+      resultId = insertedData.id;
+      console.log("SUPABASE SUCCESS: Job Card created with ID:", resultId);
     }
-
-    // Verify we got an ID back
-    if (!insertedData?.id) {
-      console.error("SUPABASE ERROR: No ID returned from insert");
-      return NextResponse.json(
-        { success: false, message: "Insert succeeded but no ID returned" },
-        { status: 500 }
-      );
-    }
-
-    console.log("SUPABASE SUCCESS: Job Card saved with ID:", insertedData.id);
 
     return NextResponse.json({
       success: true,
-      message: "Job card saved successfully",
-      jobCardId: insertedData.id,
+      message: isUpdate ? "Job card updated successfully" : "Job card created successfully",
+      jobCardId: resultId,
       pendingOrder: hasPendingOrder,
+      isUpdate,
     });
   } catch (error) {
     console.error("SUPABASE ERROR: Unexpected error:", error);

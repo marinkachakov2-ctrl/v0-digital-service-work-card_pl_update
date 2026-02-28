@@ -120,38 +120,37 @@ export function Footer({
     }
   };
 
-  // Success screen after save - auto reset after 4 seconds
+  // Auto-reset ONLY for completed cards (not drafts - keep form data for drafts)
   useEffect(() => {
-    if (savedResult?.success) {
+    if (savedResult?.success && savedResult.status === "completed") {
       const timer = setTimeout(() => {
         setSavedResult(null);
         onFormReset();
       }, 4000);
       return () => clearTimeout(timer);
     }
+    // For drafts, just clear the savedResult after showing confirmation briefly
+    if (savedResult?.success && savedResult.status === "draft") {
+      const timer = setTimeout(() => {
+        setSavedResult(null);
+        // Do NOT call onFormReset() - keep all data visible for draft
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
   }, [savedResult, onFormReset]);
 
-  // Success screen after save
-  if (savedResult?.success) {
-    const isCompleted = savedResult.status === "completed";
+  // Show success screen ONLY for completed cards - drafts stay on the form
+  if (savedResult?.success && savedResult.status === "completed") {
     return (
-      <Card className={isCompleted ? "border-emerald-500/40 bg-emerald-500/5" : "border-amber-500/40 bg-amber-500/5"}>
+      <Card className="border-emerald-500/40 bg-emerald-500/5">
         <CardContent className="flex flex-col items-center justify-center py-12 space-y-6">
-          <div className={`flex h-20 w-20 items-center justify-center rounded-full ${isCompleted ? "bg-emerald-500/20" : "bg-amber-500/20"}`}>
-            {isCompleted ? (
-              <Lock className="h-10 w-10 text-emerald-500" />
-            ) : (
-              <FileText className="h-10 w-10 text-amber-500" />
-            )}
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/20">
+            <Lock className="h-10 w-10 text-emerald-500" />
           </div>
           <div className="text-center space-y-2">
-            <h2 className={`text-2xl font-bold ${isCompleted ? "text-emerald-500" : "text-amber-500"}`}>
-              {isCompleted ? "Финализирана и Заключена!" : "Записана като Чернова"}
-            </h2>
+            <h2 className="text-2xl font-bold text-emerald-500">Финализирана и Заключена!</h2>
             <p className="text-muted-foreground">
-              {isCompleted 
-                ? "Работната карта е подписана и не може да бъде редактирана."
-                : "Картата е запазена. Можете да я редактирате по-късно."}
+              Работната карта е подписана и не може да бъде редактирана.
             </p>
           </div>
           
@@ -167,22 +166,10 @@ export function Footer({
           {/* Status Badge */}
           <Badge 
             variant="outline" 
-            className={isCompleted 
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500 px-4 py-2"
-              : "border-amber-500/30 bg-amber-500/10 text-amber-500 px-4 py-2"
-            }
+            className="border-emerald-500/30 bg-emerald-500/10 text-emerald-500 px-4 py-2"
           >
-            {isCompleted ? (
-              <>
-                <Lock className="mr-2 h-4 w-4" />
-                Статус: Completed (Заключена)
-              </>
-            ) : (
-              <>
-                <Clock className="mr-2 h-4 w-4" />
-                Статус: Draft (Чернова)
-              </>
-            )}
+            <Lock className="mr-2 h-4 w-4" />
+            Статус: Completed (Заключена)
           </Badge>
 
           {savedResult.pendingOrder && (
