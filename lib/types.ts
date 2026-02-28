@@ -125,4 +125,7 @@ export interface MachineSearchResult {
   ownerName: string;
   location?: string;
   engineHours: number;
+  // Auto-generated identifiers for auto-fill
+  suggestedOrderNumber?: string;
+  suggestedJobCardNumber?: string;
 }

@@ -280,3 +280,77 @@ export function searchMachinesLocal(query: string): Machine[] {
     (m.location && m.location.toLowerCase().includes(lowerQuery))
   );
 }
+
+// ────────────────────────────── Database Simulation ──────────────────────────────
+// These functions simulate fetching data from a database.
+// When integrating with Vercel Postgres/Supabase, replace with actual SQL queries.
+
+export interface InitialData {
+  technicians: Technician[];
+  machines: Machine[];
+  customers: Customer[];
+}
+
+/**
+ * Simulates fetching initial data from the database.
+ * This is called on app load to populate dropdowns and search data.
+ * Replace with: SELECT * FROM technicians WHERE is_active = true; etc.
+ */
+export async function getInitialData(): Promise<InitialData> {
+  // Simulate database query latency
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  return {
+    technicians: technicians.filter((t) => t.isActive),
+    machines: machines,
+    customers: customers,
+  };
+}
+
+/**
+ * Advanced multi-field search for machines.
+ * Searches across: brand (manufacturer), model, serial number, and client name.
+ * All searches are case-insensitive.
+ */
+export function advancedSearchMachines(query: string): Machine[] {
+  const searchTerms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (searchTerms.length === 0) return [];
+
+  return machines.filter((machine) => {
+    const searchableFields = [
+      machine.manufacturer,
+      machine.model,
+      machine.serialNo,
+      machine.ownerName,
+      machine.location || "",
+      machine.engineSN || "",
+    ].map((f) => f.toLowerCase());
+
+    // All search terms must match at least one field
+    return searchTerms.every((term) =>
+      searchableFields.some((field) => field.includes(term))
+    );
+  });
+}
+
+/**
+ * Generate a new order number for a machine.
+ * In production, this would query the database for the last order number.
+ */
+export function generateOrderNumber(machineId: string): string {
+  const date = new Date();
+  const year = date.getFullYear().toString().slice(-2);
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const random = Math.floor(Math.random() * 9000 + 1000);
+  return `ON-${year}${month}-${random}`;
+}
+
+/**
+ * Generate a new job card number.
+ * In production, this would be a sequential ID from the database.
+ */
+export function generateJobCardNumber(): string {
+  const date = new Date();
+  const timestamp = date.getTime().toString().slice(-6);
+  return `JC-${timestamp}`;
+}

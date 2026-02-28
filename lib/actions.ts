@@ -4,20 +4,31 @@
 // These actions run on the server and can be called from client components.
 // When integrating with Supabase, replace mock data imports with database queries.
 
-import { searchMachinesLocal, getMachineBySerialNo, getActiveTechnicians } from "./data";
+import { 
+  advancedSearchMachines, 
+  getMachineBySerialNo, 
+  getActiveTechnicians,
+  generateOrderNumber,
+  generateJobCardNumber,
+  getInitialData,
+} from "./data";
 import type { MachineSearchResult, Technician, Machine } from "./types";
 
 /**
- * Search machines by query string (model, manufacturer, serial, owner, location)
- * This simulates a database search - replace with Supabase query later.
+ * Search machines by query string across multiple fields:
+ * - Brand (manufacturer)
+ * - Model
+ * - Serial Number
+ * - Client Name (owner)
+ * All searches are case-insensitive and support multiple search terms.
  */
 export async function searchMachines(query: string): Promise<MachineSearchResult[]> {
   // Simulate network delay for realistic UX testing
   await new Promise((resolve) => setTimeout(resolve, 150));
 
-  const results = searchMachinesLocal(query);
+  const results = advancedSearchMachines(query);
 
-  // Map to search result format (lighter payload)
+  // Map to search result format with generated order numbers
   return results.map((m) => ({
     id: m.id,
     model: m.model,
@@ -26,6 +37,9 @@ export async function searchMachines(query: string): Promise<MachineSearchResult
     ownerName: m.ownerName,
     location: m.location,
     engineHours: m.engineHours,
+    // Pre-generate order/job card numbers for this machine
+    suggestedOrderNumber: generateOrderNumber(m.id),
+    suggestedJobCardNumber: generateJobCardNumber(),
   }));
 }
 
