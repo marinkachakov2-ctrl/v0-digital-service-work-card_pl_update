@@ -65,6 +65,22 @@ export default function WorkCardPage() {
   // Signature
   const [isSigned, setIsSigned] = useState(false);
 
+  // Diagnostics (must be declared before localStorage hydration useEffect)
+  const [reasonCode, setReasonCode] = useState("");
+  const [defectCode, setDefectCode] = useState("");
+  const [description, setDescription] = useState("");
+  const [faultDate, setFaultDate] = useState("");
+  const [repairStart, setRepairStart] = useState("");
+  const [repairEnd, setRepairEnd] = useState("");
+  const [engineHours, setEngineHours] = useState("");
+
+  // Parts & Labor (must be declared before localStorage hydration useEffect)
+  const [parts, setParts] = useState<PartItem[]>([]);
+  const [laborItems, setLaborItems] = useState<LaborItem[]>([]);
+
+  // Payment (must be declared before localStorage hydration useEffect)
+  const [paymentMethod, setPaymentMethod] = useState<"bank" | "cash">("bank");
+
   // Timer with localStorage persistence
   const [timerStatus, setTimerStatus] = useState<"idle" | "running" | "paused">("idle");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -221,14 +237,7 @@ export default function WorkCardPage() {
     setJobType(type);
   };
 
-  // Diagnostics
-  const [reasonCode, setReasonCode] = useState("");
-  const [defectCode, setDefectCode] = useState("");
-  const [description, setDescription] = useState("");
-  const [faultDate, setFaultDate] = useState("");
-  const [repairStart, setRepairStart] = useState("");
-  const [repairEnd, setRepairEnd] = useState("");
-  const [engineHours, setEngineHours] = useState("");
+  // Fault photos (not persisted to localStorage)
   const [faultPhotos, setFaultPhotos] = useState<FaultPhoto[]>([]);
 
   // Engine hours photo validation
@@ -261,13 +270,6 @@ export default function WorkCardPage() {
       previousCardId: "JC-0012",
     },
   ]);
-
-  // Parts & Labor
-  const [parts, setParts] = useState<PartItem[]>([]);
-  const [laborItems, setLaborItems] = useState<LaborItem[]>([]);
-
-  // Payment
-  const [paymentMethod, setPaymentMethod] = useState<"bank" | "cash">("bank");
 
   const handleSimulateScan = () => {
     setClientData({
