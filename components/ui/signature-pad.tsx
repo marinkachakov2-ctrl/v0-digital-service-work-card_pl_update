@@ -3,19 +3,28 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Eraser, Check, PenLine } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Eraser, Check, PenLine, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SignaturePadProps {
-  onSignatureChange: (signatureData: string | null) => void;
+  onSignatureChange: (signatureData: string | null, signerName?: string) => void;
   disabled?: boolean;
   initialSignature?: string | null;
+  initialSignerName?: string;
 }
 
-export function SignaturePad({ onSignatureChange, disabled = false, initialSignature = null }: SignaturePadProps) {
+export function SignaturePad({ 
+  onSignatureChange, 
+  disabled = false, 
+  initialSignature = null,
+  initialSignerName = ""
+}: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(!!initialSignature);
+  const [signerName, setSignerName] = useState(initialSignerName);
 
   // Initialize canvas
   useEffect(() => {
@@ -101,9 +110,9 @@ export function SignaturePad({ onSignatureChange, disabled = false, initialSigna
     const canvas = canvasRef.current;
     if (canvas && hasSignature) {
       const signatureData = canvas.toDataURL("image/png");
-      onSignatureChange(signatureData);
+      onSignatureChange(signatureData, signerName);
     }
-  }, [isDrawing, hasSignature, onSignatureChange]);
+  }, [isDrawing, hasSignature, onSignatureChange, signerName]);
 
   const clearSignature = useCallback(() => {
     const canvas = canvasRef.current;
@@ -112,8 +121,20 @@ export function SignaturePad({ onSignatureChange, disabled = false, initialSigna
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setHasSignature(false);
-    onSignatureChange(null);
-  }, [onSignatureChange]);
+    onSignatureChange(null, signerName);
+  }, [onSignatureChange, signerName]);
+
+  // Update parent when signer name changes
+  const handleNameChange = useCallback((name: string) => {
+    setSignerName(name);
+    if (hasSignature) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const signatureData = canvas.toDataURL("image/png");
+        onSignatureChange(signatureData, name);
+      }
+    }
+  }, [hasSignature, onSignatureChange]);
 
   return (
     <Card className={cn("border-border", disabled && "opacity-60")}>
@@ -123,7 +144,24 @@ export function SignaturePad({ onSignatureChange, disabled = false, initialSigna
           Подпис на Клиента
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
+        {/* Client Name Input */}
+        <div className="space-y-2">
+          <Label htmlFor="signer-name" className="flex items-center gap-2 text-sm text-muted-foreground">
+            <User className="h-3 w-3" />
+            Име на подписващия
+          </Label>
+          <Input
+            id="signer-name"
+            value={signerName}
+            onChange={(e) => handleNameChange(e.target.value)}
+            placeholder="Въведете име и фамилия..."
+            disabled={disabled}
+            className="bg-card text-foreground border-border"
+          />
+        </div>
+
+        {/* Signature Canvas */}
         <div 
           className={cn(
             "relative rounded-lg border-2 border-dashed bg-card/50",

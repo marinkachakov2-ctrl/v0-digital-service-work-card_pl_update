@@ -30,7 +30,7 @@ interface FooterProps {
   onSign: () => void;
   timerStatus: "idle" | "running" | "paused";
   orderNumber: string;
-  onSaveCard: (signatureData?: string | null) => Promise<SaveResult>;
+  onSaveCard: (signatureData?: string | null, signerName?: string) => Promise<SaveResult>;
   onFormReset: () => void;
   isReadOnly?: boolean;
 }
@@ -51,14 +51,23 @@ export function Footer({
   const [isSaving, setIsSaving] = useState(false);
   const [savedResult, setSavedResult] = useState<SaveResult | null>(null);
   const [signatureData, setSignatureData] = useState<string | null>(null);
+  const [signerName, setSignerName] = useState<string>("");
   const hasActiveTimer = timerStatus === "running" || timerStatus === "paused";
   const hasPendingOrder = !orderNumber || orderNumber.trim() === "";
+
+  // Handle signature change from SignaturePad
+  const handleSignatureChange = (signature: string | null, name?: string) => {
+    setSignatureData(signature);
+    if (name !== undefined) {
+      setSignerName(name);
+    }
+  };
 
   // Save as draft (no signature required)
   const handleSaveDraft = async () => {
     setIsSaving(true);
     try {
-      const result = await onSaveCard(null); // No signature = draft
+      const result = await onSaveCard(null, signerName); // No signature = draft
       if (result.success) {
         setSavedResult({ ...result, status: "draft" });
         toast.success("Картата е записана като чернова!", {
@@ -89,7 +98,7 @@ export function Footer({
 
     setIsSaving(true);
     try {
-      const result = await onSaveCard(signatureData); // With signature = completed
+      const result = await onSaveCard(signatureData, signerName); // With signature = completed
       if (result.success) {
         setSavedResult({ ...result, status: "completed" });
         toast.success("Картата е финализирана!", {
@@ -271,7 +280,7 @@ export function Footer({
 
       {/* Client Signature Pad */}
       <SignaturePad
-        onSignatureChange={setSignatureData}
+        onSignatureChange={handleSignatureChange}
         disabled={isReadOnly}
       />
 

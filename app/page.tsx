@@ -376,8 +376,8 @@ export default function WorkCardPage() {
   const vat = subtotal * 0.2;
   const grandTotal = subtotal + vat;
 
-  // Save card handler with validation - accepts optional signature data
-  const handleSaveCard = useCallback(async (signatureData?: string | null): Promise<{ success: boolean; message?: string; jobCardId?: string; pendingOrder?: boolean }> => {
+  // Save card handler with validation - accepts optional signature data and signer name
+  const handleSaveCard = useCallback(async (signatureData?: string | null, signerName?: string): Promise<{ success: boolean; message?: string; jobCardId?: string; pendingOrder?: boolean }> => {
     // Validate required fields
     const validTechnicians = assignedTechnicians.filter(t => t && t.trim() !== "");
     
@@ -440,6 +440,7 @@ export default function WorkCardPage() {
         submittedAt: new Date().toISOString(),
         // Signature workflow - status is determined by presence of signature
         signatureData: signatureData || null,
+        signerName: signerName || null,
         status: signatureData ? "completed" : "draft",
       };
 

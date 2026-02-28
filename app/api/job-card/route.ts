@@ -58,6 +58,7 @@ export interface JobCardPayload {
   // Signature workflow
   status?: "draft" | "completed";
   signatureData?: string | null;
+  signerName?: string | null;
 }
 
 export async function POST(request: Request) {
@@ -88,6 +89,7 @@ export async function POST(request: Request) {
     // Build notes from diagnostics and other info
     const notesArray: string[] = [];
     if (hasPendingOrder) notesArray.push("[PENDING ORDER]");
+    if (data.signerName) notesArray.push(`Signed by: ${data.signerName}`);
     if (data.diagnostics?.description) notesArray.push(data.diagnostics.description);
     if (data.clientData?.machineModel) notesArray.push(`Machine: ${data.clientData.machineModel}`);
     if (data.clientData?.serialNo) notesArray.push(`Serial: ${data.clientData.serialNo}`);
