@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -30,7 +31,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AlertTriangle, Calendar, Clock, Gauge, Mic, MicOff, AlertCircle, Camera, X, ImageIcon, Upload } from "lucide-react";
+import { AlertTriangle, Calendar, Clock, Gauge, Mic, MicOff, AlertCircle, Camera, X, ImageIcon, Upload, Loader2 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 // Web Speech API types are declared globally in /types/speech-recognition.d.ts
 
@@ -86,6 +88,8 @@ interface DiagnosticsSectionProps {
   onEngineHoursPhotoChange: (photo: FaultPhoto | null) => void;
   engineHoursPhotoMissingReason: string;
   onEngineHoursPhotoMissingReasonChange: (reason: string) => void;
+  // For Supabase Storage upload paths
+  jobCardId?: string;
 }
 
 export function DiagnosticsSection({
@@ -110,17 +114,28 @@ export function DiagnosticsSection({
   onRepairEndChange,
   onEngineHoursChange,
   onPhotosChange,
+  jobCardId,
 }: DiagnosticsSectionProps) {
+  // Hydration flag to prevent SSR/client mismatch
+  const [mounted, setMounted] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [showUnsupportedDialog, setShowUnsupportedDialog] = useState(false);
   const [interimText, setInterimText] = useState("");
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
+  // Upload loading states
+  const [isUploadingDiagnostic, setIsUploadingDiagnostic] = useState(false);
+  const [isUploadingEngineHours, setIsUploadingEngineHours] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const descriptionRef = useRef(description);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const engineHoursFileRef = useRef<HTMLInputElement>(null);
+
+  // Mark component as mounted (client-side only)
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Keep description ref updated
   useEffect(() => {
@@ -131,6 +146,54 @@ export function DiagnosticsSection({
   const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
   const isAndroid = typeof navigator !== "undefined" && /Android/.test(navigator.userAgent);
   const isMobile = isIOS || isAndroid;
+
+  /**
+   * Upload image to Supabase Storage
+   * Path format: job-card-photos/{YYYY-MM}/{jobCardId}/{type}_{timestamp}.jpg
+   */
+  const handleImageUpload = useCallback(async (
+    file: File,
+    type: "diagnostic" | "engine_hours"
+  ): Promise<{ publicUrl: string; path: string } | null> => {
+    try {
+      const supabase = createClient();
+      
+      // Build storage path
+      const now = new Date();
+      const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const cardId = jobCardId || `temp-${Date.now()}`;
+      const timestamp = Date.now();
+      const fileName = `${type}_${timestamp}.jpg`;
+      const storagePath = `job-card-photos/${yearMonth}/${cardId}/${fileName}`;
+
+      // Upload to Supabase Storage (bucket: job-card-photos)
+      const { error: uploadError } = await supabase.storage
+        .from("job-card-photos")
+        .upload(storagePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type || "image/jpeg",
+        });
+
+      if (uploadError) {
+        console.error("Supabase upload error:", uploadError);
+        return null;
+      }
+
+      // Get public URL
+      const { data: publicUrlData } = supabase.storage
+        .from("job-card-photos")
+        .getPublicUrl(storagePath);
+
+      return {
+        publicUrl: publicUrlData.publicUrl,
+        path: storagePath,
+      };
+    } catch (error) {
+      console.error("Image upload failed:", error);
+      return null;
+    }
+  }, [jobCardId]);
 
   useEffect(() => {
     // Check if Speech Recognition is supported
@@ -284,32 +347,49 @@ export function DiagnosticsSection({
     }
   }, [isListening, isMobile, isSupported, requestMicrophonePermission]);
 
-  // Handle photo capture from camera
-  const handlePhotoCapture = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle photo capture from camera - uploads to Supabase Storage
+  const handlePhotoCapture = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
+    setIsUploadingDiagnostic(true);
+    
     const newPhotos: FaultPhoto[] = [];
     
-    Array.from(files).forEach((file) => {
-      const url = URL.createObjectURL(file);
-      newPhotos.push({
-        id: `photo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        url,
-        name: file.name,
-        timestamp: new Date(),
-      });
-    });
+    for (const file of Array.from(files)) {
+      // Upload to Supabase Storage
+      const uploadResult = await handleImageUpload(file, "diagnostic");
+      
+      if (uploadResult) {
+        newPhotos.push({
+          id: `photo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          url: uploadResult.publicUrl,
+          name: file.name,
+          timestamp: new Date(),
+        });
+      } else {
+        // Fallback to local blob URL if upload fails
+        const localUrl = URL.createObjectURL(file);
+        newPhotos.push({
+          id: `photo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          url: localUrl,
+          name: file.name,
+          timestamp: new Date(),
+        });
+      }
+    }
 
-    if (onPhotosChange) {
+    if (onPhotosChange && newPhotos.length > 0) {
       onPhotosChange([...photos, ...newPhotos]);
     }
+
+    setIsUploadingDiagnostic(false);
 
     // Reset input so the same file can be selected again
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-  }, [photos, onPhotosChange]);
+  }, [photos, onPhotosChange, handleImageUpload]);
 
   // Remove a photo
   const handleRemovePhoto = useCallback((photoId: string) => {
@@ -328,24 +408,43 @@ export function DiagnosticsSection({
     fileInputRef.current?.click();
   }, []);
 
-  // Engine hours photo capture
+  // Engine hours photo capture - uploads to Supabase Storage
   const handleEngineHoursPhoto = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files;
       if (!files || files.length === 0) return;
+      
       const file = files[0];
-      const url = URL.createObjectURL(file);
-      onEngineHoursPhotoChange({
-        id: `ehp-${Date.now()}`,
-        url,
-        name: file.name,
-        timestamp: new Date(),
-      });
+      setIsUploadingEngineHours(true);
+      
+      // Upload to Supabase Storage
+      const uploadResult = await handleImageUpload(file, "engine_hours");
+      
+      if (uploadResult) {
+        onEngineHoursPhotoChange({
+          id: `ehp-${Date.now()}`,
+          url: uploadResult.publicUrl,
+          name: file.name,
+          timestamp: new Date(),
+        });
+      } else {
+        // Fallback to local blob URL if upload fails
+        const localUrl = URL.createObjectURL(file);
+        onEngineHoursPhotoChange({
+          id: `ehp-${Date.now()}`,
+          url: localUrl,
+          name: file.name,
+          timestamp: new Date(),
+        });
+      }
+      
+      setIsUploadingEngineHours(false);
+      
       if (engineHoursFileRef.current) {
         engineHoursFileRef.current.value = "";
       }
     },
-    [onEngineHoursPhotoChange]
+    [onEngineHoursPhotoChange, handleImageUpload]
   );
 
   return (
