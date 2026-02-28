@@ -300,7 +300,7 @@ export function ServiceWideView({
             <SelectContent>
               <SelectItem value="all">Всички техници</SelectItem>
               <SelectItem value="unassigned">Без техник</SelectItem>
-              {technicians.map(t => (
+              {technicians.filter(t => t.id).map(t => (
                 <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
               ))}
             </SelectContent>
@@ -423,7 +423,7 @@ export function ServiceWideView({
                               </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start" className="w-40">
-                              {technicians.map(tech => (
+                              {technicians.filter(tech => tech.id).map(tech => (
                                 <DropdownMenuItem
                                   key={tech.id}
                                   onClick={(e) => {
@@ -477,13 +477,13 @@ export function ServiceWideView({
 
               <div className="space-y-2">
                 <Label className="text-xs">Техник</Label>
-                <Select value={editTech} onValueChange={setEditTech}>
+                <Select value={editTech || "none"} onValueChange={(v) => setEditTech(v === "none" ? "" : v)}>
                   <SelectTrigger className="h-9">
                     <SelectValue placeholder="Избери техник..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Без техник</SelectItem>
-                    {technicians.map(t => (
+                    <SelectItem value="none">Без техник</SelectItem>
+                    {technicians.filter(t => t.id).map(t => (
                       <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                     ))}
                   </SelectContent>
