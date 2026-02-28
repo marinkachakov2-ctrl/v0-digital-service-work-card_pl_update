@@ -58,9 +58,10 @@ export default function WorkCardPage() {
   // Signature
   const [isSigned, setIsSigned] = useState(false);
 
-  // Timer
+  // Timer with localStorage persistence
   const [timerStatus, setTimerStatus] = useState<"idle" | "running" | "paused">("idle");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [timerJobCardId, setTimerJobCardId] = useState<string | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const formatTime = useCallback((totalSeconds: number): string => {
@@ -72,6 +73,46 @@ export default function WorkCardPage() {
 
   const elapsedTime = formatTime(elapsedSeconds);
 
+  // Load timer state from localStorage on mount
+  useEffect(() => {
+    const savedTimer = localStorage.getItem("workcard_timer");
+    if (savedTimer) {
+      try {
+        const { status, seconds, jobCardId, lastUpdated } = JSON.parse(savedTimer);
+        setTimerJobCardId(jobCardId || null);
+        
+        if (status === "running" && lastUpdated) {
+          // Calculate elapsed time since last update
+          const now = Date.now();
+          const additionalSeconds = Math.floor((now - lastUpdated) / 1000);
+          setElapsedSeconds(seconds + additionalSeconds);
+          setTimerStatus("running");
+        } else if (status === "paused") {
+          setElapsedSeconds(seconds);
+          setTimerStatus("paused");
+        }
+      } catch {
+        localStorage.removeItem("workcard_timer");
+      }
+    }
+  }, []);
+
+  // Save timer state to localStorage whenever it changes
+  useEffect(() => {
+    if (timerStatus === "idle" && elapsedSeconds === 0) {
+      localStorage.removeItem("workcard_timer");
+    } else {
+      const timerData = {
+        status: timerStatus,
+        seconds: elapsedSeconds,
+        jobCardId: timerJobCardId || jobCardNumber,
+        lastUpdated: Date.now(),
+      };
+      localStorage.setItem("workcard_timer", JSON.stringify(timerData));
+    }
+  }, [timerStatus, elapsedSeconds, timerJobCardId, jobCardNumber]);
+
+  // Timer interval logic
   useEffect(() => {
     if (timerStatus === "running") {
       intervalRef.current = setInterval(() => {
@@ -90,11 +131,16 @@ export default function WorkCardPage() {
     };
   }, [timerStatus]);
 
-  const handleTimerStart = () => setTimerStatus("running");
+  const handleTimerStart = () => {
+    setTimerJobCardId(jobCardNumber);
+    setTimerStatus("running");
+  };
   const handleTimerPause = () => setTimerStatus("paused");
   const handleTimerStop = () => {
     setTimerStatus("idle");
     setElapsedSeconds(0);
+    setTimerJobCardId(null);
+    localStorage.removeItem("workcard_timer");
   };
 
   // Job type handlers
@@ -172,8 +218,9 @@ export default function WorkCardPage() {
     }
   };
 
-  // Handle machine selection from search
+  // Handle machine selection from search - auto-fills all machine details and order numbers
   const handleMachineSelect = useCallback((machine: MachineSearchResult) => {
+    // Auto-fill client/machine data
     setClientData({
       machineOwner: machine.ownerName,
       billingEntity: machine.ownerName,
@@ -183,6 +230,15 @@ export default function WorkCardPage() {
       engineSN: "",
       previousEngineHours: machine.engineHours,
     });
+    
+    // Auto-fill order numbers from server-generated suggestions
+    if (machine.suggestedOrderNumber) {
+      setOrderNumber(machine.suggestedOrderNumber);
+    }
+    if (machine.suggestedJobCardNumber) {
+      setJobCardNumber(machine.suggestedJobCardNumber);
+    }
+    
     setIsScanned(true);
     setSearchValue(machine.serialNo);
   }, []);
