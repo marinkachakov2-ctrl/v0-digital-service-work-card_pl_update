@@ -43,8 +43,8 @@ export default function RootLayout({
           {children}
         </ClockingProvider>
         <Analytics />
-      {/* v0 – built-with badge */}
-  <div dangerouslySetInnerHTML={{ __html: `<div id="v0-built-with-button-4aa622e1-4991-402a-bf3c-186622fb0e92" style="
+        {/* v0 – built-with badge */}
+        <div dangerouslySetInnerHTML={{ __html: `<div id="v0-built-with-button-4aa622e1-4991-402a-bf3c-186622fb0e92" style="
 border: 1px solid hsl(0deg 0% 100% / 12%);
 position: fixed;
 bottom: 24px;
@@ -126,7 +126,7 @@ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   v0
 </span>
 </div>` }} />
-</body>
+      </body>
     </html>
   )
 }
