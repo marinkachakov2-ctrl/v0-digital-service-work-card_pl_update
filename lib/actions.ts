@@ -1,43 +1,50 @@
 "use server";
 
 // ────────────────────────────── Server Actions ──────────────────────────────
-// These actions run on the server and can be called from client components.
-// When integrating with Supabase, replace mock data imports with database queries.
+// These actions run on the server and perform real Supabase database queries.
 
-import { 
-  advancedSearchMachines, 
-  getMachineBySerialNo, 
-  getActiveTechnicians,
-  generateOrderNumber,
-  generateJobCardNumber,
-  getInitialData,
-} from "./data";
-import type { MachineSearchResult, Technician, Machine } from "./types";
+import { createClient } from "./supabase/server";
+import { generateOrderNumber, generateJobCardNumber } from "./data";
+import type { MachineSearchResult, Technician } from "./types";
 
 /**
- * Search machines by query string across multiple fields:
- * - Brand (manufacturer)
+ * Search machines by query string across multiple fields using Supabase:
+ * - Brand
  * - Model
  * - Serial Number
- * - Client Name (owner)
- * All searches are case-insensitive and support multiple search terms.
+ * - Client Name
+ * All searches are case-insensitive using ilike.
  */
 export async function searchMachines(query: string): Promise<MachineSearchResult[]> {
-  // Simulate network delay for realistic UX testing
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  if (!query || query.trim().length < 2) {
+    return [];
+  }
 
-  const results = advancedSearchMachines(query);
+  const supabase = await createClient();
+  const searchTerm = `%${query.trim()}%`;
 
-  // Map to search result format with generated order numbers
-  return results.map((m) => ({
+  // Search across multiple fields with OR condition using ilike for case-insensitive matching
+  const { data, error } = await supabase
+    .from("machines")
+    .select("*")
+    .or(`brand.ilike.${searchTerm},model.ilike.${searchTerm},serial_number.ilike.${searchTerm},client_name.ilike.${searchTerm}`)
+    .limit(10);
+
+  if (error) {
+    console.error("[Server Action] searchMachines error:", error);
+    return [];
+  }
+
+  // Map database results to MachineSearchResult format
+  return (data || []).map((m) => ({
     id: m.id,
-    model: m.model,
-    manufacturer: m.manufacturer,
-    serialNo: m.serialNo,
-    engineSN: m.engineSN,
-    ownerName: m.ownerName,
-    location: m.location,
-    engineHours: m.engineHours,
+    model: m.model || "",
+    manufacturer: m.brand || "",
+    serialNo: m.serial_number || "",
+    engineSN: m.engine_sn || "",
+    ownerName: m.client_name || "",
+    location: "",
+    engineHours: 0,
     // Pre-generate order/job card numbers for this machine
     suggestedOrderNumber: generateOrderNumber(m.id),
     suggestedJobCardNumber: generateJobCardNumber(),
@@ -47,50 +54,158 @@ export async function searchMachines(query: string): Promise<MachineSearchResult
 /**
  * Get full machine details by serial number (for QR code scan)
  */
-export async function getMachineBySerial(serialNo: string): Promise<Machine | null> {
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  
-  const machine = getMachineBySerialNo(serialNo);
-  return machine || null;
+export async function getMachineBySerial(serialNo: string): Promise<MachineSearchResult | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("machines")
+    .select("*")
+    .eq("serial_number", serialNo)
+    .single();
+
+  if (error || !data) {
+    console.error("[Server Action] getMachineBySerial error:", error);
+    return null;
+  }
+
+  return {
+    id: data.id,
+    model: data.model || "",
+    manufacturer: data.brand || "",
+    serialNo: data.serial_number || "",
+    engineSN: data.engine_sn || "",
+    ownerName: data.client_name || "",
+    location: "",
+    engineHours: 0,
+    suggestedOrderNumber: generateOrderNumber(data.id),
+    suggestedJobCardNumber: generateJobCardNumber(),
+  };
 }
 
 /**
  * Get all active technicians for assignment dropdowns
  */
 export async function fetchTechnicians(): Promise<Technician[]> {
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  
-  return getActiveTechnicians();
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("technicians")
+    .select("*")
+    .eq("active", true)
+    .order("name");
+
+  if (error) {
+    console.error("[Server Action] fetchTechnicians error:", error);
+    return [];
+  }
+
+  // Map database results to Technician format
+  return (data || []).map((t) => ({
+    id: t.id,
+    name: t.name || "",
+    role: "technician" as const,
+    isActive: t.active ?? true,
+    skills: [],
+    certifications: [],
+  }));
 }
 
 /**
- * Validate and process job card submission
- * This will be expanded to insert into database
+ * Submit and save a job card to Supabase
+ * Supports "Work First, Order Later" workflow - orderNumber is optional
  */
 export async function submitJobCard(data: {
-  orderNumber: string;
+  orderNumber?: string; // Optional - supports "Work First, Order Later"
   jobCardNumber: string;
   machineId?: string;
-  customerId?: string;
   technicianIds: string[];
-  // ... other fields as needed
-}): Promise<{ success: boolean; jobCardId?: string; error?: string }> {
-  await new Promise((resolve) => setTimeout(resolve, 200));
+  notes?: string;
+  status?: string;
+  totalSeconds?: number;
+}): Promise<{ success: boolean; jobCardId?: string; pendingOrder?: boolean; error?: string }> {
+  const supabase = await createClient();
 
-  // Validation
-  if (!data.orderNumber || !data.jobCardNumber) {
-    return { success: false, error: "Missing required fields" };
+  // Validation - only jobCardNumber and technicians are required
+  if (!data.jobCardNumber) {
+    return { success: false, error: "Job Card number is required" };
   }
 
-  if (data.technicianIds.length === 0) {
+  if (!data.technicianIds || data.technicianIds.length === 0) {
     return { success: false, error: "At least one technician must be assigned" };
   }
 
-  // Simulate successful save
-  console.log("[Server Action] Job Card submitted:", data);
-  
-  return { 
-    success: true, 
-    jobCardId: data.jobCardNumber,
+  // Use the first technician as the primary (job_cards table has single technician_id)
+  const primaryTechnicianId = data.technicianIds[0];
+
+  // Determine if this is a "pending order" submission
+  const hasPendingOrder = !data.orderNumber || data.orderNumber.trim() === "";
+
+  // Insert job card into Supabase - order_no can be null
+  const { data: insertedData, error } = await supabase
+    .from("job_cards")
+    .insert({
+      order_no: hasPendingOrder ? null : data.orderNumber,
+      technician_id: primaryTechnicianId,
+      machine_id: data.machineId || null,
+      notes: hasPendingOrder 
+        ? `[PENDING ORDER] ${data.notes || ""}`.trim()
+        : (data.notes || null),
+      status: data.status || "pending",
+      total_seconds: data.totalSeconds || 0,
+      start_time: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error("[Server Action] submitJobCard error:", error);
+    return { success: false, error: error.message };
+  }
+
+  console.log("[Server Action] Job Card saved:", insertedData, "Pending order:", hasPendingOrder);
+
+  return {
+    success: true,
+    jobCardId: insertedData?.id || data.jobCardNumber,
+    pendingOrder: hasPendingOrder,
   };
+}
+
+/**
+ * Get initial data for the application (technicians and machines)
+ */
+export async function getInitialData(): Promise<{
+  technicians: Technician[];
+  machines: MachineSearchResult[];
+}> {
+  const [technicians, machines] = await Promise.all([
+    fetchTechnicians(),
+    // Fetch recent/common machines (limit 20)
+    (async () => {
+      const supabase = await createClient();
+      const { data, error } = await supabase
+        .from("machines")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (error) {
+        console.error("[Server Action] getInitialData machines error:", error);
+        return [];
+      }
+
+      return (data || []).map((m) => ({
+        id: m.id,
+        model: m.model || "",
+        manufacturer: m.brand || "",
+        serialNo: m.serial_number || "",
+        engineSN: m.engine_sn || "",
+        ownerName: m.client_name || "",
+        location: "",
+        engineHours: 0,
+      }));
+    })(),
+  ]);
+
+  return { technicians, machines };
 }
