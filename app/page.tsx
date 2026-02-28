@@ -297,8 +297,8 @@ export default function WorkCardPage() {
   const vat = subtotal * 0.2;
   const grandTotal = subtotal + vat;
 
-  // Save card handler with validation
-  const handleSaveCard = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
+  // Save card handler with validation - accepts optional signature data
+  const handleSaveCard = useCallback(async (signatureData?: string | null): Promise<{ success: boolean; message?: string; jobCardId?: string; pendingOrder?: boolean }> => {
     // Validate required fields
     const validTechnicians = assignedTechnicians.filter(t => t && t.trim() !== "");
     
@@ -359,6 +359,9 @@ export default function WorkCardPage() {
         },
         isSigned,
         submittedAt: new Date().toISOString(),
+        // Signature workflow - status is determined by presence of signature
+        signatureData: signatureData || null,
+        status: signatureData ? "completed" : "draft",
       };
 
       const response = await fetch("/api/job-card", {
@@ -485,8 +488,6 @@ export default function WorkCardPage() {
             partsTotal={partsTotal}
             vat={vat}
             grandTotal={grandTotal}
-            isSigned={isSigned}
-            onSign={handleSign}
             timerStatus={timerStatus}
             orderNumber={orderNumber}
             onSaveCard={handleSaveCard}

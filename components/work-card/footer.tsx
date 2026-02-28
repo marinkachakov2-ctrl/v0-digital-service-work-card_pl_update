@@ -7,7 +7,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText } from "lucide-react";
+import { SignaturePad } from "@/components/ui/signature-pad";
+import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, Lock } from "lucide-react";
 import { toast } from "sonner";
 
 interface SaveResult {
@@ -15,6 +16,7 @@ interface SaveResult {
   message?: string;
   jobCardId?: string;
   pendingOrder?: boolean;
+  status?: "draft" | "completed";
 }
 
 interface FooterProps {
@@ -28,8 +30,9 @@ interface FooterProps {
   onSign: () => void;
   timerStatus: "idle" | "running" | "paused";
   orderNumber: string;
-  onSaveCard: () => Promise<SaveResult>;
+  onSaveCard: (signatureData?: string | null) => Promise<SaveResult>;
   onFormReset: () => void;
+  isReadOnly?: boolean;
 }
 
 export function Footer({
@@ -39,28 +42,27 @@ export function Footer({
   partsTotal,
   vat,
   grandTotal,
-  isSigned,
-  onSign,
   timerStatus,
   orderNumber,
   onSaveCard,
   onFormReset,
+  isReadOnly = false,
 }: FooterProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [savedResult, setSavedResult] = useState<SaveResult | null>(null);
+  const [signatureData, setSignatureData] = useState<string | null>(null);
   const hasActiveTimer = timerStatus === "running" || timerStatus === "paused";
   const hasPendingOrder = !orderNumber || orderNumber.trim() === "";
 
-  const handleSaveCard = async () => {
+  // Save as draft (no signature required)
+  const handleSaveDraft = async () => {
     setIsSaving(true);
     try {
-      const result = await onSaveCard();
+      const result = await onSaveCard(null); // No signature = draft
       if (result.success) {
-        setSavedResult(result);
-        toast.success("Картата е записана успешно!", {
-          description: result.pendingOrder 
-            ? "Чака присвояване на номер на поръчка."
-            : "Всички данни са запазени.",
+        setSavedResult({ ...result, status: "draft" });
+        toast.success("Картата е записана като чернова!", {
+          description: "Можете да я редактирате и подпишете по-късно.",
         });
       } else {
         toast.error("Грешка при запис", {
@@ -69,6 +71,37 @@ export function Footer({
       }
     } catch {
       toast.error("Грешка при запис", {
+        description: "Възникна неочаквана грешка.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Finalize with signature (status = completed, read-only after)
+  const handleFinalizeAndSign = async () => {
+    if (!signatureData) {
+      toast.error("Липсва подпис", {
+        description: "Моля, добавете подпис на клиента преди финализиране.",
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const result = await onSaveCard(signatureData); // With signature = completed
+      if (result.success) {
+        setSavedResult({ ...result, status: "completed" });
+        toast.success("Картата е финализирана!", {
+          description: "Клиентът е подписал и картата е заключена.",
+        });
+      } else {
+        toast.error("Грешка при финализиране", {
+          description: result.message || "Моля, опитайте отново.",
+        });
+      }
+    } catch {
+      toast.error("Грешка при финализиране", {
         description: "Възникна неочаквана грешка.",
       });
     } finally {
@@ -89,15 +122,26 @@ export function Footer({
 
   // Success screen after save
   if (savedResult?.success) {
+    const isCompleted = savedResult.status === "completed";
     return (
-      <Card className="border-emerald-500/40 bg-emerald-500/5">
+      <Card className={isCompleted ? "border-emerald-500/40 bg-emerald-500/5" : "border-amber-500/40 bg-amber-500/5"}>
         <CardContent className="flex flex-col items-center justify-center py-12 space-y-6">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/20">
-            <CheckCircle2 className="h-10 w-10 text-emerald-500" />
+          <div className={`flex h-20 w-20 items-center justify-center rounded-full ${isCompleted ? "bg-emerald-500/20" : "bg-amber-500/20"}`}>
+            {isCompleted ? (
+              <Lock className="h-10 w-10 text-emerald-500" />
+            ) : (
+              <FileText className="h-10 w-10 text-amber-500" />
+            )}
           </div>
           <div className="text-center space-y-2">
-            <h2 className="text-2xl font-bold text-emerald-500">Успешно Записана!</h2>
-            <p className="text-muted-foreground">Работната карта е запазена в базата данни.</p>
+            <h2 className={`text-2xl font-bold ${isCompleted ? "text-emerald-500" : "text-amber-500"}`}>
+              {isCompleted ? "Финализирана и Заключена!" : "Записана като Чернова"}
+            </h2>
+            <p className="text-muted-foreground">
+              {isCompleted 
+                ? "Работната карта е подписана и не може да бъде редактирана."
+                : "Картата е запазена. Можете да я редактирате по-късно."}
+            </p>
           </div>
           
           {/* Job Card ID */}
@@ -109,15 +153,49 @@ export function Footer({
             </div>
           </div>
 
-          {/* Pending Order Badge */}
+          {/* Status Badge */}
+          <Badge 
+            variant="outline" 
+            className={isCompleted 
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500 px-4 py-2"
+              : "border-amber-500/30 bg-amber-500/10 text-amber-500 px-4 py-2"
+            }
+          >
+            {isCompleted ? (
+              <>
+                <Lock className="mr-2 h-4 w-4" />
+                Статус: Completed (Заключена)
+              </>
+            ) : (
+              <>
+                <Clock className="mr-2 h-4 w-4" />
+                Статус: Draft (Чернова)
+              </>
+            )}
+          </Badge>
+
           {savedResult.pendingOrder && (
-            <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-500 px-4 py-2">
-              <Clock className="mr-2 h-4 w-4" />
+            <Badge variant="outline" className="border-amber-500/30 text-amber-500">
               Чака присвояване на номер на поръчка
             </Badge>
           )}
 
           <p className="text-xs text-muted-foreground">Формулярът ще се нулира автоматично...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Read-only mode for completed cards
+  if (isReadOnly) {
+    return (
+      <Card className="border-emerald-500/40 bg-emerald-500/5">
+        <CardContent className="flex flex-col items-center justify-center py-8 space-y-4">
+          <Lock className="h-12 w-12 text-emerald-500" />
+          <p className="text-lg font-semibold text-emerald-500">Картата е заключена</p>
+          <p className="text-sm text-muted-foreground text-center">
+            Тази работна карта е подписана от клиента и не може да бъде редактирана.
+          </p>
         </CardContent>
       </Card>
     );
@@ -145,20 +223,14 @@ export function Footer({
               >
                 <div className="flex items-center space-x-3 rounded-md border border-border bg-secondary p-3">
                   <RadioGroupItem value="bank" id="bank" />
-                  <Label
-                    htmlFor="bank"
-                    className="flex flex-1 cursor-pointer items-center gap-2 text-foreground"
-                  >
+                  <Label htmlFor="bank" className="flex flex-1 cursor-pointer items-center gap-2 text-foreground">
                     <CreditCard className="h-4 w-4 text-muted-foreground" />
                     По банков път (Bank Transfer)
                   </Label>
                 </div>
                 <div className="flex items-center space-x-3 rounded-md border border-border bg-secondary p-3">
                   <RadioGroupItem value="cash" id="cash" />
-                  <Label
-                    htmlFor="cash"
-                    className="flex flex-1 cursor-pointer items-center gap-2 text-foreground"
-                  >
+                  <Label htmlFor="cash" className="flex flex-1 cursor-pointer items-center gap-2 text-foreground">
                     <Banknote className="h-4 w-4 text-muted-foreground" />
                     В брой (Cash)
                   </Label>
@@ -180,9 +252,7 @@ export function Footer({
                 <Separator className="bg-border" />
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal:</span>
-                  <span className="font-mono text-foreground">
-                    {(laborTotal + partsTotal).toFixed(2)} лв.
-                  </span>
+                  <span className="font-mono text-foreground">{(laborTotal + partsTotal).toFixed(2)} лв.</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">VAT (20%):</span>
@@ -191,9 +261,7 @@ export function Footer({
                 <Separator className="bg-border" />
                 <div className="flex justify-between">
                   <span className="text-lg font-semibold text-foreground">Grand Total:</span>
-                  <span className="font-mono text-xl font-bold text-primary">
-                    {grandTotal.toFixed(2)} лв.
-                  </span>
+                  <span className="font-mono text-xl font-bold text-primary">{grandTotal.toFixed(2)} лв.</span>
                 </div>
               </div>
             </div>
@@ -201,65 +269,21 @@ export function Footer({
         </CardContent>
       </Card>
 
-      {/* Signatures */}
-      <Card className={`border-border bg-card ${isSigned ? "border-emerald-500/40" : ""}`}>
-        <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-base text-foreground">
-            <PenLine className="h-4 w-4 text-primary" />
-            Подписи (Signatures)
-            {isSigned && (
-              <Badge className="ml-2 bg-emerald-500/15 text-emerald-500 border-emerald-500/30">
-                <CheckCircle2 className="mr-1 h-3 w-3" />
-                Signed
-              </Badge>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-6 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Technician</Label>
-              <div className="flex h-24 items-center justify-center rounded-md border-2 border-dashed border-border bg-secondary">
-                <span className="text-sm text-muted-foreground">Signature Area</span>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Client</Label>
-              {isSigned ? (
-                <div className="flex h-24 items-center justify-center rounded-md border-2 border-emerald-500/30 bg-emerald-500/5">
-                  <div className="flex items-center gap-2 text-emerald-500">
-                    <CheckCircle2 className="h-5 w-5" />
-                    <span className="text-sm font-medium">Signed</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex h-24 items-center justify-center rounded-md border-2 border-dashed border-border bg-secondary">
-                    <span className="text-sm text-muted-foreground">Signature Area</span>
-                  </div>
-                  <Button
-                    onClick={onSign}
-                    className="w-full gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
-                  >
-                    <PenLine className="h-4 w-4" />
-                    Client Sign
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
+      {/* Client Signature Pad */}
+      <SignaturePad
+        onSignatureChange={setSignatureData}
+        disabled={isReadOnly}
+      />
 
-          {/* Warning: signing auto-stops clocking */}
-          {!isSigned && hasActiveTimer && (
-            <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
-              <p className="text-xs text-amber-500">
-                Signing will automatically stop all active clocking for this job card.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Warning: signing auto-stops clocking */}
+      {hasActiveTimer && (
+        <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+          <p className="text-sm text-amber-500">
+            Финализирането ще спре автоматично всички активни часовници за тази карта.
+          </p>
+        </div>
+      )}
 
       {/* Pending Order Warning */}
       {hasPendingOrder && (
@@ -271,35 +295,53 @@ export function Footer({
         </div>
       )}
 
-      {/* Save Card Button */}
-      <div className="flex flex-col items-center gap-3">
+      {/* Action Buttons */}
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+        {/* Save as Draft */}
         <Button
-          onClick={handleSaveCard}
+          onClick={handleSaveDraft}
           disabled={isSaving}
-          className="gap-2 bg-primary px-8 py-6 text-lg text-primary-foreground hover:bg-primary/90"
+          variant="outline"
+          className="gap-2 px-6 py-5 text-base"
         >
           {isSaving ? (
-            <>
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Запазване...
-            </>
+            <Loader2 className="h-5 w-5 animate-spin" />
           ) : (
-            <>
-              <Save className="h-5 w-5" />
-              Запази Карта
-            </>
+            <Save className="h-5 w-5" />
           )}
+          Запази Чернова
         </Button>
-        {hasPendingOrder && (
-          <Badge variant="outline" className="border-amber-500/30 text-amber-500">
-            Pending Order Assignment
-          </Badge>
-        )}
+
+        {/* Finalize & Sign */}
+        <Button
+          onClick={handleFinalizeAndSign}
+          disabled={isSaving || !signatureData}
+          className="gap-2 bg-emerald-600 px-6 py-5 text-base text-white hover:bg-emerald-700"
+        >
+          {isSaving ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <PenLine className="h-5 w-5" />
+          )}
+          Финализирай и Подпиши
+        </Button>
+      </div>
+
+      {/* Status indicators */}
+      <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+          Чернова = Редактируема
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+          Подписана = Заключена
+        </span>
       </div>
 
       {/* Disclaimer */}
       <p className="text-center text-xs text-muted-foreground">
-        The client agrees to the general terms of Megatron EAD.
+        С подписването клиентът се съгласява с общите условия на Мегатрон ЕАД.
       </p>
     </div>
   );

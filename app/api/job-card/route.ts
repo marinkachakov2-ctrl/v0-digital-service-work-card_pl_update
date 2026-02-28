@@ -55,6 +55,9 @@ export interface JobCardPayload {
   isSigned: boolean;
   submittedAt: string;
   machineId?: string;
+  // Signature workflow
+  status?: "draft" | "completed";
+  signatureData?: string | null;
 }
 
 export async function POST(request: Request) {
@@ -89,6 +92,9 @@ export async function POST(request: Request) {
     if (data.clientData?.machineModel) notesArray.push(`Machine: ${data.clientData.machineModel}`);
     if (data.clientData?.serialNo) notesArray.push(`Serial: ${data.clientData.serialNo}`);
 
+    // Status: 'draft' by default, 'completed' only when signed
+    const cardStatus = data.signatureData ? "completed" : "draft";
+
     const insertData = {
       technician_id: primaryTechnicianId, // UUID string
       machine_id: data.machineId || null, // UUID string or null
@@ -96,8 +102,9 @@ export async function POST(request: Request) {
       start_time: data.timerData?.startedAt || new Date().toISOString(), // timestamp
       end_time: data.submittedAt || new Date().toISOString(), // timestamp
       total_seconds: Math.floor(totalSeconds), // integer
-      status: "completed",
+      status: cardStatus, // 'draft' or 'completed'
       notes: notesArray.join(" | ") || null, // text or null
+      signature_data: data.signatureData || null, // Base64 signature or null
     };
 
     console.log("SUPABASE INSERT DATA:", JSON.stringify(insertData, null, 2));
