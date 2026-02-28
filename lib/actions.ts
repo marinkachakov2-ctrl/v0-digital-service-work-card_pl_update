@@ -34,6 +34,7 @@ export async function searchMachines(query: string): Promise<MachineSearchResult
     model: m.model,
     manufacturer: m.manufacturer,
     serialNo: m.serialNo,
+    engineSN: m.engineSN,
     ownerName: m.ownerName,
     location: m.location,
     engineHours: m.engineHours,

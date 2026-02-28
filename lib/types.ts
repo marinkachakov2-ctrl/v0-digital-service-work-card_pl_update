@@ -78,6 +78,9 @@ export interface JobCard {
   plannedHours: number;
   actualHours: number;
   elapsedSeconds: number;
+  timerStatus: "idle" | "running" | "paused";
+  timerStartedAt?: string;
+  timerLastUpdated?: string;
   
   // Financial
   laborTotal: number;
@@ -122,6 +125,7 @@ export interface MachineSearchResult {
   model: string;
   manufacturer: string;
   serialNo: string;
+  engineSN?: string;
   ownerName: string;
   location?: string;
   engineHours: number;
