@@ -38,8 +38,15 @@ export interface ClientData {
   previousEngineHours: number | null;
 }
 
+// localStorage keys
+const STORAGE_KEY_FORM = "workcard_form";
+const STORAGE_KEY_TIMER = "workcard_timer";
+
 export default function WorkCardPage() {
   const { isAdmin, setIsAdmin, signJobCard } = useClocking();
+
+  // Hydration flag to prevent UI flickering
+  const [isHydrated, setIsHydrated] = useState(false);
 
   const [searchValue, setSearchValue] = useState("");
   const [clientData, setClientData] = useState<ClientData | null>(null);
@@ -73,9 +80,39 @@ export default function WorkCardPage() {
 
   const elapsedTime = formatTime(elapsedSeconds);
 
-  // Load timer state from localStorage on mount
+  // Load ALL form state from localStorage on mount (prevents flickering)
   useEffect(() => {
-    const savedTimer = localStorage.getItem("workcard_timer");
+    // Load form state
+    const savedForm = localStorage.getItem(STORAGE_KEY_FORM);
+    if (savedForm) {
+      try {
+        const form = JSON.parse(savedForm);
+        if (form.orderNumber) setOrderNumber(form.orderNumber);
+        if (form.jobCardNumber) setJobCardNumber(form.jobCardNumber);
+        if (form.jobType) setJobType(form.jobType);
+        if (form.clientData) setClientData(form.clientData);
+        if (form.isScanned !== undefined) setIsScanned(form.isScanned);
+        if (form.searchValue) setSearchValue(form.searchValue);
+        if (form.assignedTechnicians) setAssignedTechnicians(form.assignedTechnicians);
+        if (form.leadTechnicianId) setLeadTechnicianId(form.leadTechnicianId);
+        if (form.clockAtJobLevel !== undefined) setClockAtJobLevel(form.clockAtJobLevel);
+        if (form.reasonCode) setReasonCode(form.reasonCode);
+        if (form.defectCode) setDefectCode(form.defectCode);
+        if (form.description) setDescription(form.description);
+        if (form.faultDate) setFaultDate(form.faultDate);
+        if (form.repairStart) setRepairStart(form.repairStart);
+        if (form.repairEnd) setRepairEnd(form.repairEnd);
+        if (form.engineHours) setEngineHours(form.engineHours);
+        if (form.parts) setParts(form.parts);
+        if (form.laborItems) setLaborItems(form.laborItems);
+        if (form.paymentMethod) setPaymentMethod(form.paymentMethod);
+      } catch {
+        localStorage.removeItem(STORAGE_KEY_FORM);
+      }
+    }
+
+    // Load timer state
+    const savedTimer = localStorage.getItem(STORAGE_KEY_TIMER);
     if (savedTimer) {
       try {
         const { status, seconds, jobCardId, lastUpdated } = JSON.parse(savedTimer);
@@ -92,15 +129,51 @@ export default function WorkCardPage() {
           setTimerStatus("paused");
         }
       } catch {
-        localStorage.removeItem("workcard_timer");
+        localStorage.removeItem(STORAGE_KEY_TIMER);
       }
     }
+
+    // Mark hydration complete
+    setIsHydrated(true);
   }, []);
+
+  // Save form state to localStorage whenever it changes (after hydration)
+  useEffect(() => {
+    if (!isHydrated) return; // Don't save during initial hydration
+
+    const formData = {
+      orderNumber,
+      jobCardNumber,
+      jobType,
+      clientData,
+      isScanned,
+      searchValue,
+      assignedTechnicians,
+      leadTechnicianId,
+      clockAtJobLevel,
+      reasonCode,
+      defectCode,
+      description,
+      faultDate,
+      repairStart,
+      repairEnd,
+      engineHours,
+      parts,
+      laborItems,
+      paymentMethod,
+    };
+
+    localStorage.setItem(STORAGE_KEY_FORM, JSON.stringify(formData));
+  }, [
+    isHydrated, orderNumber, jobCardNumber, jobType, clientData, isScanned, searchValue,
+    assignedTechnicians, leadTechnicianId, clockAtJobLevel, reasonCode, defectCode,
+    description, faultDate, repairStart, repairEnd, engineHours, parts, laborItems, paymentMethod
+  ]);
 
   // Save timer state to localStorage whenever it changes
   useEffect(() => {
     if (timerStatus === "idle" && elapsedSeconds === 0) {
-      localStorage.removeItem("workcard_timer");
+      localStorage.removeItem(STORAGE_KEY_TIMER);
     } else {
       const timerData = {
         status: timerStatus,
@@ -108,7 +181,7 @@ export default function WorkCardPage() {
         jobCardId: timerJobCardId || jobCardNumber,
         lastUpdated: Date.now(),
       };
-      localStorage.setItem("workcard_timer", JSON.stringify(timerData));
+      localStorage.setItem(STORAGE_KEY_TIMER, JSON.stringify(timerData));
     }
   }, [timerStatus, elapsedSeconds, timerJobCardId, jobCardNumber]);
 
@@ -140,7 +213,7 @@ export default function WorkCardPage() {
     setTimerStatus("idle");
     setElapsedSeconds(0);
     setTimerJobCardId(null);
-    localStorage.removeItem("workcard_timer");
+    localStorage.removeItem(STORAGE_KEY_TIMER);
   };
 
   // Job type handlers
@@ -243,22 +316,22 @@ export default function WorkCardPage() {
     setSearchValue(machine.serialNo);
   }, []);
 
-  // Reset form and clear localStorage timer
+  // Reset form and clear ALL localStorage (called ONLY after successful save)
   const handleFormReset = useCallback(() => {
-    // Clear timer
+    // Clear timer state
     setTimerStatus("idle");
     setElapsedSeconds(0);
     setTimerJobCardId(null);
-    localStorage.removeItem("workcard_timer");
     
-    // Reset form fields
+    // Reset all form fields
     setOrderNumber("");
     setJobCardNumber("");
     setClientData(null);
     setIsScanned(false);
     setSearchValue("");
-    setAssignedTechnicians(["", ""]);
-    setLeadTechnicianId("");
+    setAssignedTechnicians([""]);
+    setLeadTechnicianId(null);
+    setClockAtJobLevel(false);
     setReasonCode("");
     setDefectCode("");
     setDescription("");
@@ -270,6 +343,10 @@ export default function WorkCardPage() {
     setLaborItems([]);
     setPaymentMethod("bank");
     setIsSigned(false);
+    
+    // Clear localStorage AFTER resetting state (prevents re-saving empty state)
+    localStorage.removeItem(STORAGE_KEY_FORM);
+    localStorage.removeItem(STORAGE_KEY_TIMER);
   }, []);
 
   const handleSign = () => {
@@ -382,6 +459,21 @@ export default function WorkCardPage() {
     description, faultDate, repairStart, repairEnd, engineHours, parts,
     laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned
   ]);
+
+  // Show loading skeleton during hydration to prevent flickering
+  if (!isHydrated) {
+    return (
+      <main className="min-h-screen bg-background text-foreground">
+        <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 lg:px-8">
+          <div className="space-y-6 animate-pulse">
+            <div className="h-32 bg-muted/30 rounded-lg" />
+            <div className="h-48 bg-muted/30 rounded-lg" />
+            <div className="h-64 bg-muted/30 rounded-lg" />
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-background text-foreground">
