@@ -220,14 +220,14 @@ export default function WorkCardPage() {
 
   // Handle machine selection from search - auto-fills all machine details and order numbers
   const handleMachineSelect = useCallback((machine: MachineSearchResult) => {
-    // Auto-fill client/machine data
+    // Auto-fill client/machine data including Engine SN
     setClientData({
       machineOwner: machine.ownerName,
       billingEntity: machine.ownerName,
       location: machine.location || "",
-      machineModel: machine.model,
+      machineModel: `${machine.manufacturer} ${machine.model}`,
       serialNo: machine.serialNo,
-      engineSN: "",
+      engineSN: machine.engineSN || "",
       previousEngineHours: machine.engineHours,
     });
     
@@ -268,17 +268,46 @@ export default function WorkCardPage() {
   const vat = subtotal * 0.2;
   const grandTotal = subtotal + vat;
 
-  // Save card handler
+  // Save card handler with validation
   const handleSaveCard = useCallback(async (): Promise<{ success: boolean; message?: string }> => {
+    // Validate required fields
+    const validTechnicians = assignedTechnicians.filter(t => t && t.trim() !== "");
+    
+    if (validTechnicians.length === 0) {
+      return { 
+        success: false, 
+        message: "Моля, изберете поне един техник преди да запазите картата." 
+      };
+    }
+
+    if (!clientData || !clientData.serialNo) {
+      return { 
+        success: false, 
+        message: "Моля, изберете машина от търсачката преди да запазите картата." 
+      };
+    }
+
+    if (!orderNumber || !jobCardNumber) {
+      return { 
+        success: false, 
+        message: "Номерът на поръчката и Job Card номерът са задължителни." 
+      };
+    }
+
     try {
       const payload = {
         orderNumber,
         jobCardNumber,
         jobType,
-        assignedTechnicians,
+        assignedTechnicians: validTechnicians,
         leadTechnicianId,
         clockAtJobLevel,
-        elapsedSeconds,
+        // Timer data for persistence
+        timerData: {
+          status: timerStatus,
+          elapsedSeconds,
+          startedAt: timerStatus !== "idle" ? new Date().toISOString() : null,
+        },
         clientData,
         diagnostics: {
           reasonCode,
@@ -316,7 +345,7 @@ export default function WorkCardPage() {
     }
   }, [
     orderNumber, jobCardNumber, jobType, assignedTechnicians, leadTechnicianId,
-    clockAtJobLevel, elapsedSeconds, clientData, reasonCode, defectCode,
+    clockAtJobLevel, timerStatus, elapsedSeconds, clientData, reasonCode, defectCode,
     description, faultDate, repairStart, repairEnd, engineHours, parts,
     laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned
   ]);
