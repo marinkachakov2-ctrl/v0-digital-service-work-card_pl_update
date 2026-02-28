@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { ClockingProvider } from '@/lib/clocking-context'
+import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -23,6 +24,7 @@ export default function RootLayout({
         <ClockingProvider>
           {children}
         </ClockingProvider>
+        <Toaster position="top-center" richColors />
       </body>
     </html>
   )

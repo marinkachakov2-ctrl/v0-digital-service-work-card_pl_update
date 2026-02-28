@@ -1,12 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface FooterProps {
   paymentMethod: "bank" | "cash";
@@ -18,6 +20,7 @@ interface FooterProps {
   isSigned: boolean;
   onSign: () => void;
   timerStatus: "idle" | "running" | "paused";
+  onSaveCard: () => Promise<{ success: boolean; message?: string }>;
 }
 
 export function Footer({
@@ -30,8 +33,32 @@ export function Footer({
   isSigned,
   onSign,
   timerStatus,
+  onSaveCard,
 }: FooterProps) {
+  const [isSaving, setIsSaving] = useState(false);
   const hasActiveTimer = timerStatus === "running" || timerStatus === "paused";
+
+  const handleSaveCard = async () => {
+    setIsSaving(true);
+    try {
+      const result = await onSaveCard();
+      if (result.success) {
+        toast.success("Картата е записана успешно!", {
+          description: "Всички данни са запазени.",
+        });
+      } else {
+        toast.error("Грешка при запис", {
+          description: result.message || "Моля, опитайте отново.",
+        });
+      }
+    } catch {
+      toast.error("Грешка при запис", {
+        description: "Възникна неочаквана грешка.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -170,6 +197,27 @@ export function Footer({
           )}
         </CardContent>
       </Card>
+
+      {/* Save Card Button */}
+      <div className="flex justify-center">
+        <Button
+          onClick={handleSaveCard}
+          disabled={isSaving}
+          className="gap-2 bg-primary px-8 py-6 text-lg text-primary-foreground hover:bg-primary/90"
+        >
+          {isSaving ? (
+            <>
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Запазване...
+            </>
+          ) : (
+            <>
+              <Save className="h-5 w-5" />
+              Запази Карта
+            </>
+          )}
+        </Button>
+      </div>
 
       {/* Disclaimer */}
       <p className="text-center text-xs text-muted-foreground">
