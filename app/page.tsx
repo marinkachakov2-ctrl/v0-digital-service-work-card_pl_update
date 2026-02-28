@@ -243,6 +243,35 @@ export default function WorkCardPage() {
     setSearchValue(machine.serialNo);
   }, []);
 
+  // Reset form and clear localStorage timer
+  const handleFormReset = useCallback(() => {
+    // Clear timer
+    setTimerStatus("idle");
+    setElapsedSeconds(0);
+    setTimerJobCardId(null);
+    localStorage.removeItem("workcard_timer");
+    
+    // Reset form fields
+    setOrderNumber("");
+    setJobCardNumber("");
+    setClientData(null);
+    setIsScanned(false);
+    setSearchValue("");
+    setAssignedTechnicians(["", ""]);
+    setLeadTechnicianId("");
+    setReasonCode("");
+    setDefectCode("");
+    setDescription("");
+    setFaultDate("");
+    setRepairStart("");
+    setRepairEnd("");
+    setEngineHours("");
+    setParts([]);
+    setLaborItems([]);
+    setPaymentMethod("bank");
+    setIsSigned(false);
+  }, []);
+
   const handleSign = () => {
     setIsSigned(true);
     // Auto-stop timer on signature
@@ -287,10 +316,11 @@ export default function WorkCardPage() {
       };
     }
 
-    if (!orderNumber || !jobCardNumber) {
+    // Only jobCardNumber is required - orderNumber is optional ("Work First, Order Later")
+    if (!jobCardNumber) {
       return { 
         success: false, 
-        message: "Номерът на поръчката и Job Card номерът са задължителни." 
+        message: "Job Card номерът е задължителен." 
       };
     }
 
@@ -458,7 +488,9 @@ export default function WorkCardPage() {
             isSigned={isSigned}
             onSign={handleSign}
             timerStatus={timerStatus}
+            orderNumber={orderNumber}
             onSaveCard={handleSaveCard}
+            onFormReset={handleFormReset}
           />
         </div>
       </div>

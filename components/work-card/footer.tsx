@@ -7,8 +7,15 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2 } from "lucide-react";
+import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
+
+interface SaveResult {
+  success: boolean;
+  message?: string;
+  jobCardId?: string;
+  pendingOrder?: boolean;
+}
 
 interface FooterProps {
   paymentMethod: "bank" | "cash";
@@ -20,7 +27,9 @@ interface FooterProps {
   isSigned: boolean;
   onSign: () => void;
   timerStatus: "idle" | "running" | "paused";
-  onSaveCard: () => Promise<{ success: boolean; message?: string }>;
+  orderNumber: string;
+  onSaveCard: () => Promise<SaveResult>;
+  onFormReset: () => void;
 }
 
 export function Footer({
@@ -33,18 +42,25 @@ export function Footer({
   isSigned,
   onSign,
   timerStatus,
+  orderNumber,
   onSaveCard,
+  onFormReset,
 }: FooterProps) {
   const [isSaving, setIsSaving] = useState(false);
+  const [savedResult, setSavedResult] = useState<SaveResult | null>(null);
   const hasActiveTimer = timerStatus === "running" || timerStatus === "paused";
+  const hasPendingOrder = !orderNumber || orderNumber.trim() === "";
 
   const handleSaveCard = async () => {
     setIsSaving(true);
     try {
       const result = await onSaveCard();
       if (result.success) {
+        setSavedResult(result);
         toast.success("Картата е записана успешно!", {
-          description: "Всички данни са запазени.",
+          description: result.pendingOrder 
+            ? "Чака присвояване на номер на поръчка."
+            : "Всички данни са запазени.",
         });
       } else {
         toast.error("Грешка при запис", {
@@ -59,6 +75,54 @@ export function Footer({
       setIsSaving(false);
     }
   };
+
+  const handleNewCard = () => {
+    setSavedResult(null);
+    onFormReset();
+  };
+
+  // Success screen after save
+  if (savedResult?.success) {
+    return (
+      <Card className="border-emerald-500/40 bg-emerald-500/5">
+        <CardContent className="flex flex-col items-center justify-center py-12 space-y-6">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/20">
+            <CheckCircle2 className="h-10 w-10 text-emerald-500" />
+          </div>
+          <div className="text-center space-y-2">
+            <h2 className="text-2xl font-bold text-emerald-500">Успешно Записана!</h2>
+            <p className="text-muted-foreground">Работната карта е запазена в системата.</p>
+          </div>
+          
+          {/* Job Card ID */}
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-6 py-4">
+            <FileText className="h-5 w-5 text-primary" />
+            <div>
+              <p className="text-xs text-muted-foreground">Job Card ID</p>
+              <p className="font-mono text-lg font-bold text-foreground">{savedResult.jobCardId}</p>
+            </div>
+          </div>
+
+          {/* Pending Order Badge */}
+          {savedResult.pendingOrder && (
+            <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-500 px-4 py-2">
+              <Clock className="mr-2 h-4 w-4" />
+              Чака присвояване на номер на поръчка
+            </Badge>
+          )}
+
+          {/* New Card Button */}
+          <Button
+            onClick={handleNewCard}
+            className="gap-2 bg-primary px-8 py-6 text-lg text-primary-foreground hover:bg-primary/90"
+          >
+            <RotateCcw className="h-5 w-5" />
+            Нова Работна Карта
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -198,8 +262,18 @@ export function Footer({
         </CardContent>
       </Card>
 
+      {/* Pending Order Warning */}
+      {hasPendingOrder && (
+        <div className="flex items-center justify-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <Clock className="h-4 w-4 shrink-0 text-amber-500" />
+          <p className="text-sm text-amber-500">
+            Няма номер на поръчка. Картата ще бъде записана като &quot;Чака присвояване&quot;.
+          </p>
+        </div>
+      )}
+
       {/* Save Card Button */}
-      <div className="flex justify-center">
+      <div className="flex flex-col items-center gap-3">
         <Button
           onClick={handleSaveCard}
           disabled={isSaving}
@@ -217,6 +291,11 @@ export function Footer({
             </>
           )}
         </Button>
+        {hasPendingOrder && (
+          <Badge variant="outline" className="border-amber-500/30 text-amber-500">
+            Pending Order Assignment
+          </Badge>
+        )}
       </div>
 
       {/* Disclaimer */}

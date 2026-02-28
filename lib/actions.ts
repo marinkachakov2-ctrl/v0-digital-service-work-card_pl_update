@@ -112,21 +112,22 @@ export async function fetchTechnicians(): Promise<Technician[]> {
 
 /**
  * Submit and save a job card to Supabase
+ * Supports "Work First, Order Later" workflow - orderNumber is optional
  */
 export async function submitJobCard(data: {
-  orderNumber: string;
+  orderNumber?: string; // Optional - supports "Work First, Order Later"
   jobCardNumber: string;
   machineId?: string;
   technicianIds: string[];
   notes?: string;
   status?: string;
   totalSeconds?: number;
-}): Promise<{ success: boolean; jobCardId?: string; error?: string }> {
+}): Promise<{ success: boolean; jobCardId?: string; pendingOrder?: boolean; error?: string }> {
   const supabase = await createClient();
 
-  // Validation
-  if (!data.orderNumber || !data.jobCardNumber) {
-    return { success: false, error: "Missing required fields" };
+  // Validation - only jobCardNumber and technicians are required
+  if (!data.jobCardNumber) {
+    return { success: false, error: "Job Card number is required" };
   }
 
   if (!data.technicianIds || data.technicianIds.length === 0) {
@@ -136,14 +137,19 @@ export async function submitJobCard(data: {
   // Use the first technician as the primary (job_cards table has single technician_id)
   const primaryTechnicianId = data.technicianIds[0];
 
-  // Insert job card into Supabase
+  // Determine if this is a "pending order" submission
+  const hasPendingOrder = !data.orderNumber || data.orderNumber.trim() === "";
+
+  // Insert job card into Supabase - order_no can be null
   const { data: insertedData, error } = await supabase
     .from("job_cards")
     .insert({
-      order_no: data.orderNumber,
+      order_no: hasPendingOrder ? null : data.orderNumber,
       technician_id: primaryTechnicianId,
       machine_id: data.machineId || null,
-      notes: data.notes || null,
+      notes: hasPendingOrder 
+        ? `[PENDING ORDER] ${data.notes || ""}`.trim()
+        : (data.notes || null),
       status: data.status || "pending",
       total_seconds: data.totalSeconds || 0,
       start_time: new Date().toISOString(),
@@ -156,11 +162,12 @@ export async function submitJobCard(data: {
     return { success: false, error: error.message };
   }
 
-  console.log("[Server Action] Job Card saved:", insertedData);
+  console.log("[Server Action] Job Card saved:", insertedData, "Pending order:", hasPendingOrder);
 
   return {
     success: true,
     jobCardId: insertedData?.id || data.jobCardNumber,
+    pendingOrder: hasPendingOrder,
   };
 }
 
