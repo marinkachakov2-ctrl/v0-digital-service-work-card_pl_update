@@ -10,6 +10,7 @@ import { TechnicianRoster } from "@/components/planning/technician-roster";
 import { DragDropScheduler } from "@/components/planning/drag-drop-scheduler";
 import { HourlyGantt } from "@/components/planning/hourly-gantt";
 import { WeeklyTaskView, type WeeklyTask, type WeeklyNote } from "@/components/planning/weekly-task-view";
+import { ServiceWideView, type ServiceTask } from "@/components/planning/service-wide-view";
 
 type ViewLevel = "diary" | "roster" | "gantt";
 
@@ -80,10 +81,91 @@ const initialWeeklyNotes: WeeklyNote[] = [
   { id: "wn2", text: "Провери наличност на филтри", dayIndex: 2 },
 ];
 
+// Service-wide tasks (all technicians view)
+const initialServiceTasks: ServiceTask[] = [
+  // Unassigned tasks (RED)
+  {
+    id: "st1", orderId: "#12350", orderNumber: "ON-5530", jobCardNumber: "JC-0020",
+    technicianId: null, type: "repair", status: "pending",
+    startHour: 9, startMinute: 0, durationMinutes: 180,
+    description: "Ремонт на хидравлична система", dayIndex: 0,
+    machine: "CAT 320D", customer: "Агро ООД",
+  },
+  {
+    id: "st2", orderId: "#12351", orderNumber: "ON-5531", jobCardNumber: "JC-0021",
+    technicianId: null, type: "service", status: "pending",
+    startHour: 14, startMinute: 0, durationMinutes: 120,
+    description: "Профилактика на двигател", dayIndex: 1,
+    machine: "Komatsu PC200", customer: "Строй Инвест",
+  },
+  // Assigned but pending (YELLOW)
+  {
+    id: "st3", orderId: "#12352", orderNumber: "ON-5532", jobCardNumber: "JC-0022",
+    technicianId: "tech-1", type: "inspection", status: "pending",
+    startHour: 8, startMinute: 0, durationMinutes: 90,
+    description: "Годишен технически преглед", dayIndex: 0,
+    machine: "Volvo EC220", customer: "Минстрой АД",
+  },
+  {
+    id: "st4", orderId: "#12353", orderNumber: "ON-5533", jobCardNumber: "JC-0023",
+    technicianId: "tech-2", type: "repair", status: "pending",
+    startHour: 10, startMinute: 30, durationMinutes: 240,
+    description: "Смяна на ходова част", dayIndex: 2,
+    machine: "Hitachi ZX350", customer: "Еко Транс",
+  },
+  // In Progress (GREEN)
+  {
+    id: "st5", orderId: "#12354", orderNumber: "ON-5534", jobCardNumber: "JC-0024",
+    technicianId: "tech-1", type: "repair", status: "active",
+    startHour: 13, startMinute: 0, durationMinutes: 180,
+    description: "Ремонт на турбо", dayIndex: 0,
+    machine: "CAT 966H", customer: "Агро ООД",
+  },
+  {
+    id: "st6", orderId: "#12355", orderNumber: "ON-5535", jobCardNumber: "JC-0025",
+    technicianId: "tech-3", type: "service", status: "active",
+    startHour: 7, startMinute: 30, durationMinutes: 150,
+    description: "Смяна на масло и филтри", dayIndex: 1,
+    machine: "Liebherr R944", customer: "Строй Инвест",
+  },
+  // Completed (BLUE)
+  {
+    id: "st7", orderId: "#12356", orderNumber: "ON-5536", jobCardNumber: "JC-0026",
+    technicianId: "tech-2", type: "service", status: "completed",
+    startHour: 8, startMinute: 0, durationMinutes: 120,
+    description: "Диагностика на електрика", dayIndex: 0,
+    machine: "JCB 3CX", customer: "Минстрой АД",
+  },
+  // More unassigned
+  {
+    id: "st8", orderId: "#12357", orderNumber: "ON-5537", jobCardNumber: "JC-0027",
+    technicianId: null, type: "repair", status: "pending",
+    startHour: 11, startMinute: 0, durationMinutes: 300,
+    description: "Основен ремонт на двигател", dayIndex: 3,
+    machine: "Volvo A40", customer: "Еко Транс",
+  },
+  // More tasks for variety
+  {
+    id: "st9", orderId: "#12358", orderNumber: "ON-5538", jobCardNumber: "JC-0028",
+    technicianId: "tech-4", type: "inspection", status: "pending",
+    startHour: 9, startMinute: 0, durationMinutes: 60,
+    description: "Проверка на спирачна система", dayIndex: 4,
+    machine: "Doosan DX225", customer: "Агро ООД",
+  },
+  {
+    id: "st10", orderId: "#12359", orderNumber: "ON-5539", jobCardNumber: "JC-0029",
+    technicianId: "tech-1", type: "repair", status: "pending",
+    startHour: 8, startMinute: 0, durationMinutes: 480,
+    description: "Ремонт на стрела", dayIndex: 5,
+    machine: "Hyundai R210", customer: "Строй Инвест",
+  },
+];
+
 export default function PlanningBoardPage() {
-  const [planView, setPlanView] = useState<"gantt" | "task">("gantt");
+  const [planView, setPlanView] = useState<"gantt" | "task" | "service">("gantt");
   const [weeklyTasks, setWeeklyTasks] = useState<WeeklyTask[]>(initialWeeklyTasks);
   const [weeklyNotes, setWeeklyNotes] = useState<WeeklyNote[]>(initialWeeklyNotes);
+  const [serviceTasks, setServiceTasks] = useState<ServiceTask[]>(initialServiceTasks);
 
   const [navigation, setNavigation] = useState<NavigationState>({
     level: "diary",
@@ -256,7 +338,7 @@ export default function PlanningBoardPage() {
                     )}
                   >
                     <GanttChart className="h-3.5 w-3.5" />
-                    Gantt View
+                    Gantt
                   </button>
                   <button
                     type="button"
@@ -269,7 +351,20 @@ export default function PlanningBoardPage() {
                     )}
                   >
                     <LayoutGrid className="h-3.5 w-3.5" />
-                    Task View
+                    Седмица
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPlanView("service")}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all",
+                      planView === "service"
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <Users className="h-3.5 w-3.5" />
+                    Всички техници
                   </button>
                 </div>
               </div>
@@ -286,6 +381,16 @@ export default function PlanningBoardPage() {
                   onTasksChange={setWeeklyTasks}
                   notes={weeklyNotes}
                   onNotesChange={setWeeklyNotes}
+                  technicians={weeklyTechnicians}
+                  selectedDate={navigation.selectedDate}
+                />
+              )}
+
+              {/* Service-Wide View (All Technicians) */}
+              {planView === "service" && (
+                <ServiceWideView
+                  tasks={serviceTasks}
+                  onTasksChange={setServiceTasks}
                   technicians={weeklyTechnicians}
                   selectedDate={navigation.selectedDate}
                 />
@@ -319,7 +424,7 @@ export default function PlanningBoardPage() {
             <div
               className={`h-2 w-2 rounded-full ${navigation.level === "gantt" ? "bg-primary" : "bg-muted"}`}
             />
-            <span>{navigation.level === "gantt" && planView === "task" ? "Седмичен план" : "Часова схема"}</span>
+            <span>{navigation.level === "gantt" ? (planView === "service" ? "Всички техници" : planView === "task" ? "Седмичен план" : "Часова схема") : "Часова схема"}</span>
           </div>
         </div>
       </footer>
