@@ -10,6 +10,7 @@ import { LaborTable } from "@/components/work-card/labor-table";
 import { UnresolvedIssuesAlert, UnresolvedIssuesSection, type UnresolvedIssue } from "@/components/work-card/unresolved-issues";
 import { Footer } from "@/components/work-card/footer";
 import { useClocking } from "@/lib/clocking-context";
+import type { MachineSearchResult } from "@/lib/types";
 
 export interface PartItem {
   id: string;
@@ -171,6 +172,21 @@ export default function WorkCardPage() {
     }
   };
 
+  // Handle machine selection from search
+  const handleMachineSelect = useCallback((machine: MachineSearchResult) => {
+    setClientData({
+      machineOwner: machine.ownerName,
+      billingEntity: machine.ownerName,
+      location: machine.location || "",
+      machineModel: machine.model,
+      serialNo: machine.serialNo,
+      engineSN: "",
+      previousEngineHours: machine.engineHours,
+    });
+    setIsScanned(true);
+    setSearchValue(machine.serialNo);
+  }, []);
+
   const handleSign = () => {
     setIsSigned(true);
     // Auto-stop timer on signature
@@ -286,6 +302,7 @@ export default function WorkCardPage() {
             jobType={jobType}
             onJobTypeChange={handleJobTypeChange}
             onBillingEntityChange={handleBillingEntityChange}
+            onMachineSelect={handleMachineSelect}
           />
 
           {/* Mandatory Checklist — between Client and Diagnostics */}
