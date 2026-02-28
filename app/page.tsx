@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Lock, FileEdit } from "lucide-react";
 import { WorkCardHeader } from "@/components/work-card/header";
 import { ClientSection } from "@/components/work-card/client-section";
 import { ChecklistModal, ChecklistButton, getDefaultChecklist, type ChecklistItem } from "@/components/work-card/checklist-modal";
@@ -64,6 +66,9 @@ export default function WorkCardPage() {
 
   // Signature
   const [isSigned, setIsSigned] = useState(false);
+
+  // Card status tracking (for read-only locking)
+  const [cardStatus, setCardStatus] = useState<"new" | "draft" | "completed">("new");
 
   // Diagnostics (must be declared before localStorage hydration useEffect)
   const [reasonCode, setReasonCode] = useState("");
@@ -325,6 +330,9 @@ export default function WorkCardPage() {
     setElapsedSeconds(0);
     setTimerJobCardId(null);
     
+    // Reset card status
+    setCardStatus("new");
+    
     // Reset all form fields
     setOrderNumber("");
     setJobCardNumber("");
@@ -478,9 +486,38 @@ export default function WorkCardPage() {
     );
   }
 
+  // Check if form should be read-only (completed cards are locked)
+  const isReadOnly = cardStatus === "completed";
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 lg:px-8">
+        {/* Status Badge - shows DRAFT (yellow) or COMPLETED (green) */}
+        {cardStatus !== "new" && (
+          <div className="mb-4 flex justify-center">
+            {cardStatus === "draft" ? (
+              <Badge variant="outline" className="border-amber-500/50 bg-amber-500/10 text-amber-500 px-4 py-2 text-sm gap-2">
+                <FileEdit className="h-4 w-4" />
+                ЧЕРНОВА (DRAFT)
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="border-emerald-500/50 bg-emerald-500/10 text-emerald-500 px-4 py-2 text-sm gap-2">
+                <Lock className="h-4 w-4" />
+                ЗАВЪРШЕНА (COMPLETED) - Заключена
+              </Badge>
+            )}
+          </div>
+        )}
+
+        {/* Read-only overlay message for completed cards */}
+        {isReadOnly && (
+          <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 text-center">
+            <p className="text-sm text-emerald-600">
+              Тази работна карта е подписана и заключена. Не може да бъде редактирана.
+            </p>
+          </div>
+        )}
+
         <WorkCardHeader
           searchValue={searchValue}
           onSearchChange={setSearchValue}
@@ -587,6 +624,8 @@ export default function WorkCardPage() {
             orderNumber={orderNumber}
             onSaveCard={handleSaveCard}
             onFormReset={handleFormReset}
+            isReadOnly={isReadOnly}
+            onStatusChange={setCardStatus}
           />
         </div>
       </div>

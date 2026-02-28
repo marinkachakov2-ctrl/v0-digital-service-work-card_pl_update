@@ -26,13 +26,12 @@ interface FooterProps {
   partsTotal: number;
   vat: number;
   grandTotal: number;
-  isSigned: boolean;
-  onSign: () => void;
   timerStatus: "idle" | "running" | "paused";
   orderNumber: string;
   onSaveCard: (signatureData?: string | null, signerName?: string) => Promise<SaveResult>;
   onFormReset: () => void;
   isReadOnly?: boolean;
+  onStatusChange?: (status: "new" | "draft" | "completed") => void;
 }
 
 export function Footer({
@@ -47,6 +46,7 @@ export function Footer({
   onSaveCard,
   onFormReset,
   isReadOnly = false,
+  onStatusChange,
 }: FooterProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [savedResult, setSavedResult] = useState<SaveResult | null>(null);
@@ -70,6 +70,7 @@ export function Footer({
       const result = await onSaveCard(null, signerName); // No signature = draft
       if (result.success) {
         setSavedResult({ ...result, status: "draft" });
+        onStatusChange?.("draft");
         toast.success("Картата е записана като чернова!", {
           description: "Можете да я редактирате и подпишете по-късно.",
         });
@@ -101,6 +102,7 @@ export function Footer({
       const result = await onSaveCard(signatureData, signerName); // With signature = completed
       if (result.success) {
         setSavedResult({ ...result, status: "completed" });
+        onStatusChange?.("completed");
         toast.success("Картата е финализирана!", {
           description: "Клиентът е подписал и картата е заключена.",
         });
