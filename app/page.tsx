@@ -18,7 +18,7 @@ import { RecommendationsSection, type RecommendationsData } from "@/components/w
 import type { ServiceHistoryIssue } from "@/lib/actions";
 import { Footer } from "@/components/work-card/footer";
 import { useClocking } from "@/lib/clocking-context";
-import type { MachineSearchResult, PayerStatus } from "@/lib/types";
+import type { PayerStatus } from "@/lib/types";
 
 export interface PartItem {
   id: string;
@@ -323,34 +323,6 @@ export default function WorkCardPage() {
     }
   };
 
-  // Handle machine selection from search - auto-fills all machine details and order numbers
-  const handleMachineSelect = useCallback((machine: MachineSearchResult) => {
-  // Store machine ID for database relation
-  setSelectedMachineId(machine.id);
-  
-  // Auto-fill client/machine data including Engine SN
-  setClientData({
-  machineOwner: machine.ownerName,
-  billingEntity: machine.ownerName,
-  location: machine.location || "",
-  machineModel: `${machine.manufacturer} ${machine.model}`,
-  serialNo: machine.serialNo,
-  engineSN: machine.engineSN || "",
-  previousEngineHours: machine.engineHours,
-  });
-    
-    // Auto-fill order numbers from server-generated suggestions
-    if (machine.suggestedOrderNumber) {
-      setOrderNumber(machine.suggestedOrderNumber);
-    }
-    if (machine.suggestedJobCardNumber) {
-      setJobCardNumber(machine.suggestedJobCardNumber);
-    }
-    
-    setIsScanned(true);
-    setSearchValue(machine.serialNo);
-  }, []);
-
   // Reset form and clear ALL localStorage (called ONLY after successful save)
   const handleFormReset = useCallback(() => {
     // Clear timer state
@@ -364,10 +336,9 @@ export default function WorkCardPage() {
     // Reset all form fields
     setOrderNumber("");
     setJobCardNumber("");
-    setClientData(null);
-    setIsScanned(false);
-    setSearchValue("");
-    setAssignedTechnicians([""]);
+  setClientData(null);
+  setIsScanned(false);
+  setAssignedTechnicians([""]);
     setLeadTechnicianId(null);
     setClockAtJobLevel(false);
     setReasonCode("");
@@ -648,22 +619,16 @@ export default function WorkCardPage() {
                 engineSN: "",
                 previousEngineHours: null,
               });
+              // Reset payer change state when selecting new order
+              setIsPayerChanged(false);
+              setPayerChangeReason("");
             } else {
               setOrderNumber("");
               setJobCardNumber("");
               setSelectedMachineId(null);
               setIsScanned(false);
               setClientData(null);
-              setIsPayerChanged(false);
-              setPayerChangeReason("");
-            }
-          }}
-          onPayerChange={(payer, reason) => {
-            setPayerStatus(payer);
-            if (payer && reason) {
-              setIsPayerChanged(true);
-              setPayerChangeReason(reason);
-            } else {
+              setPayerStatus(null);
               setIsPayerChanged(false);
               setPayerChangeReason("");
             }
@@ -678,9 +643,6 @@ export default function WorkCardPage() {
             setJobType(typeMap[type] || "repair");
           }}
           selectedOrder={selectedOrder}
-          currentPayer={payerStatus}
-          isPayerChanged={isPayerChanged}
-          payerChangeReason={payerChangeReason}
         />
 
         {/* Technicians Section - Below search, above client section */}
@@ -708,9 +670,18 @@ export default function WorkCardPage() {
   clientData={clientData}
   isScanned={isScanned}
   onBillingEntityChange={handleBillingEntityChange}
-  onMachineSelect={handleMachineSelect}
   onPayerStatusChange={setPayerStatus}
-  onHistoricalIssuesChange={setHistoricalIssues}
+  currentPayer={payerStatus}
+  originalOwner={clientData?.machineOwner || null}
+  onPayerChange={(payer, reason) => {
+    setPayerStatus(payer);
+    if (payer && reason) {
+      setIsPayerChanged(true);
+      setPayerChangeReason(reason);
+    }
+  }}
+  isPayerChanged={isPayerChanged}
+  payerChangeReason={payerChangeReason}
   />
 
           {/* Mandatory Checklist — between Client and Diagnostics */}

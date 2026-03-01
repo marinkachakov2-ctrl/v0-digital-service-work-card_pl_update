@@ -5,22 +5,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Search, 
   QrCode, 
   Loader2, 
-  CheckCircle2, 
-  AlertTriangle,
-  Lock,
-  Pencil,
   X,
-  Building2,
+  FileText,
   Tractor,
+  AlertTriangle,
 } from "lucide-react";
-import { searchServiceOrders, searchClients, type ServiceOrderResult } from "@/lib/actions";
-import type { PayerStatus } from "@/lib/types";
+import { masterSearch, type MasterSearchResult } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 
 // Order types mapping
@@ -33,17 +27,9 @@ const ORDER_TYPES = [
 
 type OrderTypeValue = typeof ORDER_TYPES[number]["value"];
 
-// Payer change reasons
-const PAYER_CHANGE_REASONS = [
-  { value: "different_billing", label: "Различно фактуриране" },
-  { value: "subsidiary", label: "Дъщерна фирма" },
-  { value: "leasing", label: "Лизингова компания" },
-  { value: "insurance", label: "Застрахователна компания" },
-  { value: "other", label: "Друга причина" },
-];
-
 export interface SelectedOrder {
-  orderId: string;
+  type: "order" | "machine";
+  orderId?: string;
   orderNumber: string;
   jobCardNumber: string;
   clientId: string | null;
@@ -52,44 +38,29 @@ export interface SelectedOrder {
   machineModel: string;
   machineSerial: string;
   serviceType: OrderTypeValue;
+  isBlocked?: boolean;
 }
 
 interface OrderSelectorProps {
   onOrderSelect: (order: SelectedOrder | null) => void;
-  onPayerChange: (payer: PayerStatus | null, reason?: string) => void;
   onOrderTypeChange: (type: OrderTypeValue) => void;
   selectedOrder: SelectedOrder | null;
-  currentPayer: PayerStatus | null;
-  isPayerChanged: boolean;
-  payerChangeReason?: string;
 }
 
 export function OrderSelector({
   onOrderSelect,
-  onPayerChange,
   onOrderTypeChange,
   selectedOrder,
-  currentPayer,
-  isPayerChanged,
-  payerChangeReason,
 }: OrderSelectorProps) {
   // Order type selection
   const [orderType, setOrderType] = useState<OrderTypeValue>("repair");
   
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<ServiceOrderResult[]>([]);
+  const [searchResults, setSearchResults] = useState<MasterSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
-
-  // Payer change modal state
-  const [showPayerModal, setShowPayerModal] = useState(false);
-  const [payerSearchQuery, setPayerSearchQuery] = useState("");
-  const [payerSearchResults, setPayerSearchResults] = useState<PayerStatus[]>([]);
-  const [isSearchingPayers, setIsSearchingPayers] = useState(false);
-  const [selectedNewPayer, setSelectedNewPayer] = useState<PayerStatus | null>(null);
-  const [changeReason, setChangeReason] = useState("");
 
   // Close search dropdown when clicking outside
   useEffect(() => {
@@ -102,17 +73,17 @@ export function OrderSelector({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Handle order type change
+  // Handle order type change - does NOT reset selected machine/client
   const handleOrderTypeChange = useCallback((type: OrderTypeValue) => {
     setOrderType(type);
     onOrderTypeChange(type);
-    // Clear search when type changes
+    // Only clear search query and results, NOT the selected order
     setSearchQuery("");
     setSearchResults([]);
     setShowResults(false);
   }, [onOrderTypeChange]);
 
-  // Debounced search for service orders
+  // Debounced master search - searches both orders and machines
   useEffect(() => {
     if (searchQuery.length < 2) {
       setSearchResults([]);
@@ -123,10 +94,8 @@ export function OrderSelector({
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const results = await searchServiceOrders(searchQuery);
-        // Filter by selected order type
-        const filtered = results.filter(r => r.serviceType === orderType);
-        setSearchResults(filtered);
+        const results = await masterSearch(searchQuery, orderType);
+        setSearchResults(results);
         setShowResults(true);
       } catch (error) {
         console.error("Search error:", error);
@@ -139,64 +108,30 @@ export function OrderSelector({
     return () => clearTimeout(timer);
   }, [searchQuery, orderType]);
 
-  // Debounced payer search
-  useEffect(() => {
-    if (payerSearchQuery.length < 2) {
-      setPayerSearchResults([]);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      setIsSearchingPayers(true);
-      try {
-        const results = await searchClients(payerSearchQuery);
-        setPayerSearchResults(results);
-      } catch (error) {
-        console.error("Payer search error:", error);
-        setPayerSearchResults([]);
-      } finally {
-        setIsSearchingPayers(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [payerSearchQuery]);
-
-  // Handle order selection
-  const handleSelectOrder = useCallback((order: ServiceOrderResult) => {
+  // Handle selection from search results
+  const handleSelect = useCallback((result: MasterSearchResult) => {
     const selected: SelectedOrder = {
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      jobCardNumber: order.jobCardNumber,
-      clientId: order.clientId,
-      clientName: order.clientName,
-      machineId: order.machineId,
-      machineModel: order.machineModel,
-      machineSerial: order.machineSerial,
-      serviceType: order.serviceType as OrderTypeValue,
+      type: result.type,
+      orderId: result.type === "order" ? result.id : undefined,
+      orderNumber: result.orderNumber || "",
+      jobCardNumber: result.jobCardNumber || "",
+      clientId: result.clientId || null,
+      clientName: result.clientName,
+      machineId: result.machineId || null,
+      machineModel: result.machineModel,
+      machineSerial: result.machineSerial,
+      serviceType: result.serviceType || orderType,
+      isBlocked: result.isBlocked,
     };
     onOrderSelect(selected);
     setSearchQuery("");
     setShowResults(false);
-  }, [onOrderSelect]);
-
-  // Handle payer change confirmation
-  const handleConfirmPayerChange = useCallback(() => {
-    if (selectedNewPayer && changeReason) {
-      onPayerChange(selectedNewPayer, changeReason);
-      setShowPayerModal(false);
-      setPayerSearchQuery("");
-      setPayerSearchResults([]);
-      setSelectedNewPayer(null);
-      setChangeReason("");
-    }
-  }, [selectedNewPayer, changeReason, onPayerChange]);
+  }, [onOrderSelect, orderType]);
 
   // Clear selected order
   const handleClearOrder = useCallback(() => {
     onOrderSelect(null);
-    onPayerChange(null);
-  }, [onOrderSelect, onPayerChange]);
+  }, [onOrderSelect]);
 
   return (
     <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
@@ -229,7 +164,7 @@ export function OrderSelector({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => searchQuery.length >= 2 && setShowResults(true)}
-                placeholder="Търсене по РК, Поръчка, Клиент или Машина..."
+                placeholder="Търсене по РК, Поръчка, Сериен номер или Клиент..."
                 className="pl-10 pr-4 h-12 text-base bg-background border-border/50 focus:border-[#007A33]"
                 disabled={!!selectedOrder}
               />
@@ -246,303 +181,155 @@ export function OrderSelector({
             </Button>
           </div>
 
-          {/* Search Results Dropdown */}
+          {/* Search Results Dropdown with clear distinction */}
           {showResults && searchResults.length > 0 && (
-            <div className="absolute z-50 mt-2 w-full rounded-lg border border-border bg-popover shadow-xl overflow-hidden">
-              <div className="max-h-80 overflow-y-auto">
-                {searchResults.map((order) => (
+            <div className="absolute z-50 mt-2 w-full rounded-lg border border-border bg-popover shadow-xl">
+              <div className="max-h-80 overflow-y-auto p-2 space-y-1">
+                {searchResults.map((result) => (
                   <button
-                    key={order.id}
+                    key={result.id}
                     type="button"
-                    onClick={() => handleSelectOrder(order)}
-                    className="w-full p-3 text-left hover:bg-accent transition-colors border-b border-border/50 last:border-0"
+                    onClick={() => handleSelect(result)}
+                    className={cn(
+                      "w-full rounded-lg px-3 py-3 text-left transition-colors",
+                      "hover:bg-accent hover:text-accent-foreground",
+                      "focus:outline-none focus:bg-accent",
+                      "border border-transparent",
+                      result.type === "order" 
+                        ? "hover:border-blue-500/30" 
+                        : "hover:border-emerald-500/30",
+                      result.isBlocked && "border-l-4 border-l-red-500"
+                    )}
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <Badge variant="outline" className="bg-[#007A33]/10 text-[#007A33] border-[#007A33]/30 font-mono">
-                        РК {order.jobCardNumber}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        Поръчка: {order.orderNumber}
-                      </span>
+                    <div className="flex items-start gap-3">
+                      {/* Type Icon */}
+                      <div className={cn(
+                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                        result.type === "order" 
+                          ? "bg-blue-500/10 text-blue-500" 
+                          : "bg-emerald-500/10 text-emerald-500"
+                      )}>
+                        {result.type === "order" ? (
+                          <FileText className="h-5 w-5" />
+                        ) : (
+                          <Tractor className="h-5 w-5" />
+                        )}
+                      </div>
+                      
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          {result.type === "order" ? (
+                            <>
+                              <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/30 text-xs">
+                                Отворена поръчка
+                              </Badge>
+                              <span className="font-mono font-bold text-sm text-foreground">
+                                РК {result.jobCardNumber}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-xs">
+                                Машина
+                              </Badge>
+                              <span className="font-mono font-bold text-sm text-foreground">
+                                SN: {result.machineSerial}
+                              </span>
+                            </>
+                          )}
+                          {result.isBlocked && (
+                            <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                              <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />
+                              БЛОКИРАН
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                          {result.type === "order" && result.orderNumber && (
+                            <span>Поръчка: {result.orderNumber}</span>
+                          )}
+                          <span className="truncate">{result.machineModel}</span>
+                          {result.clientName && (
+                            <span className="truncate text-foreground/70">{result.clientName}</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <p className="font-medium text-foreground">{order.clientName || "Няма клиент"}</p>
-                    <p className="text-sm text-muted-foreground flex items-center gap-1">
-                      <Tractor className="h-3 w-3" />
-                      {order.machineModel} • {order.machineSerial}
-                    </p>
                   </button>
                 ))}
               </div>
             </div>
           )}
 
+          {/* No results message */}
           {showResults && searchResults.length === 0 && !isSearching && searchQuery.length >= 2 && (
             <div className="absolute z-50 mt-2 w-full rounded-lg border border-border bg-popover p-4 shadow-xl">
-              <p className="text-sm text-muted-foreground text-center">Няма намерени резултати</p>
+              <p className="text-sm text-muted-foreground text-center">
+                Няма намерени резултати за "{searchQuery}"
+              </p>
             </div>
           )}
         </div>
 
         {/* Selected Order Display */}
         {selectedOrder && (
-          <div className="space-y-3 pt-2 border-t border-border/50">
-            {/* Locked RK # and Order # */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Badge className="bg-[#007A33] text-white font-mono text-sm px-3 py-1">
-                  <Lock className="h-3 w-3 mr-1.5" />
-                  РК {selectedOrder.jobCardNumber}
-                </Badge>
-                <Badge variant="outline" className="font-mono text-sm px-3 py-1">
-                  <Lock className="h-3 w-3 mr-1.5" />
-                  Поръчка: {selectedOrder.orderNumber}
-                </Badge>
+          <div className={cn(
+            "rounded-lg border p-4",
+            selectedOrder.isBlocked 
+              ? "border-red-500/50 bg-red-500/5" 
+              : "border-[#007A33]/30 bg-[#007A33]/5"
+          )}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className={cn(
+                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                  selectedOrder.type === "order" 
+                    ? "bg-blue-500/20 text-blue-500" 
+                    : "bg-emerald-500/20 text-emerald-500"
+                )}>
+                  {selectedOrder.type === "order" ? (
+                    <FileText className="h-5 w-5" />
+                  ) : (
+                    <Tractor className="h-5 w-5" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    {selectedOrder.jobCardNumber && (
+                      <Badge className="bg-primary/20 text-primary border-primary/30 font-mono">
+                        РК {selectedOrder.jobCardNumber}
+                      </Badge>
+                    )}
+                    {selectedOrder.orderNumber && (
+                      <Badge variant="outline" className="font-mono text-xs">
+                        {selectedOrder.orderNumber}
+                      </Badge>
+                    )}
+                    {selectedOrder.isBlocked && (
+                      <Badge variant="destructive" className="text-xs">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        КЛИЕНТ БЛОКИРАН
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-sm text-muted-foreground space-y-0.5">
+                    <p><span className="text-foreground font-medium">{selectedOrder.machineModel}</span> • SN: {selectedOrder.machineSerial}</p>
+                    {selectedOrder.clientName && (
+                      <p>Клиент: {selectedOrder.clientName}</p>
+                    )}
+                  </div>
+                </div>
               </div>
               <Button
-                type="button"
                 variant="ghost"
-                size="sm"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
                 onClick={handleClearOrder}
-                className="text-muted-foreground hover:text-foreground"
               >
                 <X className="h-4 w-4" />
               </Button>
-            </div>
-
-            {/* Client/Machine Info */}
-            <div className="grid grid-cols-2 gap-3">
-              {/* Owner (Read-only) */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
-                  <Building2 className="h-3 w-3" />
-                  Собственик
-                </Label>
-                <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-secondary/50 border border-border/30">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                  <span className="text-sm font-medium truncate">{selectedOrder.clientName || "Няма"}</span>
-                </div>
-              </div>
-
-              {/* Payer (Changeable) */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
-                  <Building2 className="h-3 w-3" />
-                  Платец
-                  {isPayerChanged && (
-                    <Badge variant="outline" className="ml-auto text-[10px] border-amber-500/30 text-amber-500 bg-amber-500/10">
-                      Променен
-                    </Badge>
-                  )}
-                </Label>
-                <div className={cn(
-                  "flex items-center gap-2 px-3 py-2 rounded-md border",
-                  currentPayer?.isBlocked 
-                    ? "bg-red-500/10 border-red-500/30" 
-                    : isPayerChanged 
-                      ? "bg-amber-500/5 border-amber-500/30"
-                      : "bg-secondary/50 border-border/30"
-                )}>
-                  {currentPayer?.isBlocked ? (
-                    <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                  )}
-                  <span className={cn(
-                    "text-sm font-medium truncate flex-1",
-                    currentPayer?.isBlocked && "text-red-400"
-                  )}>
-                    {currentPayer?.payerName || selectedOrder.clientName || "Няма"}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowPayerModal(true)}
-                    className="h-7 px-2 text-xs text-[#007A33] hover:text-[#007A33] hover:bg-[#007A33]/10"
-                  >
-                    <Pencil className="h-3 w-3 mr-1" />
-                    Смени
-                  </Button>
-                </div>
-                {isPayerChanged && payerChangeReason && (
-                  <p className="text-[10px] text-amber-500 flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3" />
-                    Причина: {PAYER_CHANGE_REASONS.find(r => r.value === payerChangeReason)?.label}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Machine Info */}
-            <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-secondary/30 border border-border/20">
-              <Tractor className="h-4 w-4 text-[#007A33]" />
-              <span className="text-sm">
-                <span className="font-medium">{selectedOrder.machineModel}</span>
-                <span className="text-muted-foreground mx-2">•</span>
-                <span className="font-mono text-muted-foreground">{selectedOrder.machineSerial}</span>
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Payer Change Modal */}
-        {showPayerModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-2xl">
-              <div className="flex items-center justify-between p-4 border-b border-border">
-                <h3 className="font-semibold">Смяна на платец</h3>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setShowPayerModal(false);
-                    setPayerSearchQuery("");
-                    setPayerSearchResults([]);
-                    setSelectedNewPayer(null);
-                    setChangeReason("");
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              
-              <div className="p-4 space-y-4">
-                {/* Payer Search */}
-                <div className="space-y-2">
-                  <Label className="text-sm">Търсене на нов платец</Label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      value={payerSearchQuery}
-                      onChange={(e) => setPayerSearchQuery(e.target.value)}
-                      placeholder="Име на фирма..."
-                      className="pl-10"
-                    />
-                    {isSearchingPayers && (
-                      <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />
-                    )}
-                  </div>
-                  
-                  {/* Payer Results */}
-                  {payerSearchResults.length > 0 && (
-                    <div className="max-h-40 overflow-y-auto rounded-md border border-border">
-                      {payerSearchResults.map((payer) => (
-                        <button
-                          key={payer.payerId}
-                          type="button"
-                          onClick={() => {
-                            setSelectedNewPayer(payer);
-                            setPayerSearchQuery("");
-                            setPayerSearchResults([]);
-                          }}
-                          className={cn(
-                            "w-full p-2.5 text-left hover:bg-accent transition-colors border-b border-border/50 last:border-0",
-                            payer.isBlocked && "border-l-2 border-l-red-500"
-                          )}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className={cn(
-                              "font-medium text-sm",
-                              payer.isBlocked && "text-red-400"
-                            )}>
-                              {payer.payerName}
-                            </span>
-                            {payer.isBlocked && (
-                              <Badge className="text-[10px] bg-red-500/10 text-red-500 border-red-500/30">
-                                БЛОКИРАН
-                              </Badge>
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Selected New Payer */}
-                {selectedNewPayer && (
-                  <div className={cn(
-                    "p-3 rounded-md border",
-                    selectedNewPayer.isBlocked 
-                      ? "bg-red-500/10 border-red-500/30" 
-                      : "bg-emerald-500/10 border-emerald-500/30"
-                  )}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {selectedNewPayer.isBlocked ? (
-                          <AlertTriangle className="h-4 w-4 text-red-500" />
-                        ) : (
-                          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                        )}
-                        <span className={cn(
-                          "font-medium",
-                          selectedNewPayer.isBlocked && "text-red-400"
-                        )}>
-                          {selectedNewPayer.payerName}
-                        </span>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSelectedNewPayer(null)}
-                        className="h-6 w-6 p-0"
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    {selectedNewPayer.isBlocked && selectedNewPayer.creditWarningMessage && (
-                      <p className="text-xs text-red-400 mt-1">
-                        {selectedNewPayer.creditWarningMessage}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Change Reason - Mandatory */}
-                <div className="space-y-2">
-                  <Label className="text-sm">
-                    Причина за смяна <span className="text-red-500">*</span>
-                  </Label>
-                  <Select value={changeReason} onValueChange={setChangeReason}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Изберете причина..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAYER_CHANGE_REASONS.map((reason) => (
-                        <SelectItem key={reason.value} value={reason.value}>
-                          {reason.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 p-4 border-t border-border">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setShowPayerModal(false);
-                    setPayerSearchQuery("");
-                    setPayerSearchResults([]);
-                    setSelectedNewPayer(null);
-                    setChangeReason("");
-                  }}
-                >
-                  Отказ
-                </Button>
-                <Button
-                  type="button"
-                  onClick={handleConfirmPayerChange}
-                  disabled={!selectedNewPayer || !changeReason}
-                  className="bg-[#007A33] hover:bg-[#006228] text-white"
-                >
-                  Потвърди
-                </Button>
-              </div>
             </div>
           </div>
         )}

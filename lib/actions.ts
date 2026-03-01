@@ -445,6 +445,114 @@ export async function fetchPayerStatus(clientId: string): Promise<PayerStatus | 
 }
 
 /**
+ * Combined search for the Master Search bar
+ * Searches both service_orders and machines, returning unified results
+ */
+export interface MasterSearchResult {
+  type: "order" | "machine";
+  id: string;
+  // Order fields (if type === "order")
+  orderNumber?: string;
+  jobCardNumber?: string;
+  serviceType?: "warranty" | "repair" | "service_contract" | "internal";
+  // Machine fields
+  machineId?: string;
+  machineSerial: string;
+  machineModel: string;
+  // Client fields
+  clientId?: string;
+  clientName: string;
+  // Payer status
+  isBlocked?: boolean;
+}
+
+export async function masterSearch(
+  query: string,
+  orderType?: string
+): Promise<MasterSearchResult[]> {
+  if (!query || query.trim().length < 2) {
+    return [];
+  }
+
+  const supabase = await createClient();
+  const searchTerm = `%${query.trim()}%`;
+  const results: MasterSearchResult[] = [];
+
+  // Search service orders
+  let orderQuery = supabase
+    .from("service_orders")
+    .select(`
+      *,
+      machines:machine_id (id, model, serial_number),
+      clients:client_id (id, name, is_blocked)
+    `)
+    .or(`order_number.ilike.${searchTerm},job_card_number.ilike.${searchTerm}`)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  // Filter by order type if specified
+  if (orderType && orderType !== "all") {
+    orderQuery = orderQuery.eq("service_type", orderType);
+  }
+
+  const { data: orders, error: orderError } = await orderQuery;
+
+  if (!orderError && orders) {
+    for (const o of orders) {
+      const machine = o.machines as Record<string, unknown> | null;
+      const client = o.clients as Record<string, unknown> | null;
+      results.push({
+        type: "order",
+        id: o.id as string,
+        orderNumber: o.order_number as string || "",
+        jobCardNumber: o.job_card_number as string || "",
+        serviceType: o.service_type as MasterSearchResult["serviceType"],
+        machineId: machine?.id as string || null,
+        machineSerial: machine?.serial_number as string || "",
+        machineModel: machine?.model as string || "",
+        clientId: client?.id as string || null,
+        clientName: client?.name as string || "",
+        isBlocked: client?.is_blocked as boolean || false,
+      });
+    }
+  }
+
+  // Search machines directly (if no order type filter or for repair/internal)
+  const { data: machines, error: machineError } = await supabase
+    .from("machines")
+    .select(`
+      *,
+      clients:client_id (id, name, is_blocked)
+    `)
+    .or(`serial_number.ilike.${searchTerm},model.ilike.${searchTerm}`)
+    .limit(10);
+
+  if (!machineError && machines) {
+    for (const m of machines) {
+      const client = m.clients as Record<string, unknown> | null;
+      // Don't add duplicates (machines already in orders)
+      const alreadyInResults = results.some(
+        r => r.machineSerial === m.serial_number
+      );
+      if (!alreadyInResults) {
+        results.push({
+          type: "machine",
+          id: m.id as string,
+          machineId: m.id as string,
+          machineSerial: m.serial_number as string || "",
+          machineModel: `${m.brand || ""} ${m.model || ""}`.trim(),
+          clientId: client?.id as string || null,
+          clientName: client?.name as string || "",
+          isBlocked: client?.is_blocked as boolean || false,
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
  * Search parts by part number or description
  */
 export interface PartSearchResult {
