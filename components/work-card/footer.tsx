@@ -228,10 +228,11 @@ export function Footer({
   // Auto-reset ONLY for completed cards (not drafts - keep form data for drafts)
   useEffect(() => {
     if (savedResult?.success && savedResult.status === "completed") {
+      // Longer timeout (10s) to allow user to download PDF
       const timer = setTimeout(() => {
         setSavedResult(null);
         onFormReset();
-      }, 4000);
+      }, 10000);
       return () => clearTimeout(timer);
     }
     // For drafts, just clear the savedResult after showing confirmation briefly
@@ -249,41 +250,80 @@ export function Footer({
     return (
       <Card className="border-emerald-500/40 bg-emerald-500/5">
         <CardContent className="flex flex-col items-center justify-center py-12 space-y-6">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/20">
-            <Lock className="h-10 w-10 text-emerald-500" />
+          {/* Animated Checkmark */}
+          <div className="relative flex h-24 w-24 items-center justify-center">
+            <div className="absolute inset-0 rounded-full bg-emerald-500/20 animate-ping" style={{ animationDuration: "1.5s" }} />
+            <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/30">
+              <CheckCircle2 className="h-12 w-12 text-white animate-in zoom-in duration-300" />
+            </div>
           </div>
+          
           <div className="text-center space-y-2">
-            <h2 className="text-2xl font-bold text-emerald-500">Финализирана и Заключена!</h2>
+            <h2 className="text-2xl font-bold text-emerald-500">Успешно запазено!</h2>
             <p className="text-muted-foreground">
-              Работната карта е подписана и не може да бъде редактирана.
+              Работната карта е финализирана и записана в базата данни.
             </p>
           </div>
           
           {/* Job Card ID */}
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-6 py-4">
-            <FileText className="h-5 w-5 text-primary" />
+          <div className="flex items-center gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-6 py-4">
+            <FileText className="h-5 w-5 text-emerald-500" />
             <div>
               <p className="text-xs text-muted-foreground">Job Card ID (Supabase)</p>
-              <p className="font-mono text-lg font-bold text-foreground">{savedResult.jobCardId}</p>
+              <p className="font-mono text-lg font-bold text-emerald-400">{savedResult.jobCardId}</p>
             </div>
           </div>
 
-          {/* Status Badge */}
-          <Badge 
-            variant="outline" 
-            className="border-emerald-500/30 bg-emerald-500/10 text-emerald-500 px-4 py-2"
-          >
-            <Lock className="mr-2 h-4 w-4" />
-            Статус: Completed (Заключена)
-          </Badge>
-
-          {savedResult.pendingOrder && (
-            <Badge variant="outline" className="border-amber-500/30 text-amber-500">
-              Чака присвояване на номер на поръчка
+          {/* Status Badges */}
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Badge 
+              variant="outline" 
+              className="border-emerald-500/30 bg-emerald-500/10 text-emerald-500 px-4 py-2"
+            >
+              <Lock className="mr-2 h-4 w-4" />
+              Заключена
             </Badge>
-          )}
+            {savedResult.pendingOrder && (
+              <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-500 px-4 py-2">
+                <Clock className="mr-2 h-4 w-4" />
+                Чака Order No.
+              </Badge>
+            )}
+          </div>
 
-          <p className="text-xs text-muted-foreground">Формулярът ще се нулира автоматично...</p>
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row items-center gap-3 pt-4">
+            {/* Download PDF Button */}
+            <Button
+              onClick={handleExportPDF}
+              disabled={isExportingPDF}
+              className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-5"
+            >
+              {isExportingPDF ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Download className="h-5 w-5" />
+              )}
+              Download PDF Report
+            </Button>
+            
+            {/* New Card Button */}
+            <Button
+              onClick={() => {
+                setSavedResult(null);
+                onFormReset();
+              }}
+              variant="outline"
+              className="gap-2 px-6 py-5"
+            >
+              <FileText className="h-5 w-5" />
+              Нова Карта
+            </Button>
+          </div>
+
+          <p className="text-xs text-muted-foreground pt-2">
+            Формулярът ще се нулира автоматично след 10 секунди...
+          </p>
         </CardContent>
       </Card>
     );

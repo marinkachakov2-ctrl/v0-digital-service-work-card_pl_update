@@ -10,9 +10,10 @@ import { DiagnosticsSection, type FaultPhoto } from "@/components/work-card/diag
 import { PartsTable } from "@/components/work-card/parts-table";
 import { LaborTable } from "@/components/work-card/labor-table";
 import { UnresolvedIssuesAlert, UnresolvedIssuesSection, type UnresolvedIssue } from "@/components/work-card/unresolved-issues";
+import { CreditWarningBanner } from "@/components/work-card/credit-warning-banner";
 import { Footer } from "@/components/work-card/footer";
 import { useClocking } from "@/lib/clocking-context";
-import type { MachineSearchResult } from "@/lib/types";
+import type { MachineSearchResult, PayerStatus } from "@/lib/types";
 
 export interface PartItem {
   id: string;
@@ -72,6 +73,13 @@ export default function WorkCardPage() {
 
   // Supabase Job Card ID (for UPDATE instead of INSERT on subsequent saves)
   const [savedJobCardId, setSavedJobCardId] = useState<string | null>(null);
+
+  // Payer financial status (for credit warning)
+  const [payerStatus, setPayerStatus] = useState<PayerStatus | null>(null);
+  const isPayerBlocked = payerStatus?.isBlocked === true;
+
+  // Machine and Payer IDs for database relations
+  const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
 
   // Diagnostics (must be declared before localStorage hydration useEffect)
   const [reasonCode, setReasonCode] = useState("");
@@ -235,9 +243,13 @@ export default function WorkCardPage() {
     };
   }, [timerStatus]);
 
-  const handleTimerStart = () => {
-    setTimerJobCardId(jobCardNumber);
-    setTimerStatus("running");
+ const handleTimerStart = () => {
+  // Prevent starting work if payer is blocked
+  if (isPayerBlocked) {
+    return;
+  }
+  setTimerJobCardId(jobCardNumber);
+  setTimerStatus("running");
   };
   const handleTimerPause = () => setTimerStatus("paused");
   const handleTimerStop = () => {
@@ -310,16 +322,19 @@ export default function WorkCardPage() {
 
   // Handle machine selection from search - auto-fills all machine details and order numbers
   const handleMachineSelect = useCallback((machine: MachineSearchResult) => {
-    // Auto-fill client/machine data including Engine SN
-    setClientData({
-      machineOwner: machine.ownerName,
-      billingEntity: machine.ownerName,
-      location: machine.location || "",
-      machineModel: `${machine.manufacturer} ${machine.model}`,
-      serialNo: machine.serialNo,
-      engineSN: machine.engineSN || "",
-      previousEngineHours: machine.engineHours,
-    });
+  // Store machine ID for database relation
+  setSelectedMachineId(machine.id);
+  
+  // Auto-fill client/machine data including Engine SN
+  setClientData({
+  machineOwner: machine.ownerName,
+  billingEntity: machine.ownerName,
+  location: machine.location || "",
+  machineModel: `${machine.manufacturer} ${machine.model}`,
+  serialNo: machine.serialNo,
+  engineSN: machine.engineSN || "",
+  previousEngineHours: machine.engineHours,
+  });
     
     // Auto-fill order numbers from server-generated suggestions
     if (machine.suggestedOrderNumber) {
@@ -363,6 +378,18 @@ export default function WorkCardPage() {
     setLaborItems([]);
     setPaymentMethod("bank");
     setIsSigned(false);
+    
+    // Clear photo states
+    setFaultPhotos([]);
+    setEngineHoursPhoto(null);
+    setEngineHoursPhotoMissingReason("");
+    
+    // Clear machine and payer IDs
+    setSelectedMachineId(null);
+    setPayerStatus(null);
+    
+    // Clear Supabase job card ID
+    setSavedJobCardId(null);
     
     // Clear localStorage AFTER resetting state (prevents re-saving empty state)
     localStorage.removeItem(STORAGE_KEY_FORM);
@@ -462,6 +489,9 @@ export default function WorkCardPage() {
         },
         isSigned,
         submittedAt: new Date().toISOString(),
+        // Machine and Payer IDs for database relations
+        machineId: selectedMachineId || undefined,
+        payerId: payerStatus?.payerId || undefined,
         // Signature workflow - status is determined by presence of signature
         signatureData: signatureData || null,
         signerName: signerName || null,
@@ -491,7 +521,7 @@ export default function WorkCardPage() {
     clockAtJobLevel, timerStatus, elapsedSeconds, clientData, reasonCode, defectCode,
     description, faultDate, repairStart, repairEnd, engineHours, parts,
     laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned, savedJobCardId,
-    faultPhotos, engineHoursPhoto, engineHoursPhotoMissingReason
+    faultPhotos, engineHoursPhoto, engineHoursPhotoMissingReason, selectedMachineId, payerStatus
   ]);
 
   // Show loading skeleton during hydration to prevent flickering
@@ -532,6 +562,14 @@ export default function WorkCardPage() {
           </div>
         )}
 
+        {/* Credit Warning Banner - Sticky at top when payer is blocked */}
+        {payerStatus && (payerStatus.isBlocked || payerStatus.isOverCreditLimit) && (
+          <CreditWarningBanner 
+            payerStatus={payerStatus} 
+            onDismiss={payerStatus.isBlocked ? undefined : () => setPayerStatus(null)}
+          />
+        )}
+
         {/* Read-only overlay message for completed cards */}
         {isReadOnly && (
           <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 text-center">
@@ -539,6 +577,11 @@ export default function WorkCardPage() {
               Тази работна карта е подписана и заключена. Не може да бъде редактирана.
             </p>
           </div>
+        )}
+
+        {/* Spacer when credit warning banner is shown */}
+        {payerStatus && (payerStatus.isBlocked || payerStatus.isOverCreditLimit) && (
+          <div className="h-20" />
         )}
 
         <WorkCardHeader
@@ -555,13 +598,14 @@ export default function WorkCardPage() {
           onClockAtJobLevelChange={setClockAtJobLevel}
           timerStatus={timerStatus}
           elapsedTime={elapsedTime}
-          onTimerStart={handleTimerStart}
-          onTimerPause={handleTimerPause}
-          onTimerStop={handleTimerStop}
-          isAdmin={isAdmin}
-          onAdminToggle={setIsAdmin}
-          isSigned={isSigned}
-        />
+  onTimerStart={handleTimerStart}
+  onTimerPause={handleTimerPause}
+  onTimerStop={handleTimerStop}
+  isAdmin={isAdmin}
+  onAdminToggle={setIsAdmin}
+  isSigned={isSigned}
+  isPayerBlocked={isPayerBlocked}
+  />
 
         <div className="mt-6 space-y-6">
           {/* Unresolved Issues Alert Banner — prominent at top */}
@@ -569,14 +613,15 @@ export default function WorkCardPage() {
             <UnresolvedIssuesAlert previousIssues={previousUnresolvedIssues} />
           )}
 
-          <ClientSection
-            clientData={clientData}
-            isScanned={isScanned}
-            jobType={jobType}
-            onJobTypeChange={handleJobTypeChange}
-            onBillingEntityChange={handleBillingEntityChange}
-            onMachineSelect={handleMachineSelect}
-          />
+ <ClientSection
+  clientData={clientData}
+  isScanned={isScanned}
+  jobType={jobType}
+  onJobTypeChange={handleJobTypeChange}
+  onBillingEntityChange={handleBillingEntityChange}
+  onMachineSelect={handleMachineSelect}
+  onPayerStatusChange={setPayerStatus}
+  />
 
           {/* Mandatory Checklist — between Client and Diagnostics */}
           <ChecklistButton

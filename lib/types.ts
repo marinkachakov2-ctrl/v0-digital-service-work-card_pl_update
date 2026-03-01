@@ -132,4 +132,27 @@ export interface MachineSearchResult {
   // Auto-generated identifiers for auto-fill
   suggestedOrderNumber?: string;
   suggestedJobCardNumber?: string;
+  // Payer/Credit info
+  payerStatus?: PayerStatus | null;
+}
+
+// Payer financial status - for credit check
+export interface PayerStatus {
+  payerId: string;
+  payerName: string;
+  isBlocked: boolean;
+  creditLimit: number;
+  currentBalance: number;
+  creditWarningMessage?: string;
+  isOverCreditLimit: boolean;
+}
+
+// Full machine lookup result with owner and payer info
+export interface MachineWithPayerInfo {
+  machine: MachineSearchResult;
+  owner: {
+    id: string;
+    name: string;
+  } | null;
+  payer: PayerStatus | null;
 }

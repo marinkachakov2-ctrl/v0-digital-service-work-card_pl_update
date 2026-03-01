@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { ClientData } from "@/app/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Building2, MapPin, Tractor, Hash, Cpu, Receipt, Clock, Search, Loader2 } from "lucide-react";
-import { searchMachines } from "@/lib/actions";
-import type { MachineSearchResult } from "@/lib/types";
+import { Building2, MapPin, Tractor, Hash, Cpu, Receipt, Clock, Search, Loader2, CheckCircle2, AlertTriangle, X } from "lucide-react";
+import { searchMachines, fetchMachineWithPayerStatus, searchClients } from "@/lib/actions";
+import type { MachineSearchResult, PayerStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface ClientSectionProps {
@@ -18,6 +18,7 @@ interface ClientSectionProps {
   onJobTypeChange: (type: "warranty" | "repair" | "internal") => void;
   onBillingEntityChange: (value: string) => void;
   onMachineSelect: (machine: MachineSearchResult) => void;
+  onPayerStatusChange?: (status: PayerStatus | null) => void;
 }
 
 export function ClientSection({
@@ -27,11 +28,40 @@ export function ClientSection({
   onJobTypeChange,
   onBillingEntityChange,
   onMachineSelect,
+  onPayerStatusChange,
 }: ClientSectionProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MachineSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  
+  // Serial number direct lookup state
+  const [serialInput, setSerialInput] = useState("");
+  const [isCheckingSerial, setIsCheckingSerial] = useState(false);
+  const [serialCheckResult, setSerialCheckResult] = useState<{
+    found: boolean;
+    ownerName?: string;
+    payerStatus?: PayerStatus | null;
+  } | null>(null);
+
+  // Payer (Billing Entity) search state
+  const [payerSearchQuery, setPayerSearchQuery] = useState("");
+  const [payerSearchResults, setPayerSearchResults] = useState<PayerStatus[]>([]);
+  const [isSearchingPayers, setIsSearchingPayers] = useState(false);
+  const [showPayerResults, setShowPayerResults] = useState(false);
+  const [selectedPayer, setSelectedPayer] = useState<PayerStatus | null>(null);
+  const payerSearchRef = useRef<HTMLDivElement>(null);
+
+  // Close payer dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (payerSearchRef.current && !payerSearchRef.current.contains(event.target as Node)) {
+        setShowPayerResults(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // Debounced search using server action
   useEffect(() => {
@@ -58,11 +88,96 @@ export function ClientSection({
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Live serial number lookup with payer status check
+  useEffect(() => {
+    // Clear result if serial is empty or too short
+    if (serialInput.length < 3) {
+      setSerialCheckResult(null);
+      onPayerStatusChange?.(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsCheckingSerial(true);
+      try {
+        const result = await fetchMachineWithPayerStatus(serialInput);
+        
+        if (result) {
+          setSerialCheckResult({
+            found: true,
+            ownerName: result.owner?.name || result.machine.ownerName,
+            payerStatus: result.payer,
+          });
+          
+          // Notify parent of payer status
+          onPayerStatusChange?.(result.payer);
+          
+          // Auto-select the machine
+          onMachineSelect(result.machine);
+        } else {
+          setSerialCheckResult({ found: false });
+          onPayerStatusChange?.(null);
+        }
+      } catch (error) {
+        console.error("Serial lookup error:", error);
+        setSerialCheckResult({ found: false });
+        onPayerStatusChange?.(null);
+      } finally {
+        setIsCheckingSerial(false);
+      }
+    }, 500); // Slightly longer debounce for serial lookup
+
+    return () => clearTimeout(timer);
+  }, [serialInput, onPayerStatusChange, onMachineSelect]);
+
+  // Debounced payer search
+  useEffect(() => {
+    if (payerSearchQuery.length < 2) {
+      setPayerSearchResults([]);
+      setShowPayerResults(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingPayers(true);
+      try {
+        const results = await searchClients(payerSearchQuery);
+        setPayerSearchResults(results);
+        setShowPayerResults(true);
+      } catch (error) {
+        console.error("Payer search error:", error);
+        setPayerSearchResults([]);
+      } finally {
+        setIsSearchingPayers(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [payerSearchQuery]);
+
   const handleSelectMachine = useCallback((machine: MachineSearchResult) => {
     onMachineSelect(machine);
     setSearchQuery("");
     setShowResults(false);
   }, [onMachineSelect]);
+
+  // Handle payer selection from search results
+  const handleSelectPayer = useCallback((payer: PayerStatus) => {
+    setSelectedPayer(payer);
+    setPayerSearchQuery("");
+    setShowPayerResults(false);
+    onBillingEntityChange(payer.payerName);
+    // Update parent with payer status (this will trigger the red banner if blocked)
+    onPayerStatusChange?.(payer);
+  }, [onBillingEntityChange, onPayerStatusChange]);
+
+  // Clear selected payer
+  const handleClearPayer = useCallback(() => {
+    setSelectedPayer(null);
+    setPayerSearchQuery("");
+    onBillingEntityChange("");
+    onPayerStatusChange?.(null);
+  }, [onBillingEntityChange, onPayerStatusChange]);
   return (
     <Card className="border-border bg-card">
       <CardHeader className="pb-4">
@@ -140,20 +255,128 @@ export function ClientSection({
               className="bg-secondary text-foreground"
             />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 relative" ref={payerSearchRef}>
             <Label className="flex items-center gap-2 text-xs text-muted-foreground">
               <Receipt className="h-3 w-3" />
               Платец (Billing Entity)
+              {/* Status indicators */}
+              {isSearchingPayers && (
+                <Loader2 className="h-3 w-3 animate-spin text-primary ml-auto" />
+              )}
+              {!isSearchingPayers && selectedPayer && !selectedPayer.isBlocked && (
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 ml-auto" />
+              )}
+              {!isSearchingPayers && selectedPayer?.isBlocked && (
+                <AlertTriangle className="h-3.5 w-3.5 text-red-500 ml-auto" />
+              )}
             </Label>
-            <Input
-              value={clientData?.billingEntity || ""}
-              onChange={(e) => onBillingEntityChange(e.target.value)}
-              placeholder={clientData?.machineOwner || "--"}
-              disabled={!isScanned}
-              className="bg-card text-foreground border-primary/30 focus:border-primary"
-            />
-            {clientData && clientData.billingEntity !== clientData.machineOwner && (
-              <p className="text-[10px] text-amber-500">Different from Machine Owner</p>
+            
+            {/* Selected payer display or search input */}
+            {selectedPayer ? (
+              <div className={cn(
+                "flex items-center justify-between rounded-md border px-3 py-2",
+                selectedPayer.isBlocked 
+                  ? "border-red-500/50 bg-red-500/10" 
+                  : "border-emerald-500/50 bg-emerald-500/5"
+              )}>
+                <div className="flex items-center gap-2">
+                  {selectedPayer.isBlocked ? (
+                    <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                  )}
+                  <span className={cn(
+                    "text-sm font-medium truncate",
+                    selectedPayer.isBlocked ? "text-red-400" : "text-foreground"
+                  )}>
+                    {selectedPayer.payerName}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearPayer}
+                  className="p-1 rounded hover:bg-secondary transition-colors"
+                  aria-label="Clear selection"
+                >
+                  <X className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <Input
+                  value={payerSearchQuery}
+                  onChange={(e) => setPayerSearchQuery(e.target.value)}
+                  onFocus={() => payerSearchQuery.length >= 2 && setShowPayerResults(true)}
+                  placeholder="Търсене на платец..."
+                  className="bg-card text-foreground border-primary/30 focus:border-primary pr-10"
+                />
+                {isSearchingPayers && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+              </div>
+            )}
+            
+            {/* Payer search results dropdown */}
+            {showPayerResults && payerSearchResults.length > 0 && (
+              <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-popover shadow-lg" style={{ top: "100%" }}>
+                <div className="max-h-64 overflow-y-auto p-1">
+                  {payerSearchResults.map((payer) => (
+                    <button
+                      key={payer.payerId}
+                      type="button"
+                      onClick={() => handleSelectPayer(payer)}
+                      className={cn(
+                        "w-full rounded-md px-3 py-2 text-left transition-colors",
+                        "hover:bg-accent hover:text-accent-foreground",
+                        "focus:outline-none focus:bg-accent",
+                        payer.isBlocked && "border-l-2 border-red-500"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={cn(
+                          "font-medium text-sm",
+                          payer.isBlocked ? "text-red-400" : "text-foreground"
+                        )}>
+                          {payer.payerName}
+                        </span>
+                        {payer.isBlocked && (
+                          <span className="text-[10px] uppercase font-semibold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded">
+                            БЛОКИРАН
+                          </span>
+                        )}
+                      </div>
+                      {payer.isBlocked && payer.creditWarningMessage && (
+                        <p className="text-[10px] text-red-400 mt-0.5 truncate">
+                          {payer.creditWarningMessage}
+                        </p>
+                      )}
+                      {!payer.isBlocked && payer.creditLimit > 0 && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          Лимит: {payer.creditLimit.toLocaleString()} лв | Баланс: {payer.currentBalance.toLocaleString()} лв
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {showPayerResults && payerSearchResults.length === 0 && !isSearchingPayers && payerSearchQuery.length >= 2 && (
+              <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-popover p-3 shadow-lg" style={{ top: "100%" }}>
+                <p className="text-sm text-muted-foreground text-center">Няма намерени клиенти</p>
+              </div>
+            )}
+            
+            {/* Warning if selected payer is blocked */}
+            {selectedPayer?.isBlocked && (
+              <p className="text-[10px] text-red-500 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                ВНИМАНИЕ: Този платец е блокиран! Работата е забранена.
+              </p>
+            )}
+            
+            {/* Note if different from machine owner */}
+            {clientData && selectedPayer && selectedPayer.payerName !== clientData.machineOwner && !selectedPayer.isBlocked && (
+              <p className="text-[10px] text-amber-500">Различен от собственика на машината</p>
             )}
           </div>
           <div className="space-y-2">
@@ -184,13 +407,57 @@ export function ClientSection({
             <Label className="flex items-center gap-2 text-xs text-muted-foreground">
               <Hash className="h-3 w-3" />
               Сериен No
+              {/* Status indicators */}
+              {isCheckingSerial && (
+                <Loader2 className="h-3 w-3 animate-spin text-primary ml-auto" />
+              )}
+              {!isCheckingSerial && serialCheckResult?.found && !serialCheckResult?.payerStatus?.isBlocked && (
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 ml-auto" />
+              )}
+              {!isCheckingSerial && serialCheckResult?.found && serialCheckResult?.payerStatus?.isBlocked && (
+                <AlertTriangle className="h-3.5 w-3.5 text-red-500 ml-auto" />
+              )}
             </Label>
-            <Input
-              readOnly
-              value={clientData?.serialNo || ""}
-              placeholder="--"
-              className="bg-secondary text-foreground"
-            />
+            <div className="relative">
+              <Input
+                value={clientData?.serialNo || serialInput}
+                onChange={(e) => {
+                  if (!isScanned) {
+                    setSerialInput(e.target.value);
+                  }
+                }}
+                readOnly={isScanned}
+                placeholder="Въведете сериен номер..."
+                className={cn(
+                  "text-foreground",
+                  isScanned ? "bg-secondary" : "bg-card border-primary/30 focus:border-primary",
+                  serialCheckResult?.found && !serialCheckResult?.payerStatus?.isBlocked && "border-emerald-500/50",
+                  serialCheckResult?.found && serialCheckResult?.payerStatus?.isBlocked && "border-red-500/50"
+                )}
+              />
+            </div>
+            {/* Owner name display on successful lookup */}
+            {serialCheckResult?.found && serialCheckResult.ownerName && (
+              <p className={cn(
+                "text-[10px] flex items-center gap-1",
+                serialCheckResult.payerStatus?.isBlocked ? "text-red-400" : "text-emerald-400"
+              )}>
+                {serialCheckResult.payerStatus?.isBlocked ? (
+                  <>
+                    <AlertTriangle className="h-3 w-3" />
+                    {serialCheckResult.ownerName} - БЛОКИРАН
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-3 w-3" />
+                    {serialCheckResult.ownerName}
+                  </>
+                )}
+              </p>
+            )}
+            {serialCheckResult?.found === false && serialInput.length >= 3 && (
+              <p className="text-[10px] text-amber-500">Машината не е намерена в базата данни</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label className="flex items-center gap-2 text-xs text-muted-foreground">
