@@ -175,6 +175,77 @@ export async function fetchMachineWithPayerStatus(serialNo: string): Promise<Mac
 }
 
 /**
+ * Search clients by name for the Billing Entity (Payer) dropdown
+ * Returns clients with their financial status
+ */
+export async function searchClients(query: string): Promise<PayerStatus[]> {
+  if (!query || query.trim().length < 2) {
+    return [];
+  }
+
+  const supabase = await createClient();
+  const searchTerm = `%${query.trim()}%`;
+
+  const { data, error } = await supabase
+    .from("clients")
+    .select("*")
+    .ilike("name", searchTerm)
+    .limit(10);
+
+  if (error) {
+    console.error("[Server Action] searchClients error:", error);
+    return [];
+  }
+
+  return (data || []).map((c) => {
+    const creditLimit = Number(c.credit_limit) || 0;
+    const currentBalance = Number(c.current_balance) || 0;
+    return {
+      payerId: c.id,
+      payerName: c.name || "",
+      isBlocked: c.is_blocked === true,
+      creditLimit,
+      currentBalance,
+      creditWarningMessage: c.credit_warning_message || undefined,
+      isOverCreditLimit: creditLimit > 0 && currentBalance > creditLimit,
+    };
+  });
+}
+
+/**
+ * Fetch a specific client's payer status by ID
+ */
+export async function fetchPayerStatus(clientId: string): Promise<PayerStatus | null> {
+  if (!clientId) return null;
+
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("clients")
+    .select("*")
+    .eq("id", clientId)
+    .single();
+
+  if (error || !data) {
+    console.error("[Server Action] fetchPayerStatus error:", error);
+    return null;
+  }
+
+  const creditLimit = Number(data.credit_limit) || 0;
+  const currentBalance = Number(data.current_balance) || 0;
+
+  return {
+    payerId: data.id,
+    payerName: data.name || "",
+    isBlocked: data.is_blocked === true,
+    creditLimit,
+    currentBalance,
+    creditWarningMessage: data.credit_warning_message || undefined,
+    isOverCreditLimit: creditLimit > 0 && currentBalance > creditLimit,
+  };
+}
+
+/**
  * Get all active technicians for assignment dropdowns
  */
 export async function fetchTechnicians(): Promise<Technician[]> {
