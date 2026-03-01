@@ -446,6 +446,10 @@ export default function WorkCardPage() {
           repairStart,
           repairEnd,
           engineHours,
+          // Photo URLs for Supabase Storage
+          photo_urls: faultPhotos.map(p => p.url),
+          hour_meter_photo: engineHoursPhoto?.url || null,
+          engine_hours_photo_missing_reason: engineHoursPhotoMissingReason || null,
         },
         parts,
         laborItems,
@@ -486,7 +490,8 @@ export default function WorkCardPage() {
     orderNumber, jobCardNumber, jobType, assignedTechnicians, leadTechnicianId,
     clockAtJobLevel, timerStatus, elapsedSeconds, clientData, reasonCode, defectCode,
     description, faultDate, repairStart, repairEnd, engineHours, parts,
-    laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned, savedJobCardId
+    laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned, savedJobCardId,
+    faultPhotos, engineHoursPhoto, engineHoursPhotoMissingReason
   ]);
 
   // Show loading skeleton during hydration to prevent flickering

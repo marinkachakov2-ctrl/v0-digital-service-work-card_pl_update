@@ -31,6 +31,10 @@ export interface JobCardPayload {
     repairStart: string;
     repairEnd: string;
     engineHours: string;
+    // Photo URLs from Supabase Storage
+    photo_urls?: string[];
+    hour_meter_photo?: string | null;
+    engine_hours_photo_missing_reason?: string | null;
   };
   parts: Array<{
     id: string;
@@ -98,6 +102,20 @@ export async function POST(request: Request) {
     // Status: 'draft' by default, 'completed' only when signed
     const cardStatus = data.signatureData ? "completed" : "draft";
 
+    // Collect all photo URLs: diagnostic photos + engine hours photo
+    const allPhotoUrls: string[] = [];
+    if (data.diagnostics?.photo_urls?.length) {
+      allPhotoUrls.push(...data.diagnostics.photo_urls);
+    }
+    if (data.diagnostics?.hour_meter_photo) {
+      allPhotoUrls.push(data.diagnostics.hour_meter_photo);
+    }
+
+    // Add engine hours photo missing reason to notes if provided
+    if (data.diagnostics?.engine_hours_photo_missing_reason) {
+      notesArray.push(`Engine hours photo missing: ${data.diagnostics.engine_hours_photo_missing_reason}`);
+    }
+
     const insertData = {
       technician_id: primaryTechnicianId, // UUID string
       machine_id: data.machineId || null, // UUID string or null
@@ -108,6 +126,7 @@ export async function POST(request: Request) {
       status: cardStatus, // 'draft' or 'completed'
       notes: notesArray.join(" | ") || null, // text or null
       signature_data: data.signatureData || null, // Base64 signature or null
+      photo_urls: allPhotoUrls.length > 0 ? allPhotoUrls : null, // text[] array of Supabase Storage URLs
     };
 
     // Determine if this is an UPDATE or INSERT operation

@@ -31,7 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AlertTriangle, Calendar, Clock, Gauge, Mic, MicOff, AlertCircle, Camera, X, ImageIcon, Upload, Loader2 } from "lucide-react";
+import { AlertTriangle, Calendar, Clock, Gauge, Mic, MicOff, AlertCircle, Camera, X, ImageIcon, Upload, Loader2, CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 // Web Speech API types are declared globally in /types/speech-recognition.d.ts
@@ -860,31 +860,63 @@ export function DiagnosticsSection({
             />
 
             {engineHoursPhoto ? (
-              <div className="flex items-center gap-3">
-                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border">
-                  <img
-                    src={engineHoursPhoto.url || "/placeholder.svg"}
-                    alt="Engine hours meter"
-                    className="h-full w-full object-cover"
-                  />
+              <div className="space-y-3">
+                {/* Thumbnail preview with success indicator */}
+                <div className="flex items-start gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+                  {/* Thumbnail */}
+                  <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border-2 border-emerald-500/40">
+                    <img
+                      src={engineHoursPhoto.url || "/placeholder.svg"}
+                      alt="Engine hours meter"
+                      className="h-full w-full object-cover"
+                    />
+                    {/* Green checkmark overlay */}
+                    <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    </div>
+                  </div>
+                  
+                  {/* Success message and details */}
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      <span className="text-sm font-medium text-emerald-500">Photo Uploaded</span>
+                    </div>
+                    <p className="text-xs text-foreground truncate max-w-[180px]">{engineHoursPhoto.name}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {engineHoursPhoto.timestamp.toLocaleTimeString("bg-BG", { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+                  
+                  {/* Remove button */}
                   <button
                     type="button"
                     onClick={() => {
-                      URL.revokeObjectURL(engineHoursPhoto.url);
+                      // Only revoke if it's a blob URL (not Supabase URL)
+                      if (engineHoursPhoto.url.startsWith("blob:")) {
+                        URL.revokeObjectURL(engineHoursPhoto.url);
+                      }
                       onEngineHoursPhotoChange(null);
                     }}
-                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground"
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
                     aria-label="Remove photo"
                   >
-                    <X className="h-3 w-3" />
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
-                <div>
-                  <p className="text-xs text-foreground">{engineHoursPhoto.name}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {engineHoursPhoto.timestamp.toLocaleTimeString("bg-BG", { hour: "2-digit", minute: "2-digit" })}
-                  </p>
-                </div>
+                
+                {/* Re-capture button */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => engineHoursFileRef.current?.click()}
+                  disabled={isUploadingEngineHours}
+                  className="gap-2 bg-transparent text-xs"
+                >
+                  <Camera className="h-3 w-3" />
+                  Retake Photo
+                </Button>
               </div>
             ) : (
               <div className="space-y-2">
@@ -899,12 +931,12 @@ export function DiagnosticsSection({
                   {isUploadingEngineHours ? (
                     <>
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Качване...
+                      Uploading...
                     </>
                   ) : (
                     <>
                       <Camera className="h-3.5 w-3.5" />
-                      Upload Photo of Engine Hours
+                      Capture Engine Hours Photo
                     </>
                   )}
                 </Button>
