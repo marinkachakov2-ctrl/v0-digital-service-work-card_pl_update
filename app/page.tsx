@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Lock, FileEdit } from "lucide-react";
 import { WorkCardHeader } from "@/components/work-card/header";
 import { OrderSelector, type SelectedOrder } from "@/components/work-card/order-selector";
+import { TechniciansSection } from "@/components/work-card/technicians-section";
 import { ClientSection } from "@/components/work-card/client-section";
 import { ChecklistModal, ChecklistButton, getDefaultChecklist, type ChecklistItem } from "@/components/work-card/checklist-modal";
 import { DiagnosticsSection, type FaultPhoto } from "@/components/work-card/diagnostics-section";
@@ -607,12 +608,8 @@ export default function WorkCardPage() {
         <WorkCardHeader
           orderNumber={selectedOrder?.orderNumber || orderNumber}
           jobCardNumber={selectedOrder?.jobCardNumber || jobCardNumber}
-          assignedTechnicians={assignedTechnicians}
-          onAssignedTechniciansChange={setAssignedTechnicians}
-          leadTechnicianId={leadTechnicianId}
-          onLeadTechnicianIdChange={setLeadTechnicianId}
           clockAtJobLevel={clockAtJobLevel}
-          onClockAtJobLevelChange={setClockAtJobLevel}
+          hasMultipleTechs={assignedTechnicians.filter(Boolean).length > 1}
           timerStatus={timerStatus}
           elapsedTime={elapsedTime}
           onTimerStart={handleTimerStart}
@@ -684,6 +681,16 @@ export default function WorkCardPage() {
           currentPayer={payerStatus}
           isPayerChanged={isPayerChanged}
           payerChangeReason={payerChangeReason}
+        />
+
+        {/* Technicians Section - Below search, above client section */}
+        <TechniciansSection
+          assignedTechnicians={assignedTechnicians}
+          onAssignedTechniciansChange={setAssignedTechnicians}
+          leadTechnicianId={leadTechnicianId}
+          onLeadTechnicianIdChange={setLeadTechnicianId}
+          clockAtJobLevel={clockAtJobLevel}
+          onClockAtJobLevelChange={setClockAtJobLevel}
         />
 
         <div className="mt-6 space-y-6">
