@@ -61,6 +61,10 @@ export interface JobCardPayload {
   submittedAt: string;
   machineId?: string;
   payerId?: string;
+  // Recommendations and pending issues
+  pendingIssues?: string | null;
+  pendingReason?: string | null;
+  recommendations?: string | null;
   // Signature workflow
   status?: "draft" | "completed";
   signatureData?: string | null;
@@ -136,6 +140,10 @@ export async function POST(request: Request) {
       photo_urls: allPhotoUrls.length > 0 ? allPhotoUrls : null, // text[] array of Supabase Storage URLs
       payer_id: data.payerId || null, // UUID of the billing entity (payer)
       client_name_signed: data.signerName || null, // Name of person who signed
+      // Recommendations and pending issues
+      pending_issues: data.pendingIssues || null, // text - issues not resolved
+      pending_reason: data.pendingReason || null, // text - reason for not resolving
+      recommendations: data.recommendations || null, // text - general recommendations
     };
 
     // Determine if this is an UPDATE or INSERT operation

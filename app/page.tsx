@@ -11,6 +11,9 @@ import { PartsTable } from "@/components/work-card/parts-table";
 import { LaborTable } from "@/components/work-card/labor-table";
 import { UnresolvedIssuesAlert, UnresolvedIssuesSection, type UnresolvedIssue } from "@/components/work-card/unresolved-issues";
 import { CreditWarningBanner } from "@/components/work-card/credit-warning-banner";
+import { HistoricalIssuesBanner } from "@/components/work-card/historical-issues-banner";
+import { RecommendationsSection, type RecommendationsData } from "@/components/work-card/recommendations-section";
+import type { ServiceHistoryIssue } from "@/lib/actions";
 import { Footer } from "@/components/work-card/footer";
 import { useClocking } from "@/lib/clocking-context";
 import type { MachineSearchResult, PayerStatus } from "@/lib/types";
@@ -80,6 +83,16 @@ export default function WorkCardPage() {
 
   // Machine and Payer IDs for database relations
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
+
+  // Historical issues from previous job cards
+  const [historicalIssues, setHistoricalIssues] = useState<ServiceHistoryIssue[]>([]);
+
+  // Recommendations and pending issues for current card
+  const [recommendationsData, setRecommendationsData] = useState<RecommendationsData>({
+    pendingIssues: "",
+    pendingReason: "",
+    recommendations: "",
+  });
 
   // Diagnostics (must be declared before localStorage hydration useEffect)
   const [reasonCode, setReasonCode] = useState("");
@@ -388,6 +401,14 @@ export default function WorkCardPage() {
     setSelectedMachineId(null);
     setPayerStatus(null);
     
+    // Clear historical issues and recommendations
+    setHistoricalIssues([]);
+    setRecommendationsData({
+      pendingIssues: "",
+      pendingReason: "",
+      recommendations: "",
+    });
+    
     // Clear Supabase job card ID
     setSavedJobCardId(null);
     
@@ -492,6 +513,10 @@ export default function WorkCardPage() {
         // Machine and Payer IDs for database relations
         machineId: selectedMachineId || undefined,
         payerId: payerStatus?.payerId || undefined,
+        // Recommendations and pending issues
+        pendingIssues: recommendationsData.pendingIssues || null,
+        pendingReason: recommendationsData.pendingReason || null,
+        recommendations: recommendationsData.recommendations || null,
         // Signature workflow - status is determined by presence of signature
         signatureData: signatureData || null,
         signerName: signerName || null,
@@ -521,7 +546,7 @@ export default function WorkCardPage() {
     clockAtJobLevel, timerStatus, elapsedSeconds, clientData, reasonCode, defectCode,
     description, faultDate, repairStart, repairEnd, engineHours, parts,
     laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned, savedJobCardId,
-    faultPhotos, engineHoursPhoto, engineHoursPhotoMissingReason, selectedMachineId, payerStatus
+    faultPhotos, engineHoursPhoto, engineHoursPhotoMissingReason, selectedMachineId, payerStatus, recommendationsData
   ]);
 
   // Show loading skeleton during hydration to prevent flickering
@@ -608,6 +633,11 @@ export default function WorkCardPage() {
   />
 
         <div className="mt-6 space-y-6">
+          {/* Historical Issues Banner - Yellow alert for pending issues from previous visits */}
+          {historicalIssues.length > 0 && (
+            <HistoricalIssuesBanner issues={historicalIssues} />
+          )}
+
           {/* Unresolved Issues Alert Banner — prominent at top */}
           {isScanned && (
             <UnresolvedIssuesAlert previousIssues={previousUnresolvedIssues} />
@@ -621,6 +651,7 @@ export default function WorkCardPage() {
   onBillingEntityChange={handleBillingEntityChange}
   onMachineSelect={handleMachineSelect}
   onPayerStatusChange={setPayerStatus}
+  onHistoricalIssuesChange={setHistoricalIssues}
   />
 
           {/* Mandatory Checklist — between Client and Diagnostics */}
@@ -680,6 +711,12 @@ export default function WorkCardPage() {
             issues={unresolvedIssues}
             onIssuesChange={setUnresolvedIssues}
             previousIssues={previousUnresolvedIssues}
+          />
+
+          {/* Recommendations and Pending Issues for Future */}
+          <RecommendationsSection
+            data={recommendationsData}
+            onChange={setRecommendationsData}
           />
 
           <Footer
