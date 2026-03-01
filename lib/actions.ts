@@ -246,6 +246,83 @@ export async function fetchPayerStatus(clientId: string): Promise<PayerStatus | 
 }
 
 /**
+ * Search parts by part number or description
+ */
+export interface PartSearchResult {
+  id: string;
+  partNumber: string;
+  description: string;
+  unitPrice: number;
+  stockQuantity: number;
+}
+
+export async function searchParts(query: string): Promise<PartSearchResult[]> {
+  if (!query || query.trim().length < 2) {
+    return [];
+  }
+
+  const supabase = await createClient();
+  const searchTerm = `%${query.trim()}%`;
+
+  const { data, error } = await supabase
+    .from("parts")
+    .select("*")
+    .or(`part_number.ilike.${searchTerm},description.ilike.${searchTerm}`)
+    .limit(10);
+
+  if (error) {
+    console.error("[Server Action] searchParts error:", error);
+    return [];
+  }
+
+  return (data || []).map((p) => ({
+    id: p.id,
+    partNumber: p.part_number || "",
+    description: p.description || "",
+    unitPrice: Number(p.unit_price) || 0,
+    stockQuantity: Number(p.stock_quantity) || 0,
+  }));
+}
+
+/**
+ * Fetch service history for a machine - returns last 2 job cards with pending issues
+ */
+export interface ServiceHistoryIssue {
+  jobCardId: string;
+  date: string;
+  pendingIssues: string | null;
+  pendingReason: string | null;
+  status: string;
+}
+
+export async function fetchMachineServiceHistory(machineId: string): Promise<ServiceHistoryIssue[]> {
+  if (!machineId) return [];
+
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("job_cards")
+    .select("id, created_at, pending_issues, pending_reason, status")
+    .eq("machine_id", machineId)
+    .not("pending_issues", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(2);
+
+  if (error) {
+    console.error("[Server Action] fetchMachineServiceHistory error:", error);
+    return [];
+  }
+
+  return (data || []).map((jc) => ({
+    jobCardId: jc.id,
+    date: jc.created_at,
+    pendingIssues: jc.pending_issues,
+    pendingReason: jc.pending_reason,
+    status: jc.status || "unknown",
+  }));
+}
+
+/**
  * Get all active technicians for assignment dropdowns
  */
 export async function fetchTechnicians(): Promise<Technician[]> {

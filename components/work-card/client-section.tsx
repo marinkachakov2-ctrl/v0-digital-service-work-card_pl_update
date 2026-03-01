@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Building2, MapPin, Tractor, Hash, Cpu, Receipt, Clock, Search, Loader2, CheckCircle2, AlertTriangle, X } from "lucide-react";
-import { searchMachines, fetchMachineWithPayerStatus, searchClients } from "@/lib/actions";
+import { searchMachines, fetchMachineWithPayerStatus, searchClients, fetchMachineServiceHistory, type ServiceHistoryIssue } from "@/lib/actions";
 import type { MachineSearchResult, PayerStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +19,7 @@ interface ClientSectionProps {
   onBillingEntityChange: (value: string) => void;
   onMachineSelect: (machine: MachineSearchResult) => void;
   onPayerStatusChange?: (status: PayerStatus | null) => void;
+  onHistoricalIssuesChange?: (issues: ServiceHistoryIssue[]) => void;
 }
 
 export function ClientSection({
@@ -29,6 +30,7 @@ export function ClientSection({
   onBillingEntityChange,
   onMachineSelect,
   onPayerStatusChange,
+  onHistoricalIssuesChange,
 }: ClientSectionProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MachineSearchResult[]>([]);
@@ -88,12 +90,13 @@ export function ClientSection({
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Live serial number lookup with payer status check
+  // Live serial number lookup with payer status check AND service history
   useEffect(() => {
     // Clear result if serial is empty or too short
     if (serialInput.length < 3) {
       setSerialCheckResult(null);
       onPayerStatusChange?.(null);
+      onHistoricalIssuesChange?.([]);
       return;
     }
 
@@ -114,21 +117,27 @@ export function ClientSection({
           
           // Auto-select the machine
           onMachineSelect(result.machine);
+          
+          // Fetch service history for this machine (last 2 job cards with pending issues)
+          const history = await fetchMachineServiceHistory(result.machine.id);
+          onHistoricalIssuesChange?.(history);
         } else {
           setSerialCheckResult({ found: false });
           onPayerStatusChange?.(null);
+          onHistoricalIssuesChange?.([]);
         }
       } catch (error) {
         console.error("Serial lookup error:", error);
         setSerialCheckResult({ found: false });
         onPayerStatusChange?.(null);
+        onHistoricalIssuesChange?.([]);
       } finally {
         setIsCheckingSerial(false);
       }
     }, 500); // Slightly longer debounce for serial lookup
 
     return () => clearTimeout(timer);
-  }, [serialInput, onPayerStatusChange, onMachineSelect]);
+  }, [serialInput, onPayerStatusChange, onMachineSelect, onHistoricalIssuesChange]);
 
   // Debounced payer search
   useEffect(() => {
