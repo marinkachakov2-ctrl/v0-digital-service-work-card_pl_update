@@ -559,7 +559,7 @@ export function DiagnosticsSection({
                   aria-label="Заснемане на снимка"
                 />
                 
-                {/* Camera Button with loading state */}
+                {/* Camera Button with loading state and cloud upload indicator */}
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -569,19 +569,29 @@ export function DiagnosticsSection({
                         size="sm"
                         onClick={openCamera}
                         disabled={isUploadingDiagnostic}
-                        className="h-8 gap-1.5 shrink-0 bg-transparent hover:bg-secondary"
+                        className={`h-8 gap-1.5 shrink-0 ${
+                          mounted && photos.length > 0 
+                            ? "bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20" 
+                            : "bg-transparent hover:bg-secondary"
+                        }`}
                       >
                         {isUploadingDiagnostic ? (
                           <>
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            <span className="text-xs">Качване...</span>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                            <span className="text-xs text-primary">Uploading...</span>
                           </>
                         ) : (
                           <>
-                            <Camera className="h-3.5 w-3.5" />
-                            <span className="text-xs">Снимка</span>
+                            {mounted && photos.length > 0 ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                            ) : (
+                              <Camera className="h-3.5 w-3.5" />
+                            )}
+                            <span className={`text-xs ${mounted && photos.length > 0 ? "text-emerald-500" : ""}`}>
+                              {mounted && photos.length > 0 ? "Uploaded" : "Снимка"}
+                            </span>
                             {mounted && photos.length > 0 && (
-                              <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+                              <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-medium text-white">
                                 {photos.length}
                               </span>
                             )}
@@ -590,7 +600,7 @@ export function DiagnosticsSection({
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Направете снимка на повредата</p>
+                      <p>{mounted && photos.length > 0 ? `${photos.length} снимки качени в облака` : "Направете снимка на повредата"}</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -677,41 +687,53 @@ export function DiagnosticsSection({
               </p>
             )}
 
-            {/* Photo Gallery */}
+            {/* Photo Gallery with cloud upload indicators */}
             {photos.length > 0 && (
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
-                  <ImageIcon className="h-3 w-3" />
-                  Снимки на повредата ({photos.length})
+                  <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                  <span className="text-emerald-500">Снимки качени в облака ({photos.length})</span>
                 </Label>
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                  {photos.map((photo, index) => (
-                    <div 
-                      key={photo.id} 
-                      className="group relative aspect-square rounded-md overflow-hidden border border-border bg-secondary cursor-pointer"
-                      onClick={() => setSelectedImageIndex(index)}
-                    >
-                      <img
-                        src={photo.url || "/placeholder.svg"}
-                        alt={`Снимка ${index + 1}`}
-                        className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                      />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRemovePhoto(photo.id);
-                        }}
-                        className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
-                        aria-label="Премахни снимката"
+                  {photos.map((photo, index) => {
+                    // Check if URL is from Supabase (cloud) or local blob
+                    const isCloudUploaded = photo.url.includes("supabase") || !photo.url.startsWith("blob:");
+                    return (
+                      <div 
+                        key={photo.id} 
+                        className={`group relative aspect-square rounded-md overflow-hidden border bg-secondary cursor-pointer ${
+                          isCloudUploaded ? "border-emerald-500/30" : "border-border"
+                        }`}
+                        onClick={() => setSelectedImageIndex(index)}
                       >
-                        <X className="h-3 w-3" />
-                      </button>
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5 text-[10px] text-white truncate">
-                        {photo.timestamp.toLocaleTimeString("bg-BG", { hour: "2-digit", minute: "2-digit" })}
+                        <img
+                          src={photo.url || "/placeholder.svg"}
+                          alt={`Снимка ${index + 1}`}
+                          className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                        />
+                        {/* Cloud upload indicator */}
+                        {isCloudUploaded && (
+                          <div className="absolute top-1 left-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 shadow-sm">
+                            <CheckCircle2 className="h-3 w-3 text-white" />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemovePhoto(photo.id);
+                          }}
+                          className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                          aria-label="Премахни снимката"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5 text-[10px] text-white truncate">
+                          {photo.timestamp.toLocaleTimeString("bg-BG", { hour: "2-digit", minute: "2-digit" })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
