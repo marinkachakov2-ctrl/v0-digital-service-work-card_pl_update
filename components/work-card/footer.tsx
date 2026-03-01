@@ -1,17 +1,28 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { SignaturePad } from "@/components/ui/signature-pad";
 import { TechnicianSignaturePad } from "@/components/ui/technician-signature-pad";
-import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, Lock, Download, AlertCircle } from "lucide-react";
+import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, Lock, Download, AlertCircle, ShieldCheck } from "lucide-react";
 import { generateJobCardPDF, type PDFJobCardData } from "@/lib/pdf-export";
 import { toast } from "sonner";
+
+const ADMIN_PIN = "1234";
 
 interface SaveResult {
   success: boolean;
@@ -53,6 +64,7 @@ export function Footer({
   onStatusChange,
   pdfData,
 }: FooterProps) {
+  const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [savedResult, setSavedResult] = useState<SaveResult | null>(null);
@@ -61,8 +73,38 @@ export function Footer({
   // Technician signature state
   const [techSignatureData, setTechSignatureData] = useState<string | null>(null);
   const [technicianName, setTechnicianName] = useState<string>("");
+  // Admin PIN dialog state
+  const [showPinDialog, setShowPinDialog] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState(false);
   const hasActiveTimer = timerStatus === "running" || timerStatus === "paused";
   const hasPendingOrder = !orderNumber || orderNumber.trim() === "";
+
+  // Handle admin PIN verification
+  const handlePinSubmit = () => {
+    if (pinInput === ADMIN_PIN) {
+      setShowPinDialog(false);
+      setPinInput("");
+      setPinError(false);
+      // Store in sessionStorage so user doesn't need to re-enter
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("megatron_admin_auth", "true");
+      }
+      router.push("/admin/job-cards");
+    } else {
+      setPinError(true);
+      setPinInput("");
+    }
+  };
+
+  // Check if already authorized
+  const handleAdminClick = () => {
+    if (typeof window !== "undefined" && sessionStorage.getItem("megatron_admin_auth") === "true") {
+      router.push("/admin/job-cards");
+    } else {
+      setShowPinDialog(true);
+    }
+  };
 
   // Export PDF handler with validation
   const handleExportPDF = async () => {
@@ -451,16 +493,68 @@ export function Footer({
         С подписването клиентът се съгласява с общите условия на Мегатрон ЕАД.
       </p>
 
-      {/* Admin Link - subtle footer link */}
+      {/* Admin Link - subtle footer link with PIN protection */}
       <div className="flex justify-center pt-4 border-t border-border/30 mt-4">
-        <a
-          href="/admin/job-cards"
+        <button
+          type="button"
+          onClick={handleAdminClick}
           className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
         >
           <Lock className="h-3 w-3" />
           Admin
-        </a>
+        </button>
       </div>
+
+      {/* PIN Dialog */}
+      <Dialog open={showPinDialog} onOpenChange={setShowPinDialog}>
+        <DialogContent className="sm:max-w-[340px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              Admin Access
+            </DialogTitle>
+            <DialogDescription>
+              Въведете PIN код за достъп до админ панела.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="admin-pin" className="text-foreground">PIN Code</Label>
+              <Input
+                id="admin-pin"
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="----"
+                value={pinInput}
+                onChange={(e) => {
+                  setPinInput(e.target.value.replace(/\D/g, ""));
+                  setPinError(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && pinInput.length === 4) {
+                    handlePinSubmit();
+                  }
+                }}
+                className={`text-center text-2xl tracking-[0.5em] font-mono bg-background ${
+                  pinError ? "border-destructive" : ""
+                }`}
+              />
+              {pinError && (
+                <p className="text-xs text-destructive">Грешен PIN код. Опитайте отново.</p>
+              )}
+            </div>
+            <Button
+              onClick={handlePinSubmit}
+              disabled={pinInput.length !== 4}
+              className="w-full"
+            >
+              <Lock className="h-4 w-4 mr-2" />
+              Вход
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

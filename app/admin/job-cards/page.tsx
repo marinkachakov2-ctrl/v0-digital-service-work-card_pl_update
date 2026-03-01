@@ -349,10 +349,10 @@ export default function JobCardsAdminPage() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-4">
-              <Link href="/admin">
-                <Button variant="ghost" size="sm" className="gap-1.5">
+              <Link href="/">
+                <Button variant="outline" size="sm" className="gap-1.5 bg-transparent border-primary/30 text-primary hover:bg-primary/10">
                   <ArrowLeft className="h-4 w-4" />
-                  Back
+                  Back to Form
                 </Button>
               </Link>
               <div>

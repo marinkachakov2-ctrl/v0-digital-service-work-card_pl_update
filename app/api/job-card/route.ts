@@ -99,8 +99,14 @@ export async function POST(request: Request) {
     if (data.clientData?.machineModel) notesArray.push(`Machine: ${data.clientData.machineModel}`);
     if (data.clientData?.serialNo) notesArray.push(`Serial: ${data.clientData.serialNo}`);
 
-    // Status: 'draft' by default, 'completed' only when signed
-    const cardStatus = data.signatureData ? "completed" : "draft";
+    // Status logic:
+    // - 'draft' = Not signed yet
+    // - 'pending_order' = Signed but no order number
+    // - 'completed' = Signed and has order number
+    let cardStatus: "draft" | "pending_order" | "completed" = "draft";
+    if (data.signatureData) {
+      cardStatus = hasPendingOrder ? "pending_order" : "completed";
+    }
 
     // Collect all photo URLs: diagnostic photos + engine hours photo
     const allPhotoUrls: string[] = [];
