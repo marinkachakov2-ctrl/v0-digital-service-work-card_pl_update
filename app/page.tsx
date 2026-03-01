@@ -144,7 +144,6 @@ export default function WorkCardPage() {
         if (form.jobType) setJobType(form.jobType);
         if (form.clientData) setClientData(form.clientData);
         if (form.isScanned !== undefined) setIsScanned(form.isScanned);
-        if (form.searchValue) setSearchValue(form.searchValue);
         if (form.assignedTechnicians) setAssignedTechnicians(form.assignedTechnicians);
         if (form.leadTechnicianId) setLeadTechnicianId(form.leadTechnicianId);
         if (form.clockAtJobLevel !== undefined) setClockAtJobLevel(form.clockAtJobLevel);
@@ -202,7 +201,6 @@ export default function WorkCardPage() {
       jobType,
       clientData,
       isScanned,
-      searchValue,
       assignedTechnicians,
       leadTechnicianId,
       clockAtJobLevel,
@@ -223,7 +221,7 @@ export default function WorkCardPage() {
 
     localStorage.setItem(STORAGE_KEY_FORM, JSON.stringify(formData));
   }, [
-    isHydrated, orderNumber, jobCardNumber, jobType, clientData, isScanned, searchValue,
+    isHydrated, orderNumber, jobCardNumber, jobType, clientData, isScanned,
     assignedTechnicians, leadTechnicianId, clockAtJobLevel, reasonCode, defectCode,
     description, faultDate, repairStart, repairEnd, engineHours, parts, laborItems, paymentMethod,
     savedJobCardId, cardStatus
