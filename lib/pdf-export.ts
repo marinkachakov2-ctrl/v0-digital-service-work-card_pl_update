@@ -2,6 +2,44 @@
 
 import { jsPDF } from "jspdf";
 
+/**
+ * Helper function to load an image and convert to base64
+ * Waits for full image load before resolving
+ */
+async function loadImageAsBase64(url: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+          resolve(dataUrl);
+        } else {
+          resolve(null);
+        }
+      } catch {
+        resolve(null);
+      }
+    };
+    
+    img.onerror = () => {
+      resolve(null);
+    };
+    
+    // Set timeout for slow images
+    setTimeout(() => resolve(null), 10000);
+    
+    img.src = url;
+  });
+}
+
 // Types for job card data
 export interface PDFJobCardData {
   // Header
@@ -474,7 +512,7 @@ export async function generateJobCardPDF(data: PDFJobCardData): Promise<void> {
   y += 40;
 
   // =====================
-  // PHOTO GALLERY
+  // PHOTO GALLERY (with proper image loading)
   // =====================
   
   const allPhotos = [...(data.photoUrls || [])];
@@ -493,7 +531,12 @@ export async function generateJobCardPDF(data: PDFJobCardData): Promise<void> {
     drawLine(y, COLORS.primary);
     y += 8;
 
-    // Load and add images
+    // Load all images in parallel before rendering
+    const loadedImages = await Promise.all(
+      allPhotos.map(url => loadImageAsBase64(url))
+    );
+
+    // Photo grid settings
     const photoSize = 40;
     const photosPerRow = 4;
     const photoSpacing = (contentWidth - photoSize * photosPerRow) / (photosPerRow - 1);
@@ -508,28 +551,29 @@ export async function generateJobCardPDF(data: PDFJobCardData): Promise<void> {
       }
 
       const x = margin + col * (photoSize + photoSpacing);
+      const imageBase64 = loadedImages[i];
       
-      // Draw placeholder box for photos
+      // Draw container box
       doc.setFillColor(240, 240, 240);
       doc.roundedRect(x, y, photoSize, photoSize, 2, 2, "F");
       doc.setDrawColor(...COLORS.border);
       doc.roundedRect(x, y, photoSize, photoSize, 2, 2, "S");
       
-      // Try to add the actual image
-      try {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.src = allPhotos[i];
-        
-        // Note: In a real implementation, you'd need to await image loading
-        // For now, we'll show a placeholder with the URL
-        doc.setTextColor(...COLORS.muted);
-        doc.setFontSize(6);
-        const label = i === allPhotos.length - 1 && data.engineHoursPhotoUrl ? "Engine Hours" : `Photo ${i + 1}`;
-        doc.text(label, x + 2, y + photoSize - 2);
-      } catch {
-        // Fallback to placeholder
+      // Add the actual image if loaded successfully
+      if (imageBase64) {
+        try {
+          doc.addImage(imageBase64, "JPEG", x + 1, y + 1, photoSize - 2, photoSize - 6);
+        } catch {
+          // Image failed to add, show label instead
+        }
       }
+      
+      // Add label below image
+      doc.setTextColor(...COLORS.muted);
+      doc.setFontSize(6);
+      const isEngineHoursPhoto = i === allPhotos.length - 1 && data.engineHoursPhotoUrl;
+      const label = isEngineHoursPhoto ? "Engine Hours" : `Photo ${i + 1}`;
+      doc.text(label, x + 2, y + photoSize - 2);
     }
 
     y += photoSize + 15;

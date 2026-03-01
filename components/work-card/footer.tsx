@@ -8,7 +8,8 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SignaturePad } from "@/components/ui/signature-pad";
-import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, Lock, Download } from "lucide-react";
+import { TechnicianSignaturePad } from "@/components/ui/technician-signature-pad";
+import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, Lock, Download, AlertCircle } from "lucide-react";
 import { generateJobCardPDF, type PDFJobCardData } from "@/lib/pdf-export";
 import { toast } from "sonner";
 
@@ -57,14 +58,25 @@ export function Footer({
   const [savedResult, setSavedResult] = useState<SaveResult | null>(null);
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const [signerName, setSignerName] = useState<string>("");
+  // Technician signature state
+  const [techSignatureData, setTechSignatureData] = useState<string | null>(null);
+  const [technicianName, setTechnicianName] = useState<string>("");
   const hasActiveTimer = timerStatus === "running" || timerStatus === "paused";
   const hasPendingOrder = !orderNumber || orderNumber.trim() === "";
 
-  // Export PDF handler
+  // Export PDF handler with validation
   const handleExportPDF = async () => {
     if (!pdfData) {
       toast.error("PDF Export Error", {
         description: "Missing job card data for PDF export.",
+      });
+      return;
+    }
+
+    // Validate: Technician signature is required for PDF export
+    if (!techSignatureData) {
+      toast.error("Липсва подпис на техника", {
+        description: "Моля, добавете подпис на техника преди генериране на PDF.",
       });
       return;
     }
@@ -79,6 +91,8 @@ export function Footer({
         grandTotal,
         customerSignature: signatureData,
         customerName: signerName,
+        technicianSignature: techSignatureData,
+        technicianName: technicianName,
       };
 
       await generateJobCardPDF(fullPdfData);
@@ -96,11 +110,19 @@ export function Footer({
     }
   };
 
-  // Handle signature change from SignaturePad
+  // Handle customer signature change from SignaturePad
   const handleSignatureChange = (signature: string | null, name?: string) => {
     setSignatureData(signature);
     if (name !== undefined) {
       setSignerName(name);
+    }
+  };
+
+  // Handle technician signature change
+  const handleTechSignatureChange = (signature: string | null, name?: string) => {
+    setTechSignatureData(signature);
+    if (name !== undefined) {
+      setTechnicianName(name);
     }
   };
 
@@ -322,6 +344,13 @@ export function Footer({
         </CardContent>
       </Card>
 
+      {/* Technician Signature Pad - Required for PDF export */}
+      <TechnicianSignaturePad
+        onSignatureChange={handleTechSignatureChange}
+        disabled={isReadOnly}
+        leadTechnician={pdfData?.leadTechnician}
+      />
+
       {/* Client Signature Pad */}
       <SignaturePad
         onSignatureChange={handleSignatureChange}
@@ -348,14 +377,24 @@ export function Footer({
         </div>
       )}
 
+      {/* PDF Export Warning - requires technician signature */}
+      {!techSignatureData && (
+        <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-4 py-3">
+          <AlertCircle className="h-4 w-4 shrink-0 text-primary" />
+          <p className="text-sm text-primary">
+            За да генерирате PDF, техникът трябва да се подпише по-горе.
+          </p>
+        </div>
+      )}
+
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
         {/* Export PDF */}
         <Button
           onClick={handleExportPDF}
-          disabled={isExportingPDF || isSaving}
+          disabled={isExportingPDF || isSaving || !techSignatureData}
           variant="outline"
-          className="gap-2 px-5 py-5 text-base border-primary/30 text-primary hover:bg-primary/10"
+          className="gap-2 px-5 py-5 text-base border-primary/30 text-primary hover:bg-primary/10 disabled:opacity-50"
         >
           {isExportingPDF ? (
             <Loader2 className="h-5 w-5 animate-spin" />
