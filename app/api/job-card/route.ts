@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 export interface JobCardPayload {
+  existingJobCardId?: string; // If provided, UPDATE instead of INSERT
   orderNumber?: string;
   jobCardNumber: string;
   jobType: "warranty" | "repair" | "internal";
@@ -30,6 +31,10 @@ export interface JobCardPayload {
     repairStart: string;
     repairEnd: string;
     engineHours: string;
+    // Photo URLs from Supabase Storage
+    photo_urls?: string[];
+    hour_meter_photo?: string | null;
+    engine_hours_photo_missing_reason?: string | null;
   };
   parts: Array<{
     id: string;
@@ -58,6 +63,7 @@ export interface JobCardPayload {
   // Signature workflow
   status?: "draft" | "completed";
   signatureData?: string | null;
+  signerName?: string | null;
 }
 
 export async function POST(request: Request) {
@@ -88,12 +94,33 @@ export async function POST(request: Request) {
     // Build notes from diagnostics and other info
     const notesArray: string[] = [];
     if (hasPendingOrder) notesArray.push("[PENDING ORDER]");
+    if (data.signerName) notesArray.push(`Signed by: ${data.signerName}`);
     if (data.diagnostics?.description) notesArray.push(data.diagnostics.description);
     if (data.clientData?.machineModel) notesArray.push(`Machine: ${data.clientData.machineModel}`);
     if (data.clientData?.serialNo) notesArray.push(`Serial: ${data.clientData.serialNo}`);
 
-    // Status: 'draft' by default, 'completed' only when signed
-    const cardStatus = data.signatureData ? "completed" : "draft";
+    // Status logic:
+    // - 'draft' = Not signed yet
+    // - 'pending_order' = Signed but no order number
+    // - 'completed' = Signed and has order number
+    let cardStatus: "draft" | "pending_order" | "completed" = "draft";
+    if (data.signatureData) {
+      cardStatus = hasPendingOrder ? "pending_order" : "completed";
+    }
+
+    // Collect all photo URLs: diagnostic photos + engine hours photo
+    const allPhotoUrls: string[] = [];
+    if (data.diagnostics?.photo_urls?.length) {
+      allPhotoUrls.push(...data.diagnostics.photo_urls);
+    }
+    if (data.diagnostics?.hour_meter_photo) {
+      allPhotoUrls.push(data.diagnostics.hour_meter_photo);
+    }
+
+    // Add engine hours photo missing reason to notes if provided
+    if (data.diagnostics?.engine_hours_photo_missing_reason) {
+      notesArray.push(`Engine hours photo missing: ${data.diagnostics.engine_hours_photo_missing_reason}`);
+    }
 
     const insertData = {
       technician_id: primaryTechnicianId, // UUID string
@@ -105,49 +132,82 @@ export async function POST(request: Request) {
       status: cardStatus, // 'draft' or 'completed'
       notes: notesArray.join(" | ") || null, // text or null
       signature_data: data.signatureData || null, // Base64 signature or null
+      photo_urls: allPhotoUrls.length > 0 ? allPhotoUrls : null, // text[] array of Supabase Storage URLs
     };
 
-    console.log("SUPABASE INSERT DATA:", JSON.stringify(insertData, null, 2));
+    // Determine if this is an UPDATE or INSERT operation
+    const isUpdate = !!data.existingJobCardId;
+    
+    console.log(isUpdate ? "SUPABASE UPDATE DATA:" : "SUPABASE INSERT DATA:", JSON.stringify(insertData, null, 2));
 
-    // Insert into Supabase with explicit await
-    const { data: insertedData, error } = await supabase
-      .from("job_cards")
-      .insert(insertData)
-      .select("id")
-      .single();
+    let resultId: string;
 
-    // Check for errors BEFORE returning success
-    if (error) {
-      console.error("SUPABASE ERROR:", error);
-      console.error("SUPABASE ERROR MESSAGE:", error.message);
-      console.error("SUPABASE ERROR DETAILS:", error.details);
-      console.error("SUPABASE ERROR HINT:", error.hint);
-      return NextResponse.json(
-        { 
-          success: false, 
-          message: `Database error: ${error.message}`,
-          error: error.message 
-        },
-        { status: 500 }
-      );
+    if (isUpdate) {
+      // UPDATE existing job card
+      console.log("SUPABASE: Updating existing job card:", data.existingJobCardId);
+      
+      const { data: updatedData, error } = await supabase
+        .from("job_cards")
+        .update(insertData)
+        .eq("id", data.existingJobCardId)
+        .select("id")
+        .single();
+
+      if (error) {
+        console.error("SUPABASE UPDATE ERROR:", error);
+        return NextResponse.json(
+          { success: false, message: `Database error: ${error.message}` },
+          { status: 500 }
+        );
+      }
+
+      if (!updatedData?.id) {
+        console.error("SUPABASE ERROR: No ID returned from update");
+        return NextResponse.json(
+          { success: false, message: "Update succeeded but no ID returned" },
+          { status: 500 }
+        );
+      }
+
+      resultId = updatedData.id;
+      console.log("SUPABASE SUCCESS: Job Card updated with ID:", resultId);
+    } else {
+      // INSERT new job card
+      const { data: insertedData, error } = await supabase
+        .from("job_cards")
+        .insert(insertData)
+        .select("id")
+        .single();
+
+      if (error) {
+        console.error("SUPABASE INSERT ERROR:", error);
+        console.error("SUPABASE ERROR MESSAGE:", error.message);
+        console.error("SUPABASE ERROR DETAILS:", error.details);
+        console.error("SUPABASE ERROR HINT:", error.hint);
+        return NextResponse.json(
+          { success: false, message: `Database error: ${error.message}` },
+          { status: 500 }
+        );
+      }
+
+      if (!insertedData?.id) {
+        console.error("SUPABASE ERROR: No ID returned from insert");
+        return NextResponse.json(
+          { success: false, message: "Insert succeeded but no ID returned" },
+          { status: 500 }
+        );
+      }
+
+      resultId = insertedData.id;
+      console.log("SUPABASE SUCCESS: Job Card created with ID:", resultId);
     }
-
-    // Verify we got an ID back
-    if (!insertedData?.id) {
-      console.error("SUPABASE ERROR: No ID returned from insert");
-      return NextResponse.json(
-        { success: false, message: "Insert succeeded but no ID returned" },
-        { status: 500 }
-      );
-    }
-
-    console.log("SUPABASE SUCCESS: Job Card saved with ID:", insertedData.id);
 
     return NextResponse.json({
       success: true,
-      message: "Job card saved successfully",
-      jobCardId: insertedData.id,
+      message: isUpdate ? "Job card updated successfully" : "Job card created successfully",
+      jobCardId: resultId,
       pendingOrder: hasPendingOrder,
+      isUpdate,
     });
   } catch (error) {
     console.error("SUPABASE ERROR: Unexpected error:", error);

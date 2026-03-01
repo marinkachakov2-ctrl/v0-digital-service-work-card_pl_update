@@ -5,26 +5,35 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eraser, Check, PenLine, User } from "lucide-react";
+import { Eraser, Check, PenLine, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface SignaturePadProps {
-  onSignatureChange: (signatureData: string | null, signerName?: string) => void;
+interface TechnicianSignaturePadProps {
+  onSignatureChange: (signatureData: string | null, technicianName?: string) => void;
   disabled?: boolean;
   initialSignature?: string | null;
-  initialSignerName?: string;
+  initialTechnicianName?: string;
+  leadTechnician?: string;
 }
 
-export function SignaturePad({ 
+export function TechnicianSignaturePad({ 
   onSignatureChange, 
   disabled = false, 
   initialSignature = null,
-  initialSignerName = ""
-}: SignaturePadProps) {
+  initialTechnicianName = "",
+  leadTechnician = ""
+}: TechnicianSignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(!!initialSignature);
-  const [signerName, setSignerName] = useState(initialSignerName);
+  const [technicianName, setTechnicianName] = useState(initialTechnicianName || leadTechnician);
+
+  // Update name when leadTechnician changes
+  useEffect(() => {
+    if (leadTechnician && !technicianName) {
+      setTechnicianName(leadTechnician);
+    }
+  }, [leadTechnician, technicianName]);
 
   // Initialize canvas
   useEffect(() => {
@@ -40,8 +49,8 @@ export function SignaturePad({
     canvas.height = rect.height * window.devicePixelRatio;
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
-    // Style
-    ctx.strokeStyle = "#ffffff";
+    // Style - use a blue color for technician to differentiate
+    ctx.strokeStyle = "#3b82f6"; // blue-500
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -110,9 +119,9 @@ export function SignaturePad({
     const canvas = canvasRef.current;
     if (canvas && hasSignature) {
       const signatureData = canvas.toDataURL("image/png");
-      onSignatureChange(signatureData, signerName);
+      onSignatureChange(signatureData, technicianName);
     }
-  }, [isDrawing, hasSignature, onSignatureChange, signerName]);
+  }, [isDrawing, hasSignature, onSignatureChange, technicianName]);
 
   const clearSignature = useCallback(() => {
     const canvas = canvasRef.current;
@@ -121,12 +130,12 @@ export function SignaturePad({
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setHasSignature(false);
-    onSignatureChange(null, signerName);
-  }, [onSignatureChange, signerName]);
+    onSignatureChange(null, technicianName);
+  }, [onSignatureChange, technicianName]);
 
-  // Update parent when signer name changes
+  // Update parent when technician name changes
   const handleNameChange = useCallback((name: string) => {
-    setSignerName(name);
+    setTechnicianName(name);
     if (hasSignature) {
       const canvas = canvasRef.current;
       if (canvas) {
@@ -137,23 +146,23 @@ export function SignaturePad({
   }, [hasSignature, onSignatureChange]);
 
   return (
-    <Card className={cn("border-border", disabled && "opacity-60")}>
+    <Card className={cn("border-primary/30 bg-primary/5", disabled && "opacity-60")}>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
-          <PenLine className="h-4 w-4 text-primary" />
-          Подпис на Клиента
+          <Wrench className="h-4 w-4 text-primary" />
+          Подпис на Техника
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Client Name Input */}
+        {/* Technician Name Input */}
         <div className="space-y-2">
-          <Label htmlFor="signer-name" className="flex items-center gap-2 text-sm text-muted-foreground">
-            <User className="h-3 w-3" />
-            Име на подписващия
+          <Label htmlFor="tech-name" className="flex items-center gap-2 text-sm text-muted-foreground">
+            <PenLine className="h-3 w-3" />
+            Име на техника
           </Label>
           <Input
-            id="signer-name"
-            value={signerName}
+            id="tech-name"
+            value={technicianName}
             onChange={(e) => handleNameChange(e.target.value)}
             placeholder="Въведете име и фамилия..."
             disabled={disabled}
@@ -165,13 +174,13 @@ export function SignaturePad({
         <div 
           className={cn(
             "relative rounded-lg border-2 border-dashed bg-card/50",
-            disabled ? "border-muted cursor-not-allowed" : "border-primary/30 cursor-crosshair",
-            hasSignature && "border-emerald-500/50"
+            disabled ? "border-muted cursor-not-allowed" : "border-primary/40 cursor-crosshair",
+            hasSignature && "border-primary/70"
           )}
         >
           <canvas
             ref={canvasRef}
-            className="h-32 w-full touch-none"
+            className="h-36 w-full touch-none"
             onMouseDown={startDrawing}
             onMouseMove={draw}
             onMouseUp={stopDrawing}
@@ -182,7 +191,7 @@ export function SignaturePad({
           />
           {!hasSignature && !disabled && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <p className="text-sm text-muted-foreground">Подпишете тук</p>
+              <p className="text-sm text-muted-foreground">Подпишете тук (техник)</p>
             </div>
           )}
         </div>
@@ -190,12 +199,12 @@ export function SignaturePad({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {hasSignature ? (
-              <span className="flex items-center gap-1 text-xs text-emerald-500">
+              <span className="flex items-center gap-1 text-xs text-primary">
                 <Check className="h-3 w-3" />
-                Подписано
+                Техникът е подписал
               </span>
             ) : (
-              <span className="text-xs text-muted-foreground">Няма подпис</span>
+              <span className="text-xs text-amber-500">Изисква се подпис на техника</span>
             )}
           </div>
           <Button

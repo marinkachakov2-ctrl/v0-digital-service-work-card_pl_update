@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Lock, FileEdit } from "lucide-react";
 import { WorkCardHeader } from "@/components/work-card/header";
 import { ClientSection } from "@/components/work-card/client-section";
 import { ChecklistModal, ChecklistButton, getDefaultChecklist, type ChecklistItem } from "@/components/work-card/checklist-modal";
@@ -65,6 +67,12 @@ export default function WorkCardPage() {
   // Signature
   const [isSigned, setIsSigned] = useState(false);
 
+  // Card status tracking (for read-only locking)
+  const [cardStatus, setCardStatus] = useState<"new" | "draft" | "completed">("new");
+
+  // Supabase Job Card ID (for UPDATE instead of INSERT on subsequent saves)
+  const [savedJobCardId, setSavedJobCardId] = useState<string | null>(null);
+
   // Diagnostics (must be declared before localStorage hydration useEffect)
   const [reasonCode, setReasonCode] = useState("");
   const [defectCode, setDefectCode] = useState("");
@@ -122,6 +130,9 @@ export default function WorkCardPage() {
         if (form.parts) setParts(form.parts);
         if (form.laborItems) setLaborItems(form.laborItems);
         if (form.paymentMethod) setPaymentMethod(form.paymentMethod);
+        // Restore saved job card ID and status for UPDATE on subsequent saves
+        if (form.savedJobCardId) setSavedJobCardId(form.savedJobCardId);
+        if (form.cardStatus) setCardStatus(form.cardStatus);
       } catch {
         localStorage.removeItem(STORAGE_KEY_FORM);
       }
@@ -177,13 +188,17 @@ export default function WorkCardPage() {
       parts,
       laborItems,
       paymentMethod,
+      // Persist Supabase job card ID for UPDATE on subsequent saves
+      savedJobCardId,
+      cardStatus,
     };
 
     localStorage.setItem(STORAGE_KEY_FORM, JSON.stringify(formData));
   }, [
     isHydrated, orderNumber, jobCardNumber, jobType, clientData, isScanned, searchValue,
     assignedTechnicians, leadTechnicianId, clockAtJobLevel, reasonCode, defectCode,
-    description, faultDate, repairStart, repairEnd, engineHours, parts, laborItems, paymentMethod
+    description, faultDate, repairStart, repairEnd, engineHours, parts, laborItems, paymentMethod,
+    savedJobCardId, cardStatus
   ]);
 
   // Save timer state to localStorage whenever it changes
@@ -325,6 +340,9 @@ export default function WorkCardPage() {
     setElapsedSeconds(0);
     setTimerJobCardId(null);
     
+    // Reset card status
+    setCardStatus("new");
+    
     // Reset all form fields
     setOrderNumber("");
     setJobCardNumber("");
@@ -376,8 +394,8 @@ export default function WorkCardPage() {
   const vat = subtotal * 0.2;
   const grandTotal = subtotal + vat;
 
-  // Save card handler with validation - accepts optional signature data
-  const handleSaveCard = useCallback(async (signatureData?: string | null): Promise<{ success: boolean; message?: string; jobCardId?: string; pendingOrder?: boolean }> => {
+  // Save card handler with validation - accepts optional signature data and signer name
+  const handleSaveCard = useCallback(async (signatureData?: string | null, signerName?: string): Promise<{ success: boolean; message?: string; jobCardId?: string; pendingOrder?: boolean }> => {
     // Validate required fields
     const validTechnicians = assignedTechnicians.filter(t => t && t.trim() !== "");
     
@@ -405,6 +423,8 @@ export default function WorkCardPage() {
 
     try {
       const payload = {
+        // Include existing job card ID for UPDATE instead of INSERT
+        existingJobCardId: savedJobCardId,
         orderNumber,
         jobCardNumber,
         jobType,
@@ -426,6 +446,10 @@ export default function WorkCardPage() {
           repairStart,
           repairEnd,
           engineHours,
+          // Photo URLs for Supabase Storage
+          photo_urls: faultPhotos.map(p => p.url),
+          hour_meter_photo: engineHoursPhoto?.url || null,
+          engine_hours_photo_missing_reason: engineHoursPhotoMissingReason || null,
         },
         parts,
         laborItems,
@@ -440,6 +464,7 @@ export default function WorkCardPage() {
         submittedAt: new Date().toISOString(),
         // Signature workflow - status is determined by presence of signature
         signatureData: signatureData || null,
+        signerName: signerName || null,
         status: signatureData ? "completed" : "draft",
       };
 
@@ -450,7 +475,13 @@ export default function WorkCardPage() {
       });
 
       const result = await response.json();
-      return { success: result.success, message: result.message };
+      
+      // Store the job card ID for subsequent UPDATE operations
+      if (result.success && result.jobCardId) {
+        setSavedJobCardId(result.jobCardId);
+      }
+      
+      return { success: result.success, message: result.message, jobCardId: result.jobCardId, pendingOrder: result.pendingOrder };
     } catch (error) {
       console.error("[v0] Error saving card:", error);
       return { success: false, message: "Network error" };
@@ -459,7 +490,8 @@ export default function WorkCardPage() {
     orderNumber, jobCardNumber, jobType, assignedTechnicians, leadTechnicianId,
     clockAtJobLevel, timerStatus, elapsedSeconds, clientData, reasonCode, defectCode,
     description, faultDate, repairStart, repairEnd, engineHours, parts,
-    laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned
+    laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned, savedJobCardId,
+    faultPhotos, engineHoursPhoto, engineHoursPhotoMissingReason
   ]);
 
   // Show loading skeleton during hydration to prevent flickering
@@ -477,9 +509,38 @@ export default function WorkCardPage() {
     );
   }
 
+  // Check if form should be read-only (completed cards are locked)
+  const isReadOnly = cardStatus === "completed";
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 lg:px-8">
+        {/* Status Badge - shows DRAFT (yellow) or COMPLETED (green) */}
+        {cardStatus !== "new" && (
+          <div className="mb-4 flex justify-center">
+            {cardStatus === "draft" ? (
+              <Badge variant="outline" className="border-amber-500/50 bg-amber-500/10 text-amber-500 px-4 py-2 text-sm gap-2">
+                <FileEdit className="h-4 w-4" />
+                ЧЕРНОВА (DRAFT)
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="border-emerald-500/50 bg-emerald-500/10 text-emerald-500 px-4 py-2 text-sm gap-2">
+                <Lock className="h-4 w-4" />
+                ЗАВЪРШЕНА (COMPLETED) - Заключена
+              </Badge>
+            )}
+          </div>
+        )}
+
+        {/* Read-only overlay message for completed cards */}
+        {isReadOnly && (
+          <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 text-center">
+            <p className="text-sm text-emerald-600">
+              Тази работна карта е подписана и заключена. Не може да бъде редактирана.
+            </p>
+          </div>
+        )}
+
         <WorkCardHeader
           searchValue={searchValue}
           onSearchChange={setSearchValue}
@@ -558,6 +619,7 @@ export default function WorkCardPage() {
             onEngineHoursPhotoChange={setEngineHoursPhoto}
             engineHoursPhotoMissingReason={engineHoursPhotoMissingReason}
             onEngineHoursPhotoMissingReasonChange={setEngineHoursPhotoMissingReason}
+            jobCardId={savedJobCardId || jobCardNumber}
           />
 
           <PartsTable parts={parts} onPartsChange={setParts} />
@@ -586,6 +648,35 @@ export default function WorkCardPage() {
             orderNumber={orderNumber}
             onSaveCard={handleSaveCard}
             onFormReset={handleFormReset}
+            isReadOnly={isReadOnly}
+            onStatusChange={setCardStatus}
+            pdfData={{
+              orderNumber,
+              jobCardNumber,
+              jobType,
+              date: new Date().toLocaleDateString("bg-BG"),
+              technicians: assignedTechnicians.filter(t => t),
+              leadTechnician: leadTechnicianId || undefined,
+              machineOwner: clientData?.machineOwner || "",
+              billingEntity: clientData?.billingEntity || "",
+              location: clientData?.location || "",
+              machineModel: clientData?.machineModel || "",
+              serialNo: clientData?.serialNo || "",
+              engineSN: clientData?.engineSN || "",
+              engineHours,
+              previousEngineHours: clientData?.previousEngineHours,
+              reasonCode,
+              defectCode,
+              description,
+              faultDate,
+              repairStart,
+              repairEnd,
+              parts,
+              laborItems,
+              photoUrls: faultPhotos.map(p => p.url),
+              engineHoursPhotoUrl: engineHoursPhoto?.url,
+              totalWorkTime: elapsedTime,
+            }}
           />
         </div>
       </div>

@@ -1,15 +1,28 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { SignaturePad } from "@/components/ui/signature-pad";
-import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, Lock } from "lucide-react";
+import { TechnicianSignaturePad } from "@/components/ui/technician-signature-pad";
+import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, Lock, Download, AlertCircle, ShieldCheck } from "lucide-react";
+import { generateJobCardPDF, type PDFJobCardData } from "@/lib/pdf-export";
 import { toast } from "sonner";
+
+const ADMIN_PIN = "1234";
 
 interface SaveResult {
   success: boolean;
@@ -26,13 +39,14 @@ interface FooterProps {
   partsTotal: number;
   vat: number;
   grandTotal: number;
-  isSigned: boolean;
-  onSign: () => void;
   timerStatus: "idle" | "running" | "paused";
   orderNumber: string;
-  onSaveCard: (signatureData?: string | null) => Promise<SaveResult>;
+  onSaveCard: (signatureData?: string | null, signerName?: string) => Promise<SaveResult>;
   onFormReset: () => void;
   isReadOnly?: boolean;
+  onStatusChange?: (status: "new" | "draft" | "completed") => void;
+  // PDF Export data
+  pdfData?: Omit<PDFJobCardData, "partsTotal" | "laborTotal" | "vat" | "grandTotal" | "customerSignature" | "customerName">;
 }
 
 export function Footer({
@@ -47,20 +61,121 @@ export function Footer({
   onSaveCard,
   onFormReset,
   isReadOnly = false,
+  onStatusChange,
+  pdfData,
 }: FooterProps) {
+  const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [savedResult, setSavedResult] = useState<SaveResult | null>(null);
   const [signatureData, setSignatureData] = useState<string | null>(null);
+  const [signerName, setSignerName] = useState<string>("");
+  // Technician signature state
+  const [techSignatureData, setTechSignatureData] = useState<string | null>(null);
+  const [technicianName, setTechnicianName] = useState<string>("");
+  // Admin PIN dialog state
+  const [showPinDialog, setShowPinDialog] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState(false);
   const hasActiveTimer = timerStatus === "running" || timerStatus === "paused";
   const hasPendingOrder = !orderNumber || orderNumber.trim() === "";
+
+  // Handle admin PIN verification
+  const handlePinSubmit = () => {
+    if (pinInput === ADMIN_PIN) {
+      setShowPinDialog(false);
+      setPinInput("");
+      setPinError(false);
+      // Store in sessionStorage so user doesn't need to re-enter
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("megatron_admin_auth", "true");
+      }
+      router.push("/admin/job-cards");
+    } else {
+      setPinError(true);
+      setPinInput("");
+    }
+  };
+
+  // Check if already authorized
+  const handleAdminClick = () => {
+    if (typeof window !== "undefined" && sessionStorage.getItem("megatron_admin_auth") === "true") {
+      router.push("/admin/job-cards");
+    } else {
+      setShowPinDialog(true);
+    }
+  };
+
+  // Export PDF handler with validation
+  const handleExportPDF = async () => {
+    if (!pdfData) {
+      toast.error("PDF Export Error", {
+        description: "Missing job card data for PDF export.",
+      });
+      return;
+    }
+
+    // Validate: Technician signature is required for PDF export
+    if (!techSignatureData) {
+      toast.error("Липсва подпис на техника", {
+        description: "Моля, добавете подпис на техника преди генериране на PDF.",
+      });
+      return;
+    }
+
+    setIsExportingPDF(true);
+    try {
+      const fullPdfData: PDFJobCardData = {
+        ...pdfData,
+        partsTotal,
+        laborTotal,
+        vat,
+        grandTotal,
+        customerSignature: signatureData,
+        customerName: signerName,
+        technicianSignature: techSignatureData,
+        technicianName: technicianName,
+      };
+
+      await generateJobCardPDF(fullPdfData);
+      
+      toast.success("PDF Exported!", {
+        description: "Service report has been downloaded.",
+      });
+    } catch (error) {
+      console.error("[v0] PDF export failed:", error);
+      toast.error("PDF Export Failed", {
+        description: "Could not generate the PDF. Please try again.",
+      });
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
+  // Handle customer signature change from SignaturePad
+  const handleSignatureChange = (signature: string | null, name?: string) => {
+    setSignatureData(signature);
+    if (name !== undefined) {
+      setSignerName(name);
+    }
+  };
+
+  // Handle technician signature change
+  const handleTechSignatureChange = (signature: string | null, name?: string) => {
+    setTechSignatureData(signature);
+    if (name !== undefined) {
+      setTechnicianName(name);
+    }
+  };
 
   // Save as draft (no signature required)
   const handleSaveDraft = async () => {
     setIsSaving(true);
     try {
-      const result = await onSaveCard(null); // No signature = draft
+      const result = await onSaveCard(null, signerName); // No signature = draft
       if (result.success) {
         setSavedResult({ ...result, status: "draft" });
+        onStatusChange?.("draft");
         toast.success("Картата е записана като чернова!", {
           description: "Можете да я редактирате и подпишете по-късно.",
         });
@@ -89,9 +204,10 @@ export function Footer({
 
     setIsSaving(true);
     try {
-      const result = await onSaveCard(signatureData); // With signature = completed
+      const result = await onSaveCard(signatureData, signerName); // With signature = completed
       if (result.success) {
         setSavedResult({ ...result, status: "completed" });
+        onStatusChange?.("completed");
         toast.success("Картата е финализирана!", {
           description: "Клиентът е подписал и картата е заключена.",
         });
@@ -109,38 +225,37 @@ export function Footer({
     }
   };
 
-  // Success screen after save - auto reset after 4 seconds
+  // Auto-reset ONLY for completed cards (not drafts - keep form data for drafts)
   useEffect(() => {
-    if (savedResult?.success) {
+    if (savedResult?.success && savedResult.status === "completed") {
       const timer = setTimeout(() => {
         setSavedResult(null);
         onFormReset();
       }, 4000);
       return () => clearTimeout(timer);
     }
+    // For drafts, just clear the savedResult after showing confirmation briefly
+    if (savedResult?.success && savedResult.status === "draft") {
+      const timer = setTimeout(() => {
+        setSavedResult(null);
+        // Do NOT call onFormReset() - keep all data visible for draft
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
   }, [savedResult, onFormReset]);
 
-  // Success screen after save
-  if (savedResult?.success) {
-    const isCompleted = savedResult.status === "completed";
+  // Show success screen ONLY for completed cards - drafts stay on the form
+  if (savedResult?.success && savedResult.status === "completed") {
     return (
-      <Card className={isCompleted ? "border-emerald-500/40 bg-emerald-500/5" : "border-amber-500/40 bg-amber-500/5"}>
+      <Card className="border-emerald-500/40 bg-emerald-500/5">
         <CardContent className="flex flex-col items-center justify-center py-12 space-y-6">
-          <div className={`flex h-20 w-20 items-center justify-center rounded-full ${isCompleted ? "bg-emerald-500/20" : "bg-amber-500/20"}`}>
-            {isCompleted ? (
-              <Lock className="h-10 w-10 text-emerald-500" />
-            ) : (
-              <FileText className="h-10 w-10 text-amber-500" />
-            )}
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/20">
+            <Lock className="h-10 w-10 text-emerald-500" />
           </div>
           <div className="text-center space-y-2">
-            <h2 className={`text-2xl font-bold ${isCompleted ? "text-emerald-500" : "text-amber-500"}`}>
-              {isCompleted ? "Финализирана и Заключена!" : "Записана като Чернова"}
-            </h2>
+            <h2 className="text-2xl font-bold text-emerald-500">Финализирана и Заключена!</h2>
             <p className="text-muted-foreground">
-              {isCompleted 
-                ? "Работната карта е подписана и не може да бъде редактирана."
-                : "Картата е запазена. Можете да я редактирате по-късно."}
+              Работната карта е подписана и не може да бъде редактирана.
             </p>
           </div>
           
@@ -156,22 +271,10 @@ export function Footer({
           {/* Status Badge */}
           <Badge 
             variant="outline" 
-            className={isCompleted 
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500 px-4 py-2"
-              : "border-amber-500/30 bg-amber-500/10 text-amber-500 px-4 py-2"
-            }
+            className="border-emerald-500/30 bg-emerald-500/10 text-emerald-500 px-4 py-2"
           >
-            {isCompleted ? (
-              <>
-                <Lock className="mr-2 h-4 w-4" />
-                Статус: Completed (Заключена)
-              </>
-            ) : (
-              <>
-                <Clock className="mr-2 h-4 w-4" />
-                Статус: Draft (Чернова)
-              </>
-            )}
+            <Lock className="mr-2 h-4 w-4" />
+            Статус: Completed (Заключена)
           </Badge>
 
           {savedResult.pendingOrder && (
@@ -196,6 +299,20 @@ export function Footer({
           <p className="text-sm text-muted-foreground text-center">
             Тази работна карта е подписана от клиента и не може да бъде редактирана.
           </p>
+          {/* Export PDF button for completed cards */}
+          <Button
+            onClick={handleExportPDF}
+            disabled={isExportingPDF}
+            variant="outline"
+            className="gap-2 px-6 py-5 text-base border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
+          >
+            {isExportingPDF ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Download className="h-5 w-5" />
+            )}
+            Export Service Report (PDF)
+          </Button>
         </CardContent>
       </Card>
     );
@@ -269,9 +386,16 @@ export function Footer({
         </CardContent>
       </Card>
 
+      {/* Technician Signature Pad - Required for PDF export */}
+      <TechnicianSignaturePad
+        onSignatureChange={handleTechSignatureChange}
+        disabled={isReadOnly}
+        leadTechnician={pdfData?.leadTechnician}
+      />
+
       {/* Client Signature Pad */}
       <SignaturePad
-        onSignatureChange={setSignatureData}
+        onSignatureChange={handleSignatureChange}
         disabled={isReadOnly}
       />
 
@@ -295,8 +419,33 @@ export function Footer({
         </div>
       )}
 
+      {/* PDF Export Warning - requires technician signature */}
+      {!techSignatureData && (
+        <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-4 py-3">
+          <AlertCircle className="h-4 w-4 shrink-0 text-primary" />
+          <p className="text-sm text-primary">
+            За да генерирате PDF, техникът трябва да се подпише по-горе.
+          </p>
+        </div>
+      )}
+
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+        {/* Export PDF */}
+        <Button
+          onClick={handleExportPDF}
+          disabled={isExportingPDF || isSaving || !techSignatureData}
+          variant="outline"
+          className="gap-2 px-5 py-5 text-base border-primary/30 text-primary hover:bg-primary/10 disabled:opacity-50"
+        >
+          {isExportingPDF ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <Download className="h-5 w-5" />
+          )}
+          Export PDF
+        </Button>
+
         {/* Save as Draft */}
         <Button
           onClick={handleSaveDraft}
@@ -343,6 +492,69 @@ export function Footer({
       <p className="text-center text-xs text-muted-foreground">
         С подписването клиентът се съгласява с общите условия на Мегатрон ЕАД.
       </p>
+
+      {/* Admin Link - subtle footer link with PIN protection */}
+      <div className="flex justify-center pt-4 border-t border-border/30 mt-4">
+        <button
+          type="button"
+          onClick={handleAdminClick}
+          className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+        >
+          <Lock className="h-3 w-3" />
+          Admin
+        </button>
+      </div>
+
+      {/* PIN Dialog */}
+      <Dialog open={showPinDialog} onOpenChange={setShowPinDialog}>
+        <DialogContent className="sm:max-w-[340px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              Admin Access
+            </DialogTitle>
+            <DialogDescription>
+              Въведете PIN код за достъп до админ панела.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="admin-pin" className="text-foreground">PIN Code</Label>
+              <Input
+                id="admin-pin"
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="----"
+                value={pinInput}
+                onChange={(e) => {
+                  setPinInput(e.target.value.replace(/\D/g, ""));
+                  setPinError(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && pinInput.length === 4) {
+                    handlePinSubmit();
+                  }
+                }}
+                className={`text-center text-2xl tracking-[0.5em] font-mono bg-background ${
+                  pinError ? "border-destructive" : ""
+                }`}
+              />
+              {pinError && (
+                <p className="text-xs text-destructive">Грешен PIN код. Опитайте отново.</p>
+              )}
+            </div>
+            <Button
+              onClick={handlePinSubmit}
+              disabled={pinInput.length !== 4}
+              className="w-full"
+            >
+              <Lock className="h-4 w-4 mr-2" />
+              Вход
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

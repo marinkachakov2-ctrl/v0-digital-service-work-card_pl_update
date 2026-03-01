@@ -168,6 +168,12 @@ export default function AdminDashboardPage() {
           <h1 className="text-lg font-semibold">Admin Dashboard</h1>
           <span className="text-sm text-muted-foreground">{dateStr}</span>
           <div className="ml-auto flex items-center gap-2">
+            <Link href="/admin/job-cards">
+              <Button variant="default" size="sm" className="gap-1.5">
+                <FileText className="h-3.5 w-3.5" />
+                Job Cards DB
+              </Button>
+            </Link>
             <Link href="/">
               <Button variant="outline" size="sm" className="bg-transparent">
                 Work Card

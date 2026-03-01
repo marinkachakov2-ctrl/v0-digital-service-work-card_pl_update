@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -30,7 +31,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AlertTriangle, Calendar, Clock, Gauge, Mic, MicOff, AlertCircle, Camera, X, ImageIcon, Upload } from "lucide-react";
+import { AlertTriangle, Calendar, Clock, Gauge, Mic, MicOff, AlertCircle, Camera, X, ImageIcon, Upload, Loader2, CheckCircle2 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 // Web Speech API types are declared globally in /types/speech-recognition.d.ts
 
@@ -86,6 +88,8 @@ interface DiagnosticsSectionProps {
   onEngineHoursPhotoChange: (photo: FaultPhoto | null) => void;
   engineHoursPhotoMissingReason: string;
   onEngineHoursPhotoMissingReasonChange: (reason: string) => void;
+  // For Supabase Storage upload paths
+  jobCardId?: string;
 }
 
 export function DiagnosticsSection({
@@ -110,17 +114,28 @@ export function DiagnosticsSection({
   onRepairEndChange,
   onEngineHoursChange,
   onPhotosChange,
+  jobCardId,
 }: DiagnosticsSectionProps) {
+  // Hydration flag to prevent SSR/client mismatch
+  const [mounted, setMounted] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [showUnsupportedDialog, setShowUnsupportedDialog] = useState(false);
   const [interimText, setInterimText] = useState("");
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
+  // Upload loading states
+  const [isUploadingDiagnostic, setIsUploadingDiagnostic] = useState(false);
+  const [isUploadingEngineHours, setIsUploadingEngineHours] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const descriptionRef = useRef(description);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const engineHoursFileRef = useRef<HTMLInputElement>(null);
+
+  // Mark component as mounted (client-side only)
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Keep description ref updated
   useEffect(() => {
@@ -131,6 +146,58 @@ export function DiagnosticsSection({
   const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
   const isAndroid = typeof navigator !== "undefined" && /Android/.test(navigator.userAgent);
   const isMobile = isIOS || isAndroid;
+
+  /**
+   * Upload image to Supabase Storage
+   * Path format: job-card-photos/{YYYY-MM}/{job_card_id}/{type}_{timestamp}.jpg
+   */
+  const handlePhotoUpload = useCallback(async (
+    file: File,
+    type: "diagnostic" | "engine_hours"
+  ): Promise<{ publicUrl: string; path: string } | null> => {
+    // Only run on client side
+    if (!mounted) return null;
+    
+    try {
+      const supabase = createClient();
+      
+      // Build storage path: job-card-photos/{YYYY-MM}/{job_card_id}/{type}_{timestamp}.jpg
+      const now = new Date();
+      const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const cardId = jobCardId || `temp-${Date.now()}`;
+      const timestamp = Date.now();
+      const fileName = `${type}_${timestamp}.jpg`;
+      // Path inside bucket (bucket name is separate)
+      const storagePath = `${yearMonth}/${cardId}/${fileName}`;
+
+      // Upload to Supabase Storage (bucket: job-card-photos)
+      const { error: uploadError } = await supabase.storage
+        .from("job-card-photos")
+        .upload(storagePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type || "image/jpeg",
+        });
+
+      if (uploadError) {
+        console.error("[v0] Supabase upload error:", uploadError);
+        return null;
+      }
+
+      // Get public URL
+      const { data: publicUrlData } = supabase.storage
+        .from("job-card-photos")
+        .getPublicUrl(storagePath);
+
+      return {
+        publicUrl: publicUrlData.publicUrl,
+        path: storagePath,
+      };
+    } catch (error) {
+      console.error("[v0] Image upload failed:", error);
+      return null;
+    }
+  }, [jobCardId, mounted]);
 
   useEffect(() => {
     // Check if Speech Recognition is supported
@@ -284,32 +351,49 @@ export function DiagnosticsSection({
     }
   }, [isListening, isMobile, isSupported, requestMicrophonePermission]);
 
-  // Handle photo capture from camera
-  const handlePhotoCapture = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle photo capture from camera - uploads to Supabase Storage
+  const handlePhotoCapture = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
+    setIsUploadingDiagnostic(true);
+    
     const newPhotos: FaultPhoto[] = [];
     
-    Array.from(files).forEach((file) => {
-      const url = URL.createObjectURL(file);
-      newPhotos.push({
-        id: `photo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        url,
-        name: file.name,
-        timestamp: new Date(),
-      });
-    });
+    for (const file of Array.from(files)) {
+      // Upload to Supabase Storage
+      const uploadResult = await handlePhotoUpload(file, "diagnostic");
+      
+      if (uploadResult) {
+        newPhotos.push({
+          id: `photo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          url: uploadResult.publicUrl,
+          name: file.name,
+          timestamp: new Date(),
+        });
+      } else {
+        // Fallback to local blob URL if upload fails
+        const localUrl = URL.createObjectURL(file);
+        newPhotos.push({
+          id: `photo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          url: localUrl,
+          name: file.name,
+          timestamp: new Date(),
+        });
+      }
+    }
 
-    if (onPhotosChange) {
+    if (onPhotosChange && newPhotos.length > 0) {
       onPhotosChange([...photos, ...newPhotos]);
     }
+
+    setIsUploadingDiagnostic(false);
 
     // Reset input so the same file can be selected again
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-  }, [photos, onPhotosChange]);
+  }, [photos, onPhotosChange, handlePhotoUpload]);
 
   // Remove a photo
   const handleRemovePhoto = useCallback((photoId: string) => {
@@ -328,24 +412,43 @@ export function DiagnosticsSection({
     fileInputRef.current?.click();
   }, []);
 
-  // Engine hours photo capture
+  // Engine hours photo capture - uploads to Supabase Storage
   const handleEngineHoursPhoto = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files;
       if (!files || files.length === 0) return;
+      
       const file = files[0];
-      const url = URL.createObjectURL(file);
-      onEngineHoursPhotoChange({
-        id: `ehp-${Date.now()}`,
-        url,
-        name: file.name,
-        timestamp: new Date(),
-      });
+      setIsUploadingEngineHours(true);
+      
+      // Upload to Supabase Storage
+      const uploadResult = await handlePhotoUpload(file, "engine_hours");
+      
+      if (uploadResult) {
+        onEngineHoursPhotoChange({
+          id: `ehp-${Date.now()}`,
+          url: uploadResult.publicUrl,
+          name: file.name,
+          timestamp: new Date(),
+        });
+      } else {
+        // Fallback to local blob URL if upload fails
+        const localUrl = URL.createObjectURL(file);
+        onEngineHoursPhotoChange({
+          id: `ehp-${Date.now()}`,
+          url: localUrl,
+          name: file.name,
+          timestamp: new Date(),
+        });
+      }
+      
+      setIsUploadingEngineHours(false);
+      
       if (engineHoursFileRef.current) {
         engineHoursFileRef.current.value = "";
       }
     },
-    [onEngineHoursPhotoChange]
+    [onEngineHoursPhotoChange, handlePhotoUpload]
   );
 
   return (
@@ -456,7 +559,7 @@ export function DiagnosticsSection({
                   aria-label="Заснемане на снимка"
                 />
                 
-                {/* Camera Button */}
+                {/* Camera Button with loading state */}
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -465,14 +568,24 @@ export function DiagnosticsSection({
                         variant="outline"
                         size="sm"
                         onClick={openCamera}
+                        disabled={isUploadingDiagnostic}
                         className="h-8 gap-1.5 shrink-0 bg-transparent hover:bg-secondary"
                       >
-                        <Camera className="h-3.5 w-3.5" />
-                        <span className="text-xs">Снимка</span>
-                        {photos.length > 0 && (
-                          <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
-                            {photos.length}
-                          </span>
+                        {isUploadingDiagnostic ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span className="text-xs">Качване...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Camera className="h-3.5 w-3.5" />
+                            <span className="text-xs">Снимка</span>
+                            {mounted && photos.length > 0 && (
+                              <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+                                {photos.length}
+                              </span>
+                            )}
+                          </>
                         )}
                       </Button>
                     </TooltipTrigger>
@@ -728,7 +841,7 @@ export function DiagnosticsSection({
                 Photo proof of engine hours meter
                 <span className="text-destructive">*</span>
               </Label>
-              {engineHoursPhoto && (
+              {mounted && engineHoursPhoto && (
                 <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30 text-[10px]">
                   Photo attached
                 </Badge>
@@ -747,31 +860,63 @@ export function DiagnosticsSection({
             />
 
             {engineHoursPhoto ? (
-              <div className="flex items-center gap-3">
-                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border">
-                  <img
-                    src={engineHoursPhoto.url || "/placeholder.svg"}
-                    alt="Engine hours meter"
-                    className="h-full w-full object-cover"
-                  />
+              <div className="space-y-3">
+                {/* Thumbnail preview with success indicator */}
+                <div className="flex items-start gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+                  {/* Thumbnail */}
+                  <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border-2 border-emerald-500/40">
+                    <img
+                      src={engineHoursPhoto.url || "/placeholder.svg"}
+                      alt="Engine hours meter"
+                      className="h-full w-full object-cover"
+                    />
+                    {/* Green checkmark overlay */}
+                    <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    </div>
+                  </div>
+                  
+                  {/* Success message and details */}
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      <span className="text-sm font-medium text-emerald-500">Photo Uploaded</span>
+                    </div>
+                    <p className="text-xs text-foreground truncate max-w-[180px]">{engineHoursPhoto.name}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {engineHoursPhoto.timestamp.toLocaleTimeString("bg-BG", { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+                  
+                  {/* Remove button */}
                   <button
                     type="button"
                     onClick={() => {
-                      URL.revokeObjectURL(engineHoursPhoto.url);
+                      // Only revoke if it's a blob URL (not Supabase URL)
+                      if (engineHoursPhoto.url.startsWith("blob:")) {
+                        URL.revokeObjectURL(engineHoursPhoto.url);
+                      }
                       onEngineHoursPhotoChange(null);
                     }}
-                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground"
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
                     aria-label="Remove photo"
                   >
-                    <X className="h-3 w-3" />
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
-                <div>
-                  <p className="text-xs text-foreground">{engineHoursPhoto.name}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {engineHoursPhoto.timestamp.toLocaleTimeString("bg-BG", { hour: "2-digit", minute: "2-digit" })}
-                  </p>
-                </div>
+                
+                {/* Re-capture button */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => engineHoursFileRef.current?.click()}
+                  disabled={isUploadingEngineHours}
+                  className="gap-2 bg-transparent text-xs"
+                >
+                  <Camera className="h-3 w-3" />
+                  Retake Photo
+                </Button>
               </div>
             ) : (
               <div className="space-y-2">
@@ -780,10 +925,20 @@ export function DiagnosticsSection({
                   variant="outline"
                   size="sm"
                   onClick={() => engineHoursFileRef.current?.click()}
+                  disabled={isUploadingEngineHours}
                   className="gap-2 bg-transparent"
                 >
-                  <Upload className="h-3.5 w-3.5" />
-                  Upload Photo of Engine Hours
+                  {isUploadingEngineHours ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="h-3.5 w-3.5" />
+                      Capture Engine Hours Photo
+                    </>
+                  )}
                 </Button>
 
                 {/* Missing photo explanation */}
