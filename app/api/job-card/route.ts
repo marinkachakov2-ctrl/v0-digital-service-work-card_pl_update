@@ -134,6 +134,8 @@ export async function POST(request: Request) {
       notes: notesArray.join(" | ") || null, // text or null
       signature_data: data.signatureData || null, // Base64 signature or null
       photo_urls: allPhotoUrls.length > 0 ? allPhotoUrls : null, // text[] array of Supabase Storage URLs
+      payer_id: data.payerId || null, // UUID of the billing entity (payer)
+      client_name_signed: data.signerName || null, // Name of person who signed
     };
 
     // Determine if this is an UPDATE or INSERT operation

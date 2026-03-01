@@ -379,6 +379,18 @@ export default function WorkCardPage() {
     setPaymentMethod("bank");
     setIsSigned(false);
     
+    // Clear photo states
+    setFaultPhotos([]);
+    setEngineHoursPhoto(null);
+    setEngineHoursPhotoMissingReason("");
+    
+    // Clear machine and payer IDs
+    setSelectedMachineId(null);
+    setPayerStatus(null);
+    
+    // Clear Supabase job card ID
+    setSavedJobCardId(null);
+    
     // Clear localStorage AFTER resetting state (prevents re-saving empty state)
     localStorage.removeItem(STORAGE_KEY_FORM);
     localStorage.removeItem(STORAGE_KEY_TIMER);
