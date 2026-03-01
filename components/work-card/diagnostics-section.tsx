@@ -149,22 +149,26 @@ export function DiagnosticsSection({
 
   /**
    * Upload image to Supabase Storage
-   * Path format: job-card-photos/{YYYY-MM}/{jobCardId}/{type}_{timestamp}.jpg
+   * Path format: job-card-photos/{YYYY-MM}/{job_card_id}/{type}_{timestamp}.jpg
    */
-  const handleImageUpload = useCallback(async (
+  const handlePhotoUpload = useCallback(async (
     file: File,
     type: "diagnostic" | "engine_hours"
   ): Promise<{ publicUrl: string; path: string } | null> => {
+    // Only run on client side
+    if (!mounted) return null;
+    
     try {
       const supabase = createClient();
       
-      // Build storage path
+      // Build storage path: job-card-photos/{YYYY-MM}/{job_card_id}/{type}_{timestamp}.jpg
       const now = new Date();
       const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       const cardId = jobCardId || `temp-${Date.now()}`;
       const timestamp = Date.now();
       const fileName = `${type}_${timestamp}.jpg`;
-      const storagePath = `job-card-photos/${yearMonth}/${cardId}/${fileName}`;
+      // Path inside bucket (bucket name is separate)
+      const storagePath = `${yearMonth}/${cardId}/${fileName}`;
 
       // Upload to Supabase Storage (bucket: job-card-photos)
       const { error: uploadError } = await supabase.storage
@@ -176,7 +180,7 @@ export function DiagnosticsSection({
         });
 
       if (uploadError) {
-        console.error("Supabase upload error:", uploadError);
+        console.error("[v0] Supabase upload error:", uploadError);
         return null;
       }
 
@@ -190,10 +194,10 @@ export function DiagnosticsSection({
         path: storagePath,
       };
     } catch (error) {
-      console.error("Image upload failed:", error);
+      console.error("[v0] Image upload failed:", error);
       return null;
     }
-  }, [jobCardId]);
+  }, [jobCardId, mounted]);
 
   useEffect(() => {
     // Check if Speech Recognition is supported
@@ -358,7 +362,7 @@ export function DiagnosticsSection({
     
     for (const file of Array.from(files)) {
       // Upload to Supabase Storage
-      const uploadResult = await handleImageUpload(file, "diagnostic");
+      const uploadResult = await handlePhotoUpload(file, "diagnostic");
       
       if (uploadResult) {
         newPhotos.push({
@@ -389,7 +393,7 @@ export function DiagnosticsSection({
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-  }, [photos, onPhotosChange, handleImageUpload]);
+  }, [photos, onPhotosChange, handlePhotoUpload]);
 
   // Remove a photo
   const handleRemovePhoto = useCallback((photoId: string) => {
@@ -418,7 +422,7 @@ export function DiagnosticsSection({
       setIsUploadingEngineHours(true);
       
       // Upload to Supabase Storage
-      const uploadResult = await handleImageUpload(file, "engine_hours");
+      const uploadResult = await handlePhotoUpload(file, "engine_hours");
       
       if (uploadResult) {
         onEngineHoursPhotoChange({
@@ -444,7 +448,7 @@ export function DiagnosticsSection({
         engineHoursFileRef.current.value = "";
       }
     },
-    [onEngineHoursPhotoChange, handleImageUpload]
+    [onEngineHoursPhotoChange, handlePhotoUpload]
   );
 
   return (
@@ -555,7 +559,7 @@ export function DiagnosticsSection({
                   aria-label="Заснемане на снимка"
                 />
                 
-                {/* Camera Button */}
+                {/* Camera Button with loading state */}
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -564,14 +568,24 @@ export function DiagnosticsSection({
                         variant="outline"
                         size="sm"
                         onClick={openCamera}
+                        disabled={isUploadingDiagnostic}
                         className="h-8 gap-1.5 shrink-0 bg-transparent hover:bg-secondary"
                       >
-                        <Camera className="h-3.5 w-3.5" />
-                        <span className="text-xs">Снимка</span>
-                        {photos.length > 0 && (
-                          <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
-                            {photos.length}
-                          </span>
+                        {isUploadingDiagnostic ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span className="text-xs">Качване...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Camera className="h-3.5 w-3.5" />
+                            <span className="text-xs">Снимка</span>
+                            {mounted && photos.length > 0 && (
+                              <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+                                {photos.length}
+                              </span>
+                            )}
+                          </>
                         )}
                       </Button>
                     </TooltipTrigger>
@@ -827,7 +841,7 @@ export function DiagnosticsSection({
                 Photo proof of engine hours meter
                 <span className="text-destructive">*</span>
               </Label>
-              {engineHoursPhoto && (
+              {mounted && engineHoursPhoto && (
                 <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30 text-[10px]">
                   Photo attached
                 </Badge>
@@ -879,10 +893,20 @@ export function DiagnosticsSection({
                   variant="outline"
                   size="sm"
                   onClick={() => engineHoursFileRef.current?.click()}
+                  disabled={isUploadingEngineHours}
                   className="gap-2 bg-transparent"
                 >
-                  <Upload className="h-3.5 w-3.5" />
-                  Upload Photo of Engine Hours
+                  {isUploadingEngineHours ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Качване...
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="h-3.5 w-3.5" />
+                      Upload Photo of Engine Hours
+                    </>
+                  )}
                 </Button>
 
                 {/* Missing photo explanation */}

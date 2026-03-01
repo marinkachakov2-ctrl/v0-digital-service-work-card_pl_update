@@ -614,6 +614,7 @@ export default function WorkCardPage() {
             onEngineHoursPhotoChange={setEngineHoursPhoto}
             engineHoursPhotoMissingReason={engineHoursPhotoMissingReason}
             onEngineHoursPhotoMissingReasonChange={setEngineHoursPhotoMissingReason}
+            jobCardId={savedJobCardId || jobCardNumber}
           />
 
           <PartsTable parts={parts} onPartsChange={setParts} />
