@@ -700,8 +700,6 @@ export default function WorkCardPage() {
  <ClientSection
   clientData={clientData}
   isScanned={isScanned}
-  jobType={jobType}
-  onJobTypeChange={handleJobTypeChange}
   onBillingEntityChange={handleBillingEntityChange}
   onMachineSelect={handleMachineSelect}
   onPayerStatusChange={setPayerStatus}

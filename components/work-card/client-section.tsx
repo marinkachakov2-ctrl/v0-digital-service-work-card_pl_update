@@ -5,7 +5,7 @@ import type { ClientData } from "@/app/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+
 import { Building2, MapPin, Tractor, Hash, Cpu, Receipt, Clock, Search, Loader2, CheckCircle2, AlertTriangle, X } from "lucide-react";
 import { searchMachines, fetchMachineWithPayerStatus, searchClients, fetchMachineServiceHistory, type ServiceHistoryIssue } from "@/lib/actions";
 import type { MachineSearchResult, PayerStatus } from "@/lib/types";
@@ -14,8 +14,6 @@ import { cn } from "@/lib/utils";
 interface ClientSectionProps {
   clientData: ClientData | null;
   isScanned: boolean;
-  jobType: "warranty" | "repair" | "internal";
-  onJobTypeChange: (type: "warranty" | "repair" | "internal") => void;
   onBillingEntityChange: (value: string) => void;
   onMachineSelect: (machine: MachineSearchResult) => void;
   onPayerStatusChange?: (status: PayerStatus | null) => void;
@@ -25,8 +23,6 @@ interface ClientSectionProps {
 export function ClientSection({
   clientData,
   isScanned,
-  jobType,
-  onJobTypeChange,
   onBillingEntityChange,
   onMachineSelect,
   onPayerStatusChange,
@@ -493,38 +489,7 @@ export function ClientSection({
           </div>
         )}
 
-        {/* Job Type Radio */}
-        <div className="border-t border-border pt-4">
-          <Label className="mb-3 block text-xs text-muted-foreground">Тип на работа</Label>
-          <RadioGroup
-            value={jobType}
-            onValueChange={(val) => onJobTypeChange(val as "warranty" | "repair" | "internal")}
-            className="flex flex-wrap gap-4"
-            disabled={!isScanned}
-          >
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="warranty" id="job-warranty" />
-              <Label htmlFor="job-warranty" className="cursor-pointer text-sm text-foreground">
-                Гаранция
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="repair" id="job-repair" />
-              <Label htmlFor="job-repair" className="cursor-pointer text-sm text-foreground">
-                Ремонт
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="internal" id="job-internal" />
-              <Label htmlFor="job-internal" className="cursor-pointer text-sm text-foreground">
-                Вътрешен труд
-              </Label>
-            </div>
-          </RadioGroup>
-          {jobType === "warranty" && (
-            <p className="mt-2 text-[10px] text-amber-500">Warranty: enforces 1:1 Order / Job Card relationship</p>
-          )}
-        </div>
+
       </CardContent>
     </Card>
   );
