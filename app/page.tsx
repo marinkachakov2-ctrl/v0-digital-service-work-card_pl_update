@@ -78,6 +78,9 @@ export default function WorkCardPage() {
   const [payerStatus, setPayerStatus] = useState<PayerStatus | null>(null);
   const isPayerBlocked = payerStatus?.isBlocked === true;
 
+  // Machine and Payer IDs for database relations
+  const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
+
   // Diagnostics (must be declared before localStorage hydration useEffect)
   const [reasonCode, setReasonCode] = useState("");
   const [defectCode, setDefectCode] = useState("");
@@ -319,16 +322,19 @@ export default function WorkCardPage() {
 
   // Handle machine selection from search - auto-fills all machine details and order numbers
   const handleMachineSelect = useCallback((machine: MachineSearchResult) => {
-    // Auto-fill client/machine data including Engine SN
-    setClientData({
-      machineOwner: machine.ownerName,
-      billingEntity: machine.ownerName,
-      location: machine.location || "",
-      machineModel: `${machine.manufacturer} ${machine.model}`,
-      serialNo: machine.serialNo,
-      engineSN: machine.engineSN || "",
-      previousEngineHours: machine.engineHours,
-    });
+  // Store machine ID for database relation
+  setSelectedMachineId(machine.id);
+  
+  // Auto-fill client/machine data including Engine SN
+  setClientData({
+  machineOwner: machine.ownerName,
+  billingEntity: machine.ownerName,
+  location: machine.location || "",
+  machineModel: `${machine.manufacturer} ${machine.model}`,
+  serialNo: machine.serialNo,
+  engineSN: machine.engineSN || "",
+  previousEngineHours: machine.engineHours,
+  });
     
     // Auto-fill order numbers from server-generated suggestions
     if (machine.suggestedOrderNumber) {
@@ -471,6 +477,9 @@ export default function WorkCardPage() {
         },
         isSigned,
         submittedAt: new Date().toISOString(),
+        // Machine and Payer IDs for database relations
+        machineId: selectedMachineId || undefined,
+        payerId: payerStatus?.payerId || undefined,
         // Signature workflow - status is determined by presence of signature
         signatureData: signatureData || null,
         signerName: signerName || null,
@@ -500,7 +509,7 @@ export default function WorkCardPage() {
     clockAtJobLevel, timerStatus, elapsedSeconds, clientData, reasonCode, defectCode,
     description, faultDate, repairStart, repairEnd, engineHours, parts,
     laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned, savedJobCardId,
-    faultPhotos, engineHoursPhoto, engineHoursPhotoMissingReason
+    faultPhotos, engineHoursPhoto, engineHoursPhotoMissingReason, selectedMachineId, payerStatus
   ]);
 
   // Show loading skeleton during hydration to prevent flickering

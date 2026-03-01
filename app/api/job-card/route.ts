@@ -60,6 +60,7 @@ export interface JobCardPayload {
   isSigned: boolean;
   submittedAt: string;
   machineId?: string;
+  payerId?: string;
   // Signature workflow
   status?: "draft" | "completed";
   signatureData?: string | null;
