@@ -471,84 +471,108 @@ export async function masterSearch(
   orderType?: string
 ): Promise<MasterSearchResult[]> {
   if (!query || query.trim().length < 2) {
+    console.log("[v0] masterSearch: Query too short:", query);
     return [];
   }
 
+  console.log("[v0] masterSearch: Searching for:", query, "orderType:", orderType);
+
   const supabase = await createClient();
-  const searchTerm = `%${query.trim()}%`;
+  const searchTerm = query.trim();
   const results: MasterSearchResult[] = [];
 
-  // Search service orders
-  let orderQuery = supabase
-    .from("service_orders")
-    .select(`
-      *,
-      machines:machine_id (id, model, serial_number),
-      clients:client_id (id, name, is_blocked)
-    `)
-    .or(`order_number.ilike.${searchTerm},job_card_number.ilike.${searchTerm}`)
-    .order("created_at", { ascending: false })
-    .limit(10);
+  // Search service orders - use ilike for case-insensitive search
+  try {
+    let orderQuery = supabase
+      .from("service_orders")
+      .select(`
+        *,
+        machines:machine_id (id, model, serial_number, brand),
+        clients:client_id (id, name, is_blocked)
+      `)
+      .or(`order_number.ilike.%${searchTerm}%,job_card_number.ilike.%${searchTerm}%`)
+      .order("created_at", { ascending: false })
+      .limit(10);
 
-  // Filter by order type if specified
-  if (orderType && orderType !== "all") {
-    orderQuery = orderQuery.eq("service_type", orderType);
-  }
-
-  const { data: orders, error: orderError } = await orderQuery;
-
-  if (!orderError && orders) {
-    for (const o of orders) {
-      const machine = o.machines as Record<string, unknown> | null;
-      const client = o.clients as Record<string, unknown> | null;
-      results.push({
-        type: "order",
-        id: o.id as string,
-        orderNumber: o.order_number as string || "",
-        jobCardNumber: o.job_card_number as string || "",
-        serviceType: o.service_type as MasterSearchResult["serviceType"],
-        machineId: machine?.id as string || null,
-        machineSerial: machine?.serial_number as string || "",
-        machineModel: machine?.model as string || "",
-        clientId: client?.id as string || null,
-        clientName: client?.name as string || "",
-        isBlocked: client?.is_blocked as boolean || false,
-      });
+    // Filter by order type if specified
+    if (orderType && orderType !== "all" && orderType !== "repair") {
+      orderQuery = orderQuery.eq("service_type", orderType);
     }
-  }
 
-  // Search machines directly (if no order type filter or for repair/internal)
-  const { data: machines, error: machineError } = await supabase
-    .from("machines")
-    .select(`
-      *,
-      clients:client_id (id, name, is_blocked)
-    `)
-    .or(`serial_number.ilike.${searchTerm},model.ilike.${searchTerm}`)
-    .limit(10);
+    const { data: orders, error: orderError } = await orderQuery;
 
-  if (!machineError && machines) {
-    for (const m of machines) {
-      const client = m.clients as Record<string, unknown> | null;
-      // Don't add duplicates (machines already in orders)
-      const alreadyInResults = results.some(
-        r => r.machineSerial === m.serial_number
-      );
-      if (!alreadyInResults) {
+    console.log("[v0] masterSearch orders result:", { count: orders?.length || 0, error: orderError?.message });
+
+    if (orderError) {
+      console.error("[v0] masterSearch orders error:", orderError);
+    }
+
+    if (!orderError && orders) {
+      for (const o of orders) {
+        const machine = o.machines as Record<string, unknown> | null;
+        const client = o.clients as Record<string, unknown> | null;
         results.push({
-          type: "machine",
-          id: m.id as string,
-          machineId: m.id as string,
-          machineSerial: m.serial_number as string || "",
-          machineModel: `${m.brand || ""} ${m.model || ""}`.trim(),
-          clientId: client?.id as string || null,
-          clientName: client?.name as string || "",
-          isBlocked: client?.is_blocked as boolean || false,
+          type: "order",
+          id: o.id as string,
+          orderNumber: o.order_number as string || "",
+          jobCardNumber: o.job_card_number as string || "",
+          serviceType: o.service_type as MasterSearchResult["serviceType"],
+          machineId: (machine?.id as string) || undefined,
+          machineSerial: (machine?.serial_number as string) || "",
+          machineModel: `${machine?.brand || ""} ${machine?.model || ""}`.trim(),
+          clientId: (client?.id as string) || undefined,
+          clientName: (client?.name as string) || "",
+          isBlocked: (client?.is_blocked as boolean) || false,
         });
       }
     }
+  } catch (err) {
+    console.error("[v0] masterSearch orders catch:", err);
   }
 
+  // Search machines directly
+  try {
+    const { data: machines, error: machineError } = await supabase
+      .from("machines")
+      .select(`
+        *,
+        clients:client_id (id, name, is_blocked)
+      `)
+      .or(`serial_number.ilike.%${searchTerm}%,model.ilike.%${searchTerm}%,brand.ilike.%${searchTerm}%`)
+      .limit(10);
+
+    console.log("[v0] masterSearch machines result:", { count: machines?.length || 0, error: machineError?.message });
+
+    if (machineError) {
+      console.error("[v0] masterSearch machines error:", machineError);
+    }
+
+    if (!machineError && machines) {
+      for (const m of machines) {
+        const client = m.clients as Record<string, unknown> | null;
+        // Don't add duplicates (machines already in orders)
+        const alreadyInResults = results.some(
+          r => r.machineSerial === m.serial_number
+        );
+        if (!alreadyInResults) {
+          results.push({
+            type: "machine",
+            id: m.id as string,
+            machineId: m.id as string,
+            machineSerial: (m.serial_number as string) || "",
+            machineModel: `${m.brand || ""} ${m.model || ""}`.trim(),
+            clientId: (client?.id as string) || undefined,
+            clientName: (client?.name as string) || m.client_name as string || "",
+            isBlocked: (client?.is_blocked as boolean) || false,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[v0] masterSearch machines catch:", err);
+  }
+
+  console.log("[v0] masterSearch total results:", results.length);
   return results;
 }
 

@@ -91,15 +91,20 @@ export function OrderSelector({
       return;
     }
 
+    console.log("[v0] OrderSelector: Starting search for:", searchQuery, "type:", orderType);
+
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
+        console.log("[v0] OrderSelector: Calling masterSearch...");
         const results = await masterSearch(searchQuery, orderType);
+        console.log("[v0] OrderSelector: Got results:", results.length);
         setSearchResults(results);
         setShowResults(true);
       } catch (error) {
-        console.error("Search error:", error);
+        console.error("[v0] OrderSelector search error:", error);
         setSearchResults([]);
+        setShowResults(true); // Still show dropdown with "no results" message
       } finally {
         setIsSearching(false);
       }
