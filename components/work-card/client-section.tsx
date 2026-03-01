@@ -6,9 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Building2, MapPin, Tractor, Hash, Cpu, Receipt, Clock, Search, Loader2 } from "lucide-react";
-import { searchMachines } from "@/lib/actions";
-import type { MachineSearchResult } from "@/lib/types";
+import { Building2, MapPin, Tractor, Hash, Cpu, Receipt, Clock, Search, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { searchMachines, fetchMachineWithPayerStatus } from "@/lib/actions";
+import type { MachineSearchResult, PayerStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface ClientSectionProps {
@@ -18,6 +18,7 @@ interface ClientSectionProps {
   onJobTypeChange: (type: "warranty" | "repair" | "internal") => void;
   onBillingEntityChange: (value: string) => void;
   onMachineSelect: (machine: MachineSearchResult) => void;
+  onPayerStatusChange?: (status: PayerStatus | null) => void;
 }
 
 export function ClientSection({
@@ -27,11 +28,21 @@ export function ClientSection({
   onJobTypeChange,
   onBillingEntityChange,
   onMachineSelect,
+  onPayerStatusChange,
 }: ClientSectionProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MachineSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  
+  // Serial number direct lookup state
+  const [serialInput, setSerialInput] = useState("");
+  const [isCheckingSerial, setIsCheckingSerial] = useState(false);
+  const [serialCheckResult, setSerialCheckResult] = useState<{
+    found: boolean;
+    ownerName?: string;
+    payerStatus?: PayerStatus | null;
+  } | null>(null);
 
   // Debounced search using server action
   useEffect(() => {
@@ -57,6 +68,48 @@ export function ClientSection({
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Live serial number lookup with payer status check
+  useEffect(() => {
+    // Clear result if serial is empty or too short
+    if (serialInput.length < 3) {
+      setSerialCheckResult(null);
+      onPayerStatusChange?.(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsCheckingSerial(true);
+      try {
+        const result = await fetchMachineWithPayerStatus(serialInput);
+        
+        if (result) {
+          setSerialCheckResult({
+            found: true,
+            ownerName: result.owner?.name || result.machine.ownerName,
+            payerStatus: result.payer,
+          });
+          
+          // Notify parent of payer status
+          onPayerStatusChange?.(result.payer);
+          
+          // Auto-select the machine
+          onMachineSelect(result.machine);
+        } else {
+          setSerialCheckResult({ found: false });
+          onPayerStatusChange?.(null);
+        }
+      } catch (error) {
+        console.error("Serial lookup error:", error);
+        setSerialCheckResult({ found: false });
+        onPayerStatusChange?.(null);
+      } finally {
+        setIsCheckingSerial(false);
+      }
+    }, 500); // Slightly longer debounce for serial lookup
+
+    return () => clearTimeout(timer);
+  }, [serialInput, onPayerStatusChange, onMachineSelect]);
 
   const handleSelectMachine = useCallback((machine: MachineSearchResult) => {
     onMachineSelect(machine);
@@ -184,13 +237,57 @@ export function ClientSection({
             <Label className="flex items-center gap-2 text-xs text-muted-foreground">
               <Hash className="h-3 w-3" />
               Сериен No
+              {/* Status indicators */}
+              {isCheckingSerial && (
+                <Loader2 className="h-3 w-3 animate-spin text-primary ml-auto" />
+              )}
+              {!isCheckingSerial && serialCheckResult?.found && !serialCheckResult?.payerStatus?.isBlocked && (
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 ml-auto" />
+              )}
+              {!isCheckingSerial && serialCheckResult?.found && serialCheckResult?.payerStatus?.isBlocked && (
+                <AlertTriangle className="h-3.5 w-3.5 text-red-500 ml-auto" />
+              )}
             </Label>
-            <Input
-              readOnly
-              value={clientData?.serialNo || ""}
-              placeholder="--"
-              className="bg-secondary text-foreground"
-            />
+            <div className="relative">
+              <Input
+                value={clientData?.serialNo || serialInput}
+                onChange={(e) => {
+                  if (!isScanned) {
+                    setSerialInput(e.target.value);
+                  }
+                }}
+                readOnly={isScanned}
+                placeholder="Въведете сериен номер..."
+                className={cn(
+                  "text-foreground",
+                  isScanned ? "bg-secondary" : "bg-card border-primary/30 focus:border-primary",
+                  serialCheckResult?.found && !serialCheckResult?.payerStatus?.isBlocked && "border-emerald-500/50",
+                  serialCheckResult?.found && serialCheckResult?.payerStatus?.isBlocked && "border-red-500/50"
+                )}
+              />
+            </div>
+            {/* Owner name display on successful lookup */}
+            {serialCheckResult?.found && serialCheckResult.ownerName && (
+              <p className={cn(
+                "text-[10px] flex items-center gap-1",
+                serialCheckResult.payerStatus?.isBlocked ? "text-red-400" : "text-emerald-400"
+              )}>
+                {serialCheckResult.payerStatus?.isBlocked ? (
+                  <>
+                    <AlertTriangle className="h-3 w-3" />
+                    {serialCheckResult.ownerName} - БЛОКИРАН
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-3 w-3" />
+                    {serialCheckResult.ownerName}
+                  </>
+                )}
+              </p>
+            )}
+            {serialCheckResult?.found === false && serialInput.length >= 3 && (
+              <p className="text-[10px] text-amber-500">Машината не е намерена в базата данни</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label className="flex items-center gap-2 text-xs text-muted-foreground">

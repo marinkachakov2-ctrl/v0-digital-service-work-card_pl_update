@@ -32,6 +32,7 @@ interface WorkCardHeaderProps {
   isAdmin: boolean;
   onAdminToggle: (val: boolean) => void;
   isSigned: boolean;
+  isPayerBlocked?: boolean;
 }
 
 export function WorkCardHeader({
@@ -54,6 +55,7 @@ export function WorkCardHeader({
   isAdmin,
   onAdminToggle,
   isSigned,
+  isPayerBlocked = false,
 }: WorkCardHeaderProps) {
   const [currentDate, setCurrentDate] = useState("--/--/----");
 
@@ -137,11 +139,16 @@ export function WorkCardHeader({
 
           <Button
             onClick={onTimerStart}
-            disabled={timerStatus === "running" || isSigned}
-            className="h-9 gap-1.5 bg-emerald-600 px-3 text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+            disabled={timerStatus === "running" || isSigned || isPayerBlocked}
+            className={`h-9 gap-1.5 px-3 text-white shadow-sm disabled:opacity-50 ${
+              isPayerBlocked 
+                ? "bg-red-600 hover:bg-red-600 cursor-not-allowed" 
+                : "bg-emerald-600 hover:bg-emerald-700"
+            }`}
+            title={isPayerBlocked ? "Клиентът е блокиран - работата е забранена" : "Старт на работа"}
           >
             <Play className="h-4 w-4" />
-            <span className="hidden sm:inline">Старт</span>
+            <span className="hidden sm:inline">{isPayerBlocked ? "Блокиран" : "Старт"}</span>
           </Button>
           <Button
             onClick={onTimerPause}
