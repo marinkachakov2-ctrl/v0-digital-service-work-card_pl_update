@@ -450,6 +450,17 @@ export function Footer({
       <p className="text-center text-xs text-muted-foreground">
         С подписването клиентът се съгласява с общите условия на Мегатрон ЕАД.
       </p>
+
+      {/* Admin Link - subtle footer link */}
+      <div className="flex justify-center pt-4 border-t border-border/30 mt-4">
+        <a
+          href="/admin/job-cards"
+          className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+        >
+          <Lock className="h-3 w-3" />
+          Admin
+        </a>
+      </div>
     </div>
   );
 }
