@@ -38,10 +38,12 @@ export interface JobCardPayload {
   };
   parts: Array<{
     id: string;
+    partId?: string; // UUID from parts table
     partNo: string;
     description: string;
     qty: number;
     price: number;
+    stockQuantity?: number;
   }>;
   laborItems: Array<{
     id: string;
@@ -211,6 +213,38 @@ export async function POST(request: Request) {
 
       resultId = insertedData.id;
       console.log("SUPABASE SUCCESS: Job Card created with ID:", resultId);
+    }
+
+    // Save parts to job_card_parts table (only parts with partId from database)
+    const partsWithDbId = data.parts.filter((p) => p.partId);
+    
+    if (partsWithDbId.length > 0) {
+      // First, delete existing parts for this job card (for UPDATE scenario)
+      if (isUpdate) {
+        await supabase
+          .from("job_card_parts")
+          .delete()
+          .eq("job_card_id", resultId);
+      }
+
+      // Insert new parts
+      const partsToInsert = partsWithDbId.map((p) => ({
+        job_card_id: resultId,
+        part_id: p.partId,
+        quantity: p.qty,
+        price_at_submission: p.price,
+      }));
+
+      const { error: partsError } = await supabase
+        .from("job_card_parts")
+        .insert(partsToInsert);
+
+      if (partsError) {
+        console.error("SUPABASE PARTS INSERT ERROR:", partsError);
+        // Don't fail the whole request, just log the error
+      } else {
+        console.log("SUPABASE SUCCESS: Inserted", partsToInsert.length, "parts for job card:", resultId);
+      }
     }
 
     return NextResponse.json({

@@ -246,6 +246,45 @@ export async function fetchPayerStatus(clientId: string): Promise<PayerStatus | 
 }
 
 /**
+ * Search parts by part number or description
+ */
+export interface PartSearchResult {
+  id: string;
+  partNumber: string;
+  description: string;
+  unitPrice: number;
+  stockQuantity: number;
+}
+
+export async function searchParts(query: string): Promise<PartSearchResult[]> {
+  if (!query || query.trim().length < 2) {
+    return [];
+  }
+
+  const supabase = await createClient();
+  const searchTerm = `%${query.trim()}%`;
+
+  const { data, error } = await supabase
+    .from("parts")
+    .select("*")
+    .or(`part_number.ilike.${searchTerm},description.ilike.${searchTerm}`)
+    .limit(10);
+
+  if (error) {
+    console.error("[Server Action] searchParts error:", error);
+    return [];
+  }
+
+  return (data || []).map((p) => ({
+    id: p.id,
+    partNumber: p.part_number || "",
+    description: p.description || "",
+    unitPrice: Number(p.unit_price) || 0,
+    stockQuantity: Number(p.stock_quantity) || 0,
+  }));
+}
+
+/**
  * Fetch service history for a machine - returns last 2 job cards with pending issues
  */
 export interface ServiceHistoryIssue {

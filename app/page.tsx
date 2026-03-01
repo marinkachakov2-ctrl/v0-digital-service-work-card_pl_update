@@ -20,10 +20,12 @@ import type { MachineSearchResult, PayerStatus } from "@/lib/types";
 
 export interface PartItem {
   id: string;
+  partId?: string; // UUID from parts table (for linking to job_card_parts)
   partNo: string;
   description: string;
   qty: number;
   price: number;
+  stockQuantity?: number; // Current stock level from database
 }
 
 export interface LaborItem {
