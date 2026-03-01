@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, ScanLine, Wrench, Play, Pause, Square, CalendarDays, ShieldCheck, Users, Plus, Minus, Crown } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Wrench, Play, Pause, Square, CalendarDays, ShieldCheck, Users, Plus, Minus, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -13,9 +12,6 @@ import Link from "next/link";
 type TimerStatus = "idle" | "running" | "paused";
 
 interface WorkCardHeaderProps {
-  searchValue: string;
-  onSearchChange: (value: string) => void;
-  onSimulateScan: () => void;
   orderNumber: string;
   jobCardNumber: string;
   assignedTechnicians: string[];
@@ -36,9 +32,6 @@ interface WorkCardHeaderProps {
 }
 
 export function WorkCardHeader({
-  searchValue,
-  onSearchChange,
-  onSimulateScan,
   orderNumber,
   jobCardNumber,
   assignedTechnicians,
@@ -215,27 +208,6 @@ export function WorkCardHeader({
             <p className="text-xs text-muted-foreground">Дата</p>
           </div>
         </div>
-      </div>
-
-      {/* Search Bar */}
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Order No / Serial No"
-            value={searchValue}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="h-11 bg-card pl-10 text-foreground placeholder:text-muted-foreground"
-          />
-        </div>
-        <Button
-          onClick={onSimulateScan}
-          className="h-11 gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <ScanLine className="h-4 w-4" />
-          Simulate Scan
-        </Button>
       </div>
 
       {/* Technicians Row — Dynamic */}

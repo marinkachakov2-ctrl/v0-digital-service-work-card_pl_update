@@ -57,7 +57,6 @@ export default function WorkCardPage() {
   // Hydration flag to prevent UI flickering
   const [isHydrated, setIsHydrated] = useState(false);
 
-  const [searchValue, setSearchValue] = useState("");
   const [clientData, setClientData] = useState<ClientData | null>(null);
   const [isScanned, setIsScanned] = useState(false);
 
@@ -318,22 +317,6 @@ export default function WorkCardPage() {
       previousCardId: "JC-0012",
     },
   ]);
-
-  const handleSimulateScan = () => {
-    setClientData({
-      machineOwner: "Агроинвест ЕООД",
-      billingEntity: "Агроинвест ЕООД",
-      location: "София, България",
-      machineModel: "John Deere 8370R",
-      serialNo: "RW8370R001234",
-      engineSN: "PE6068T123456",
-      previousEngineHours: 4520,
-    });
-    setSearchValue("RW8370R001234");
-    setIsScanned(true);
-    setOrderNumber("ON-5521");
-    setJobCardNumber("JC-0018");
-  };
 
   const handleBillingEntityChange = (value: string) => {
     if (clientData) {
@@ -622,7 +605,28 @@ export default function WorkCardPage() {
           <div className="h-20" />
         )}
 
-        {/* Order Type Selector & Unified Search - Top Section */}
+        {/* Header with Megatron branding and time tracking */}
+        <WorkCardHeader
+          orderNumber={selectedOrder?.orderNumber || orderNumber}
+          jobCardNumber={selectedOrder?.jobCardNumber || jobCardNumber}
+          assignedTechnicians={assignedTechnicians}
+          onAssignedTechniciansChange={setAssignedTechnicians}
+          leadTechnicianId={leadTechnicianId}
+          onLeadTechnicianIdChange={setLeadTechnicianId}
+          clockAtJobLevel={clockAtJobLevel}
+          onClockAtJobLevelChange={setClockAtJobLevel}
+          timerStatus={timerStatus}
+          elapsedTime={elapsedTime}
+          onTimerStart={handleTimerStart}
+          onTimerPause={handleTimerPause}
+          onTimerStop={handleTimerStop}
+          isAdmin={isAdmin}
+          onAdminToggle={setIsAdmin}
+          isSigned={isSigned}
+          isPayerBlocked={isPayerBlocked}
+        />
+
+        {/* Order Type Selector & Unified Search - Right below header */}
         <OrderSelector
           onOrderSelect={(order) => {
             setSelectedOrder(order);
@@ -683,29 +687,6 @@ export default function WorkCardPage() {
           isPayerChanged={isPayerChanged}
           payerChangeReason={payerChangeReason}
         />
-
-        <WorkCardHeader
-          searchValue={searchValue}
-          onSearchChange={setSearchValue}
-          onSimulateScan={handleSimulateScan}
-          orderNumber={selectedOrder?.orderNumber || orderNumber}
-          jobCardNumber={selectedOrder?.jobCardNumber || jobCardNumber}
-          assignedTechnicians={assignedTechnicians}
-          onAssignedTechniciansChange={setAssignedTechnicians}
-          leadTechnicianId={leadTechnicianId}
-          onLeadTechnicianIdChange={setLeadTechnicianId}
-          clockAtJobLevel={clockAtJobLevel}
-          onClockAtJobLevelChange={setClockAtJobLevel}
-          timerStatus={timerStatus}
-          elapsedTime={elapsedTime}
-  onTimerStart={handleTimerStart}
-  onTimerPause={handleTimerPause}
-  onTimerStop={handleTimerStop}
-  isAdmin={isAdmin}
-  onAdminToggle={setIsAdmin}
-  isSigned={isSigned}
-  isPayerBlocked={isPayerBlocked}
-  />
 
         <div className="mt-6 space-y-6">
           {/* Historical Issues Banner - Yellow alert for pending issues from previous visits */}
