@@ -7,6 +7,205 @@ import { createClient } from "./supabase/server";
 import { generateOrderNumber, generateJobCardNumber } from "./data";
 import type { MachineSearchResult, Technician, PayerStatus, MachineWithPayerInfo } from "./types";
 
+// ────────────────────────────── Service Orders ──────────────────────────────
+
+export interface ServiceOrderResult {
+  id: string;
+  orderNumber: string;
+  jobCardNumber: string;
+  clientId: string | null;
+  clientName: string;
+  machineId: string | null;
+  machineModel: string;
+  machineSerial: string;
+  serviceType: "warranty" | "repair" | "service_contract" | "internal";
+  status: string;
+  technicianId: string | null;
+  technicianName: string;
+  createdAt: string;
+}
+
+/**
+ * Search service orders by order number, job card number, client name, or machine
+ */
+export async function searchServiceOrders(
+  query: string,
+  technicianId?: string | null
+): Promise<ServiceOrderResult[]> {
+  const supabase = await createClient();
+
+  let queryBuilder = supabase
+    .from("service_orders")
+    .select(`
+      *,
+      machines:machine_id (model, serial_number),
+      clients:client_id (name)
+    `)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  // Filter by technician if provided
+  if (technicianId) {
+    queryBuilder = queryBuilder.eq("technician_id", technicianId);
+  }
+
+  // Search filter
+  if (query && query.trim().length >= 2) {
+    const searchTerm = `%${query.trim()}%`;
+    queryBuilder = queryBuilder.or(
+      `order_number.ilike.${searchTerm},job_card_number.ilike.${searchTerm},technician_name.ilike.${searchTerm}`
+    );
+  }
+
+  const { data, error } = await queryBuilder;
+
+  if (error) {
+    console.error("[Server Action] searchServiceOrders error:", error);
+    return [];
+  }
+
+  return (data || []).map((so: Record<string, unknown>) => ({
+    id: so.id as string,
+    orderNumber: (so.order_number as string) || "",
+    jobCardNumber: (so.job_card_number as string) || "",
+    clientId: so.client_id as string | null,
+    clientName: (so.clients as Record<string, unknown>)?.name as string || "",
+    machineId: so.machine_id as string | null,
+    machineModel: (so.machines as Record<string, unknown>)?.model as string || "",
+    machineSerial: (so.machines as Record<string, unknown>)?.serial_number as string || "",
+    serviceType: (so.service_type as ServiceOrderResult["serviceType"]) || "repair",
+    status: (so.status as string) || "open",
+    technicianId: so.technician_id as string | null,
+    technicianName: (so.technician_name as string) || "",
+    createdAt: so.created_at as string,
+  }));
+}
+
+/**
+ * Get a single service order with full details including payer info
+ */
+export async function getServiceOrderDetails(orderId: string): Promise<{
+  order: ServiceOrderResult;
+  owner: PayerStatus | null;
+  payer: PayerStatus | null;
+} | null> {
+  const supabase = await createClient();
+
+  const { data: so, error } = await supabase
+    .from("service_orders")
+    .select(`
+      *,
+      machines:machine_id (*),
+      clients:client_id (*)
+    `)
+    .eq("id", orderId)
+    .single();
+
+  if (error || !so) {
+    console.error("[Server Action] getServiceOrderDetails error:", error);
+    return null;
+  }
+
+  const order: ServiceOrderResult = {
+    id: so.id,
+    orderNumber: so.order_number || "",
+    jobCardNumber: so.job_card_number || "",
+    clientId: so.client_id,
+    clientName: (so.clients as Record<string, unknown>)?.name as string || "",
+    machineId: so.machine_id,
+    machineModel: (so.machines as Record<string, unknown>)?.model as string || "",
+    machineSerial: (so.machines as Record<string, unknown>)?.serial_number as string || "",
+    serviceType: so.service_type || "repair",
+    status: so.status || "open",
+    technicianId: so.technician_id,
+    technicianName: so.technician_name || "",
+    createdAt: so.created_at,
+  };
+
+  // Get owner (client) payer status
+  let owner: PayerStatus | null = null;
+  let payer: PayerStatus | null = null;
+
+  if (so.client_id) {
+    const { data: clientData } = await supabase
+      .from("clients")
+      .select("*")
+      .eq("id", so.client_id)
+      .single();
+
+    if (clientData) {
+      const creditLimit = Number(clientData.credit_limit) || 0;
+      const currentBalance = Number(clientData.current_balance) || 0;
+      owner = {
+        payerId: clientData.id,
+        payerName: clientData.name || "",
+        isBlocked: clientData.is_blocked === true,
+        creditLimit,
+        currentBalance,
+        creditWarningMessage: clientData.credit_warning_message || undefined,
+        isOverCreditLimit: creditLimit > 0 && currentBalance > creditLimit,
+      };
+
+      // Check if there's a different payer
+      const payerId = clientData.payer_id || clientData.id;
+      if (payerId !== clientData.id) {
+        const { data: payerData } = await supabase
+          .from("clients")
+          .select("*")
+          .eq("id", payerId)
+          .single();
+
+        if (payerData) {
+          const payerCreditLimit = Number(payerData.credit_limit) || 0;
+          const payerCurrentBalance = Number(payerData.current_balance) || 0;
+          payer = {
+            payerId: payerData.id,
+            payerName: payerData.name || "",
+            isBlocked: payerData.is_blocked === true,
+            creditLimit: payerCreditLimit,
+            currentBalance: payerCurrentBalance,
+            creditWarningMessage: payerData.credit_warning_message || undefined,
+            isOverCreditLimit: payerCreditLimit > 0 && payerCurrentBalance > payerCreditLimit,
+          };
+        }
+      } else {
+        payer = owner;
+      }
+    }
+  }
+
+  return { order, owner, payer };
+}
+
+/**
+ * Update payer for a job card with audit trail
+ */
+export async function updateJobCardPayer(
+  jobCardId: string,
+  newPayerId: string,
+  changeReason: string,
+  originalPayerId?: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("job_cards")
+    .update({
+      payer_id: newPayerId,
+      is_payer_changed: true,
+      payer_change_reason: changeReason,
+      original_payer_id: originalPayerId || null,
+    })
+    .eq("id", jobCardId);
+
+  if (error) {
+    console.error("[Server Action] updateJobCardPayer error:", error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
 /**
  * Search machines by query string across multiple fields using Supabase:
  * - Brand
