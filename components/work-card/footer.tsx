@@ -8,7 +8,8 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SignaturePad } from "@/components/ui/signature-pad";
-import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, Lock } from "lucide-react";
+import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, Lock, Download } from "lucide-react";
+import { generateJobCardPDF, type PDFJobCardData } from "@/lib/pdf-export";
 import { toast } from "sonner";
 
 interface SaveResult {
@@ -32,6 +33,8 @@ interface FooterProps {
   onFormReset: () => void;
   isReadOnly?: boolean;
   onStatusChange?: (status: "new" | "draft" | "completed") => void;
+  // PDF Export data
+  pdfData?: Omit<PDFJobCardData, "partsTotal" | "laborTotal" | "vat" | "grandTotal" | "customerSignature" | "customerName">;
 }
 
 export function Footer({
@@ -47,13 +50,51 @@ export function Footer({
   onFormReset,
   isReadOnly = false,
   onStatusChange,
+  pdfData,
 }: FooterProps) {
   const [isSaving, setIsSaving] = useState(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [savedResult, setSavedResult] = useState<SaveResult | null>(null);
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const [signerName, setSignerName] = useState<string>("");
   const hasActiveTimer = timerStatus === "running" || timerStatus === "paused";
   const hasPendingOrder = !orderNumber || orderNumber.trim() === "";
+
+  // Export PDF handler
+  const handleExportPDF = async () => {
+    if (!pdfData) {
+      toast.error("PDF Export Error", {
+        description: "Missing job card data for PDF export.",
+      });
+      return;
+    }
+
+    setIsExportingPDF(true);
+    try {
+      const fullPdfData: PDFJobCardData = {
+        ...pdfData,
+        partsTotal,
+        laborTotal,
+        vat,
+        grandTotal,
+        customerSignature: signatureData,
+        customerName: signerName,
+      };
+
+      await generateJobCardPDF(fullPdfData);
+      
+      toast.success("PDF Exported!", {
+        description: "Service report has been downloaded.",
+      });
+    } catch (error) {
+      console.error("[v0] PDF export failed:", error);
+      toast.error("PDF Export Failed", {
+        description: "Could not generate the PDF. Please try again.",
+      });
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
 
   // Handle signature change from SignaturePad
   const handleSignatureChange = (signature: string | null, name?: string) => {
@@ -194,6 +235,20 @@ export function Footer({
           <p className="text-sm text-muted-foreground text-center">
             Тази работна карта е подписана от клиента и не може да бъде редактирана.
           </p>
+          {/* Export PDF button for completed cards */}
+          <Button
+            onClick={handleExportPDF}
+            disabled={isExportingPDF}
+            variant="outline"
+            className="gap-2 px-6 py-5 text-base border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
+          >
+            {isExportingPDF ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Download className="h-5 w-5" />
+            )}
+            Export Service Report (PDF)
+          </Button>
         </CardContent>
       </Card>
     );
@@ -295,6 +350,21 @@ export function Footer({
 
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+        {/* Export PDF */}
+        <Button
+          onClick={handleExportPDF}
+          disabled={isExportingPDF || isSaving}
+          variant="outline"
+          className="gap-2 px-5 py-5 text-base border-primary/30 text-primary hover:bg-primary/10"
+        >
+          {isExportingPDF ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <Download className="h-5 w-5" />
+          )}
+          Export PDF
+        </Button>
+
         {/* Save as Draft */}
         <Button
           onClick={handleSaveDraft}

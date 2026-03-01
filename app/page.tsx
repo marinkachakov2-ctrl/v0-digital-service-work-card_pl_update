@@ -650,6 +650,33 @@ export default function WorkCardPage() {
             onFormReset={handleFormReset}
             isReadOnly={isReadOnly}
             onStatusChange={setCardStatus}
+            pdfData={{
+              orderNumber,
+              jobCardNumber,
+              jobType,
+              date: new Date().toLocaleDateString("bg-BG"),
+              technicians: assignedTechnicians.filter(t => t),
+              leadTechnician: leadTechnicianId || undefined,
+              machineOwner: clientData?.machineOwner || "",
+              billingEntity: clientData?.billingEntity || "",
+              location: clientData?.location || "",
+              machineModel: clientData?.machineModel || "",
+              serialNo: clientData?.serialNo || "",
+              engineSN: clientData?.engineSN || "",
+              engineHours,
+              previousEngineHours: clientData?.previousEngineHours,
+              reasonCode,
+              defectCode,
+              description,
+              faultDate,
+              repairStart,
+              repairEnd,
+              parts,
+              laborItems,
+              photoUrls: faultPhotos.map(p => p.url),
+              engineHoursPhotoUrl: engineHoursPhoto?.url,
+              totalWorkTime: elapsedTime,
+            }}
           />
         </div>
       </div>
