@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Lock, FileEdit } from "lucide-react";
 import { WorkCardHeader } from "@/components/work-card/header";
+import { OrderSelector, type SelectedOrder } from "@/components/work-card/order-selector";
 import { ClientSection } from "@/components/work-card/client-section";
 import { ChecklistModal, ChecklistButton, getDefaultChecklist, type ChecklistItem } from "@/components/work-card/checklist-modal";
 import { DiagnosticsSection, type FaultPhoto } from "@/components/work-card/diagnostics-section";
@@ -64,6 +65,11 @@ export default function WorkCardPage() {
   const [orderNumber, setOrderNumber] = useState("");
   const [jobCardNumber, setJobCardNumber] = useState("");
   const [jobType, setJobType] = useState<"warranty" | "repair" | "internal">("repair");
+  
+  // Selected order from unified search
+  const [selectedOrder, setSelectedOrder] = useState<SelectedOrder | null>(null);
+  const [isPayerChanged, setIsPayerChanged] = useState(false);
+  const [payerChangeReason, setPayerChangeReason] = useState<string>("");
 
   // Technicians — dynamic list
   const [assignedTechnicians, setAssignedTechnicians] = useState<string[]>([""]);
@@ -403,6 +409,11 @@ export default function WorkCardPage() {
     setSelectedMachineId(null);
     setPayerStatus(null);
     
+    // Clear selected order and payer change state
+    setSelectedOrder(null);
+    setIsPayerChanged(false);
+    setPayerChangeReason("");
+    
     // Clear historical issues and recommendations
     setHistoricalIssues([]);
     setRecommendationsData({
@@ -611,12 +622,74 @@ export default function WorkCardPage() {
           <div className="h-20" />
         )}
 
+        {/* Order Type Selector & Unified Search - Top Section */}
+        <OrderSelector
+          onOrderSelect={(order) => {
+            setSelectedOrder(order);
+            if (order) {
+              setOrderNumber(order.orderNumber);
+              setJobCardNumber(order.jobCardNumber);
+              setSelectedMachineId(order.machineId);
+              setIsScanned(true);
+              // Map service type to job type
+              const typeMap: Record<string, "warranty" | "repair" | "internal"> = {
+                warranty: "warranty",
+                repair: "repair",
+                internal: "internal",
+                service_contract: "repair",
+              };
+              setJobType(typeMap[order.serviceType] || "repair");
+              // Set client data from order
+              setClientData({
+                machineOwner: order.clientName,
+                billingEntity: order.clientName,
+                location: "",
+                machineModel: order.machineModel,
+                serialNo: order.machineSerial,
+                engineSN: "",
+                previousEngineHours: null,
+              });
+            } else {
+              setOrderNumber("");
+              setJobCardNumber("");
+              setSelectedMachineId(null);
+              setIsScanned(false);
+              setClientData(null);
+              setIsPayerChanged(false);
+              setPayerChangeReason("");
+            }
+          }}
+          onPayerChange={(payer, reason) => {
+            setPayerStatus(payer);
+            if (payer && reason) {
+              setIsPayerChanged(true);
+              setPayerChangeReason(reason);
+            } else {
+              setIsPayerChanged(false);
+              setPayerChangeReason("");
+            }
+          }}
+          onOrderTypeChange={(type) => {
+            const typeMap: Record<string, "warranty" | "repair" | "internal"> = {
+              warranty: "warranty",
+              repair: "repair",
+              internal: "internal",
+              service_contract: "repair",
+            };
+            setJobType(typeMap[type] || "repair");
+          }}
+          selectedOrder={selectedOrder}
+          currentPayer={payerStatus}
+          isPayerChanged={isPayerChanged}
+          payerChangeReason={payerChangeReason}
+        />
+
         <WorkCardHeader
           searchValue={searchValue}
           onSearchChange={setSearchValue}
           onSimulateScan={handleSimulateScan}
-          orderNumber={orderNumber}
-          jobCardNumber={jobCardNumber}
+          orderNumber={selectedOrder?.orderNumber || orderNumber}
+          jobCardNumber={selectedOrder?.jobCardNumber || jobCardNumber}
           assignedTechnicians={assignedTechnicians}
           onAssignedTechniciansChange={setAssignedTechnicians}
           leadTechnicianId={leadTechnicianId}
