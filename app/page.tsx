@@ -1212,6 +1212,9 @@ function WorkCardPageContent() {
             onFormReset={handleFormReset}
             isReadOnly={isReadOnly}
             onStatusChange={setCardStatus}
+            clientName={clientData?.machineOwner || ""}
+            machineModel={clientData?.machineModel || ""}
+            jobCardId={savedJobCardId || undefined}
             pdfData={{
               orderNumber,
               jobCardNumber,

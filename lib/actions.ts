@@ -2493,3 +2493,37 @@ export async function fetchJobCardForEdit(jobCardId: string): Promise<{
     return { success: false, error: String(err) };
   }
 }
+
+// ────────────────────────────── Mark Job Card As Shared ──────────────────────────────
+
+/**
+ * Update job card status when the report is shared via WhatsApp or Email
+ * Changes status from 'draft' to 'completed' (or 'quote_sent' for admin context)
+ */
+export async function markJobCardAsShared(
+  jobCardId: string,
+  shareMethod: "whatsapp" | "email"
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    const { error } = await supabase
+      .from("job_cards")
+      .update({ 
+        status: "completed",
+        notes: supabase.rpc ? undefined : `Report shared via ${shareMethod} on ${new Date().toISOString()}`,
+      })
+      .eq("id", jobCardId);
+
+    if (error) {
+      console.error("markJobCardAsShared error:", error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`[Server Action] Job card ${jobCardId} marked as shared via ${shareMethod}`);
+    return { success: true };
+  } catch (err) {
+    console.error("markJobCardAsShared catch error:", err);
+    return { success: false, error: String(err) };
+  }
+}
