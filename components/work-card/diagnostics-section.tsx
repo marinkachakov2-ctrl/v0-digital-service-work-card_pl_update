@@ -40,9 +40,11 @@ const causes = [
   { value: "A", label: "A - Слаб материал" },
   { value: "B", label: "B - Слаба заварка" },
   { value: "C", label: "C - Погрешна изработка" },
+  { value: "D", label: "D - Заварено погрешно" },
   { value: "E", label: "E - Сглобено погрешно" },
   { value: "F", label: "F - Чуждо тяло" },
   { value: "G", label: "G - Лоша отливка" },
+  { value: "Z", label: "Z - Други" },
 ];
 
 const defects = [
@@ -53,8 +55,17 @@ const defects = [
   { value: "05", label: "05 - Хлабав" },
   { value: "06", label: "06 - Корозия" },
   { value: "07", label: "07 - Електрическа повреда" },
+  { value: "08", label: "08 - Замърсен" },
   { value: "09", label: "09 - Теч" },
+  { value: "10", label: "10 - Липсва" },
+  { value: "11", label: "11 - Шумен" },
+  { value: "12", label: "12 - Блокирал" },
   { value: "13", label: "13 - Надраскан" },
+  { value: "14", label: "14 - Износен" },
+  { value: "15", label: "15 - Деформиран" },
+  { value: "16", label: "16 - Неправилно регулиран" },
+  { value: "17", label: "17 - Неправилно монтиран" },
+  { value: "18", label: "18 - Къс" },
   { value: "19", label: "19 - Приплъзване" },
   { value: "99", label: "99 - Други" },
 ];
@@ -84,12 +95,18 @@ interface DiagnosticsSectionProps {
   onEngineHoursChange: (value: string) => void;
   onPhotosChange?: (photos: FaultPhoto[]) => void;
   previousEngineHours?: number | null;
-  engineHoursPhoto: FaultPhoto | null;
-  onEngineHoursPhotoChange: (photo: FaultPhoto | null) => void;
-  engineHoursPhotoMissingReason: string;
-  onEngineHoursPhotoMissingReasonChange: (reason: string) => void;
   // For Supabase Storage upload paths
   jobCardId?: string;
+  // 3C fields and warranty-specific fields
+  jobType?: "warranty" | "repair" | "internal";
+  causalPartNo: string;
+  onCausalPartNoChange: (value: string) => void;
+  assemblyGroup: string;
+  onAssemblyGroupChange: (value: string) => void;
+  correction: string;
+  onCorrectionChange: (value: string) => void;
+  recommendations: string;
+  onRecommendationsChange: (value: string) => void;
 }
 
 export function DiagnosticsSection({
@@ -102,10 +119,6 @@ export function DiagnosticsSection({
   engineHours,
   photos = [],
   previousEngineHours,
-  engineHoursPhoto,
-  onEngineHoursPhotoChange,
-  engineHoursPhotoMissingReason,
-  onEngineHoursPhotoMissingReasonChange,
   onReasonChange,
   onDefectChange,
   onDescriptionChange,
@@ -115,6 +128,15 @@ export function DiagnosticsSection({
   onEngineHoursChange,
   onPhotosChange,
   jobCardId,
+  jobType = "repair",
+  causalPartNo,
+  onCausalPartNoChange,
+  assemblyGroup,
+  onAssemblyGroupChange,
+  correction,
+  onCorrectionChange,
+  recommendations,
+  onRecommendationsChange,
 }: DiagnosticsSectionProps) {
   // Hydration flag to prevent SSR/client mismatch
   const [mounted, setMounted] = useState(false);
@@ -126,11 +148,9 @@ export function DiagnosticsSection({
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
   // Upload loading states
   const [isUploadingDiagnostic, setIsUploadingDiagnostic] = useState(false);
-  const [isUploadingEngineHours, setIsUploadingEngineHours] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const descriptionRef = useRef(description);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const engineHoursFileRef = useRef<HTMLInputElement>(null);
 
   // Mark component as mounted (client-side only)
   useEffect(() => {
@@ -412,45 +432,6 @@ export function DiagnosticsSection({
     fileInputRef.current?.click();
   }, []);
 
-  // Engine hours photo capture - uploads to Supabase Storage
-  const handleEngineHoursPhoto = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const files = event.target.files;
-      if (!files || files.length === 0) return;
-      
-      const file = files[0];
-      setIsUploadingEngineHours(true);
-      
-      // Upload to Supabase Storage
-      const uploadResult = await handlePhotoUpload(file, "engine_hours");
-      
-      if (uploadResult) {
-        onEngineHoursPhotoChange({
-          id: `ehp-${Date.now()}`,
-          url: uploadResult.publicUrl,
-          name: file.name,
-          timestamp: new Date(),
-        });
-      } else {
-        // Fallback to local blob URL if upload fails
-        const localUrl = URL.createObjectURL(file);
-        onEngineHoursPhotoChange({
-          id: `ehp-${Date.now()}`,
-          url: localUrl,
-          name: file.name,
-          timestamp: new Date(),
-        });
-      }
-      
-      setIsUploadingEngineHours(false);
-      
-      if (engineHoursFileRef.current) {
-        engineHoursFileRef.current.value = "";
-      }
-    },
-    [onEngineHoursPhotoChange, handlePhotoUpload]
-  );
-
   return (
     <>
       {/* Unsupported Browser Dialog */}
@@ -511,7 +492,7 @@ export function DiagnosticsSection({
               </Label>
               <Select value={defectCode} onValueChange={onDefectChange}>
                 <SelectTrigger className="bg-secondary text-foreground">
-                  <SelectValue placeholder="Изберете дефект" />
+                  <SelectValue placeholder="Избере��е дефект" />
                 </SelectTrigger>
                 <SelectContent>
                   {defects.map((defect) => (
@@ -540,11 +521,64 @@ export function DiagnosticsSection({
             </div>
           </div>
 
-          {/* Description */}
+          {/* Warranty-specific fields - only shown for warranty orders */}
+          {jobType === "warranty" && (
+            <div className="grid gap-4 sm:grid-cols-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+              <div className="sm:col-span-2">
+                <Badge className="bg-amber-500/15 text-amber-500 border-amber-500/30 text-xs mb-3">
+                  Гаранционни полета
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">
+                  Каталожен № на причинната част *
+                </Label>
+                <Input
+                  value={causalPartNo}
+                  onChange={(e) => onCausalPartNoChange(e.target.value)}
+                  placeholder="Въведете каталожен номер"
+                  className="bg-secondary text-foreground"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">
+                  Възел на повредата *
+                </Label>
+                <Input
+                  value={assemblyGroup}
+                  onChange={(e) => onAssemblyGroupChange(e.target.value)}
+                  placeholder="Въведете възел"
+                  className="bg-secondary text-foreground"
+                />
+              </div>
+              <div className="sm:col-span-2 space-y-2">
+                <Label className="text-xs text-muted-foreground">
+                  Дата на проява на повредата *
+                </Label>
+                <div className="relative max-w-xs">
+                  <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="date"
+                    value={faultDate}
+                    onChange={(e) => onFaultDateChange(e.target.value)}
+                    className="bg-secondary text-foreground pl-10"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 3C Section Header */}
+          <div className="border-t border-border pt-4">
+            <h4 className="text-sm font-medium text-foreground mb-4">3C Анализ</h4>
+          </div>
+
+          {/* C1: Оплакване (Complaint) - Description */}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <Label className="text-xs text-muted-foreground">
-                Описание на повредата (Detailed description of the failure)
+              <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0">C1</Badge>
+                Оплакване / Описание на повредата (Complaint)
               </Label>
               <div className="flex items-center gap-2">
                 {/* Hidden file input for camera */}
@@ -637,7 +671,7 @@ export function DiagnosticsSection({
                       <p>
                         {isListening
                           ? "Натиснете за да спрете записа"
-                          : "Натиснете и говорете за да опишете повредата"}
+                          : "Натиснете и говор��те за да опишете повредата"}
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -797,20 +831,51 @@ export function DiagnosticsSection({
             )}
           </div>
 
-          {/* Dates and Engine Hours */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Calendar className="h-3 w-3" />
-                Fault Date
-              </Label>
-              <Input
-                type="date"
-                value={faultDate}
-                onChange={(e) => onFaultDateChange(e.target.value)}
-                className="bg-secondary text-foreground"
-              />
-            </div>
+          {/* C2: Описание на повредата и причините (Cause) */}
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground flex items-center gap-2">
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0">C2</Badge>
+              Описание на повредата и причините (Cause)
+            </Label>
+            <Textarea
+              value={correction}
+              onChange={(e) => onCorrectionChange(e.target.value)}
+              placeholder="Опишете подробно причините за повредата..."
+              className="min-h-20 bg-secondary text-foreground placeholder:text-muted-foreground"
+            />
+          </div>
+
+          {/* C3: Извършени дейности (Correction) */}
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground flex items-center gap-2">
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0">C3</Badge>
+              Извършени дейности (Correction)
+            </Label>
+            <Textarea
+              value={recommendations}
+              onChange={(e) => onRecommendationsChange(e.target.value)}
+              placeholder="Опишете извършените ремонтни дейности..."
+              className="min-h-20 bg-secondary text-foreground placeholder:text-muted-foreground"
+            />
+          </div>
+
+          {/* Dates and Times */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Fault Date - only for non-warranty (warranty has it in the warranty fields section) */}
+            {jobType !== "warranty" && (
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Calendar className="h-3 w-3" />
+                  Дата на повреда
+                </Label>
+                <Input
+                  type="date"
+                  value={faultDate}
+                  onChange={(e) => onFaultDateChange(e.target.value)}
+                  className="bg-secondary text-foreground"
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Clock className="h-3 w-3" />
@@ -855,132 +920,7 @@ export function DiagnosticsSection({
             </div>
           </div>
 
-          {/* Engine Hours Photo Validation */}
-          <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Camera className="h-3 w-3" />
-                Photo proof of engine hours meter
-                <span className="text-destructive">*</span>
-              </Label>
-              {mounted && engineHoursPhoto && (
-                <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30 text-[10px]">
-                  Photo attached
-                </Badge>
-              )}
-            </div>
 
-            {/* Hidden file input */}
-            <input
-              ref={engineHoursFileRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleEngineHoursPhoto}
-              className="hidden"
-              aria-label="Engine hours meter photo"
-            />
-
-            {engineHoursPhoto ? (
-              <div className="space-y-3">
-                {/* Thumbnail preview with success indicator */}
-                <div className="flex items-start gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
-                  {/* Thumbnail */}
-                  <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border-2 border-emerald-500/40">
-                    <img
-                      src={engineHoursPhoto.url || "/placeholder.svg"}
-                      alt="Engine hours meter"
-                      className="h-full w-full object-cover"
-                    />
-                    {/* Green checkmark overlay */}
-                    <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                    </div>
-                  </div>
-                  
-                  {/* Success message and details */}
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                      <span className="text-sm font-medium text-emerald-500">Photo Uploaded</span>
-                    </div>
-                    <p className="text-xs text-foreground truncate max-w-[180px]">{engineHoursPhoto.name}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {engineHoursPhoto.timestamp.toLocaleTimeString("bg-BG", { hour: "2-digit", minute: "2-digit" })}
-                    </p>
-                  </div>
-                  
-                  {/* Remove button */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Only revoke if it's a blob URL (not Supabase URL)
-                      if (engineHoursPhoto.url.startsWith("blob:")) {
-                        URL.revokeObjectURL(engineHoursPhoto.url);
-                      }
-                      onEngineHoursPhotoChange(null);
-                    }}
-                    className="flex h-6 w-6 items-center justify-center rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
-                    aria-label="Remove photo"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                
-                {/* Re-capture button */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => engineHoursFileRef.current?.click()}
-                  disabled={isUploadingEngineHours}
-                  className="gap-2 bg-transparent text-xs"
-                >
-                  <Camera className="h-3 w-3" />
-                  Retake Photo
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => engineHoursFileRef.current?.click()}
-                  disabled={isUploadingEngineHours}
-                  className="gap-2 bg-transparent"
-                >
-                  {isUploadingEngineHours ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <Camera className="h-3.5 w-3.5" />
-                      Capture Engine Hours Photo
-                    </>
-                  )}
-                </Button>
-
-                {/* Missing photo explanation */}
-                {!engineHoursPhoto && (
-                  <div className="space-y-1.5">
-                    <Label className="text-[10px] text-amber-500 flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      If no photo is available, provide a reason:
-                    </Label>
-                    <Textarea
-                      value={engineHoursPhotoMissingReason}
-                      onChange={(e) => onEngineHoursPhotoMissingReasonChange(e.target.value)}
-                      placeholder="Explain why photo proof is missing..."
-                      className="min-h-12 bg-card text-foreground text-xs"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
         </CardContent>
       </Card>
     </>

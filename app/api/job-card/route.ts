@@ -31,6 +31,11 @@ export interface JobCardPayload {
     repairStart: string;
     repairEnd: string;
     engineHours: string;
+    // 3C fields
+    causalPartNo?: string | null;
+    assemblyGroup?: string | null;
+    correction?: string | null;
+    workDone?: string | null;
     // Photo URLs from Supabase Storage
     photo_urls?: string[];
     hour_meter_photo?: string | null;
@@ -146,6 +151,19 @@ export async function POST(request: Request) {
       pending_issues: data.pendingIssues || null, // text - issues not resolved
       pending_reason: data.pendingReason || null, // text - reason for not resolving
       recommendations: data.recommendations || null, // text - general recommendations
+      // 3C fields - warranty specific
+      causal_part_no: data.diagnostics?.causalPartNo || null, // text - catalog number of causal part
+      assembly_group: data.diagnostics?.assemblyGroup || null, // text - assembly group of failure
+      // Reason and defect codes
+      reason_code: data.diagnostics?.reasonCode || null,
+      defect_type_code: data.diagnostics?.defectCode || null,
+      // Complaint description (C1)
+      complaint_description: data.diagnostics?.description || null,
+      // Fault date
+      fault_date: data.diagnostics?.faultDate || null,
+      // Hours photo
+      hours_photo_url: data.diagnostics?.hour_meter_photo || null,
+      missing_photo_reason: data.diagnostics?.engine_hours_photo_missing_reason || null,
     };
 
     // Determine if this is an UPDATE or INSERT operation

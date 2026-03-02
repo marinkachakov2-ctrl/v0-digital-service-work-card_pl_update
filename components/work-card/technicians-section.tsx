@@ -35,6 +35,8 @@ interface TechniciansSectionProps {
   isHoursValid: boolean; // True when engine hours are entered and valid
   currentOrderType: string; // Current order type for tracking
   onOrderTypeCapture?: (orderType: string) => void; // Callback when timer starts
+  // Photo validation for stop button
+  isPhotoValid: boolean; // True when photo uploaded OR skip reason provided
 }
 
 export function TechniciansSection({
@@ -53,6 +55,7 @@ export function TechniciansSection({
   isHoursValid,
   currentOrderType,
   onOrderTypeCapture,
+  isPhotoValid,
 }: TechniciansSectionProps) {
   const [mounted, setMounted] = useState(false);
   const [allTechnicians, setAllTechnicians] = useState<TechnicianInfo[]>([]);
@@ -278,12 +281,19 @@ export function TechniciansSection({
               {elapsedTime}
             </div>
 
-            {/* Stop Button */}
+            {/* Stop Button - requires photo OR skip reason */}
             <Button
               onClick={onTimerStop}
-              disabled={buttonsDisabled || timerStatus === "idle"}
+              disabled={buttonsDisabled || timerStatus === "idle" || !isPhotoValid}
+              title={
+                timerStatus === "idle" 
+                  ? "Таймерът не е стартиран" 
+                  : !isPhotoValid 
+                    ? "Качете снимка на моточасовете или въведете причина за липсата" 
+                    : "Край на работа"
+              }
               className={`h-12 gap-2 px-5 text-base font-semibold shadow-md ${
-                buttonsDisabled || timerStatus === "idle"
+                buttonsDisabled || timerStatus === "idle" || !isPhotoValid
                   ? "bg-muted text-muted-foreground cursor-not-allowed opacity-50"
                   : "bg-red-600 hover:bg-red-500 text-white"
               }`}
