@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Tooltip,
@@ -28,7 +29,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Plus, Trash2, Wrench, Pencil, Mic, MicOff } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Plus, Trash2, Wrench, Pencil, Mic, MicOff, Loader2 } from "lucide-react";
+import { fetchLaborCatalog, type LaborCatalogItem } from "@/lib/actions";
 
 interface LaborTableProps {
   laborItems: LaborItem[];
@@ -119,16 +128,62 @@ export function LaborTable({
 }: LaborTableProps) {
   const [editingItem, setEditingItem] = useState<LaborItem | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  
+  // Labor catalog state
+  const [laborCatalog, setLaborCatalog] = useState<LaborCatalogItem[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [selectedOperationId, setSelectedOperationId] = useState<string>("");
 
-  const addLaborItem = () => {
+  // Fetch labor catalog on mount
+  useEffect(() => {
+    const loadCatalog = async () => {
+      setCatalogLoading(true);
+      const catalog = await fetchLaborCatalog();
+      setLaborCatalog(catalog);
+      setCatalogLoading(false);
+    };
+    loadCatalog();
+  }, []);
+
+  const openAddDialog = () => {
+    setSelectedOperationId("");
+    setAddDialogOpen(true);
+  };
+
+  const addSelectedOperation = () => {
+    const selectedOp = laborCatalog.find((op) => op.id === selectedOperationId);
+    if (!selectedOp) return;
+
     const newItem: LaborItem = {
       id: crypto.randomUUID(),
-      operationName: "",
+      operationId: selectedOp.id,
+      operationCode: selectedOp.operationCode,
+      operationName: selectedOp.description,
       techCount: 1,
-      price: 0,
+      price: selectedOp.standardHours * 50, // Default hourly rate 50 lv
+      standardHours: selectedOp.standardHours,
       notes: "",
     };
     onLaborItemsChange([...laborItems, newItem]);
+    setAddDialogOpen(false);
+    setSelectedOperationId("");
+  };
+
+  const addLaborItem = () => {
+    // If catalog is loaded, open dialog; otherwise add empty item
+    if (laborCatalog.length > 0) {
+      openAddDialog();
+    } else {
+      const newItem: LaborItem = {
+        id: crypto.randomUUID(),
+        operationName: "",
+        techCount: 1,
+        price: 0,
+        notes: "",
+      };
+      onLaborItemsChange([...laborItems, newItem]);
+    }
   };
 
   const updateLaborItem = (
@@ -327,7 +382,98 @@ export function LaborTable({
               onClick={saveEdit}
               className="bg-amber-500 text-amber-950 hover:bg-amber-600"
             >
-              Save Changes
+            Save Changes
+          </Button>
+          </DialogFooter>
+          </DialogContent>
+      </Dialog>
+
+      {/* Add Operation from Catalog Dialog */}
+      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-4 w-4 text-primary" />
+              Добави операция от каталог
+            </DialogTitle>
+            <DialogDescription>
+              Изберете операция от labor_catalog
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {catalogLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-muted-foreground">Зареждане на каталог...</span>
+              </div>
+            ) : laborCatalog.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Няма операции в каталога. Добавете операции в labor_catalog таблицата.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <Label className="text-sm">Изберете операция</Label>
+                <Select value={selectedOperationId} onValueChange={setSelectedOperationId}>
+                  <SelectTrigger className="bg-secondary">
+                    <SelectValue placeholder="Изберете операция..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {laborCatalog.map((op) => (
+                      <SelectItem key={op.id} value={op.id}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {op.operationCode}
+                          </span>
+                          <span>{op.description}</span>
+                          <span className="text-xs text-muted-foreground">
+                            ({op.standardHours}h)
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {selectedOperationId && (
+                  <div className="rounded-lg border border-border bg-secondary/50 p-3 mt-3">
+                    {(() => {
+                      const op = laborCatalog.find((o) => o.id === selectedOperationId);
+                      if (!op) return null;
+                      return (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-sm font-semibold text-primary">
+                              {op.operationCode}
+                            </span>
+                          </div>
+                          <p className="text-sm text-foreground">{op.description}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Стандартни часове: {op.standardHours}h | 
+                            Ориентировъчна цена: {(op.standardHours * 50).toFixed(2)} лв.
+                          </p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAddDialogOpen(false)}
+              className="bg-transparent"
+            >
+              Отказ
+            </Button>
+            <Button
+              onClick={addSelectedOperation}
+              disabled={!selectedOperationId}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Добави операция
             </Button>
           </DialogFooter>
         </DialogContent>

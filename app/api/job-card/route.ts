@@ -274,6 +274,41 @@ export async function POST(request: Request) {
       }
     }
 
+    // 4. Save labor items to job_card_labor table
+    if (data.laborItems && data.laborItems.length > 0) {
+      // First delete existing labor items for this job card (for update scenarios)
+      if (isUpdate) {
+        await supabase
+          .from("job_card_labor")
+          .delete()
+          .eq("job_card_id", resultId);
+      }
+
+      const laborToInsert = data.laborItems
+        .filter((l: { operationId?: string }) => l.operationId) // Only insert items with operationId from catalog
+        .map((l: { operationId: string; techCount?: number; price?: number; notes?: string }) => ({
+          job_card_id: resultId,
+          operation_id: l.operationId,
+          technician_name: data.assignedTechnicians?.[0] || "Unknown",
+          actual_hours: l.techCount || 1, // Use techCount as actual hours for now
+          start_time: data.diagnostics?.repairStart || null,
+          end_time: data.diagnostics?.repairEnd || null,
+        }));
+
+      if (laborToInsert.length > 0) {
+        const { error: laborError } = await supabase
+          .from("job_card_labor")
+          .insert(laborToInsert);
+
+        if (laborError) {
+          console.error("SUPABASE LABOR INSERT ERROR:", laborError);
+          // Don't fail the whole request, just log the error
+        } else {
+          console.log("SUPABASE SUCCESS: Inserted", laborToInsert.length, "labor items for job card:", resultId);
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: isUpdate ? "Job card updated successfully" : "Job card created successfully",

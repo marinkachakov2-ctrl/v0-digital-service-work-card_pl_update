@@ -35,9 +35,12 @@ export interface PartItem {
 
 export interface LaborItem {
   id: string;
+  operationId?: string; // UUID from labor_catalog
+  operationCode?: string; // Code from labor_catalog
   operationName: string;
   techCount: number;
   price: number;
+  standardHours?: number; // From labor_catalog
   notes: string;
 }
 

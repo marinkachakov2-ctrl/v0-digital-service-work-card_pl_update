@@ -7,6 +7,129 @@ import { createClient } from "./supabase/server";
 import { generateOrderNumber, generateJobCardNumber } from "./data";
 import type { MachineSearchResult, Technician, PayerStatus, MachineWithPayerInfo } from "./types";
 
+// ────────────────────────────── Labor Catalog ──────────────────────────────
+
+export interface LaborCatalogItem {
+  id: string;
+  operationCode: string;
+  description: string;
+  standardHours: number;
+}
+
+/**
+ * Fetch all operations from labor_catalog
+ */
+export async function fetchLaborCatalog(): Promise<LaborCatalogItem[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("labor_catalog")
+    .select("*")
+    .order("operation_code", { ascending: true });
+
+  if (error) {
+    console.error("[Server Action] fetchLaborCatalog error:", error);
+    return [];
+  }
+
+  return (data || []).map((item) => ({
+    id: item.id,
+    operationCode: item.operation_code || "",
+    description: item.description || "",
+    standardHours: item.standard_hours || 0,
+  }));
+}
+
+/**
+ * Save labor items to job_card_labor table
+ */
+export async function saveJobCardLabor(
+  jobCardId: string,
+  laborItems: Array<{
+    operationId: string;
+    technicianName: string;
+    actualHours: number;
+    startTime?: string | null;
+    endTime?: string | null;
+  }>
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  // First delete existing labor items for this job card
+  const { error: deleteError } = await supabase
+    .from("job_card_labor")
+    .delete()
+    .eq("job_card_id", jobCardId);
+
+  if (deleteError) {
+    console.error("[Server Action] deleteJobCardLabor error:", deleteError);
+    return { success: false, error: deleteError.message };
+  }
+
+  // Insert new labor items
+  if (laborItems.length > 0) {
+    const dataToInsert = laborItems.map((item) => ({
+      job_card_id: jobCardId,
+      operation_id: item.operationId,
+      technician_name: item.technicianName,
+      actual_hours: item.actualHours,
+      start_time: item.startTime || null,
+      end_time: item.endTime || null,
+    }));
+
+    const { error: insertError } = await supabase
+      .from("job_card_labor")
+      .insert(dataToInsert);
+
+    if (insertError) {
+      console.error("[Server Action] insertJobCardLabor error:", insertError);
+      return { success: false, error: insertError.message };
+    }
+  }
+
+  return { success: true };
+}
+
+/**
+ * Fetch labor items for a job card
+ */
+export async function fetchJobCardLabor(
+  jobCardId: string
+): Promise<Array<{
+  id: string;
+  operationId: string;
+  operationCode: string;
+  operationDescription: string;
+  technicianName: string;
+  actualHours: number;
+  standardHours: number;
+}>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("job_card_labor")
+    .select(`
+      *,
+      labor_catalog:operation_id (operation_code, description, standard_hours)
+    `)
+    .eq("job_card_id", jobCardId);
+
+  if (error) {
+    console.error("[Server Action] fetchJobCardLabor error:", error);
+    return [];
+  }
+
+  return (data || []).map((item) => ({
+    id: item.id,
+    operationId: item.operation_id,
+    operationCode: (item.labor_catalog as Record<string, unknown>)?.operation_code as string || "",
+    operationDescription: (item.labor_catalog as Record<string, unknown>)?.description as string || "",
+    technicianName: item.technician_name || "",
+    actualHours: item.actual_hours || 0,
+    standardHours: (item.labor_catalog as Record<string, unknown>)?.standard_hours as number || 0,
+  }));
+}
+
 // ────────────────────────────── Service Orders ──────────────────────────────
 
 export interface ServiceOrderResult {
