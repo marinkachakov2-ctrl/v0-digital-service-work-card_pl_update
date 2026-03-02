@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { Lock, FileEdit } from "lucide-react";
+import { Lock, FileEdit, Loader2 } from "lucide-react";
 import { WorkCardHeader } from "@/components/work-card/header";
 import { OrderSelector, type SelectedOrder } from "@/components/work-card/order-selector";
 import { TechniciansSection } from "@/components/work-card/technicians-section";
@@ -20,10 +21,11 @@ import { FutureIssuesSection } from "@/components/work-card/future-issues-sectio
 import { PendingRepairsBanner } from "@/components/work-card/pending-repairs-banner";
 import { TechnicianHeader } from "@/components/work-card/technician-header";
 import type { ServiceHistoryIssue, PendingRepairItem } from "@/lib/actions";
-import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours, uploadEngineHoursPhoto, fetchUnresolvedMachineIssues, savePendingRepairs, type MachineIssue } from "@/lib/actions";
+import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours, uploadEngineHoursPhoto, fetchUnresolvedMachineIssues, savePendingRepairs, fetchJobCardForEdit, type MachineIssue } from "@/lib/actions";
 import { Footer } from "@/components/work-card/footer";
 import { useClocking } from "@/lib/clocking-context";
 import type { PayerStatus } from "@/lib/types";
+import { toast } from "sonner";
 
 export interface PartItem {
   id: string;
@@ -61,11 +63,18 @@ export interface ClientData {
 const STORAGE_KEY_FORM = "workcard_form";
 const STORAGE_KEY_TIMER = "workcard_timer";
 
-export default function WorkCardPage() {
+// Main page component (wrapped with Suspense for useSearchParams)
+function WorkCardPageContent() {
   const { isAdmin, setIsAdmin, signJobCard } = useClocking();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const editId = searchParams.get("editId");
 
   // Hydration flag to prevent UI flickering
   const [isHydrated, setIsHydrated] = useState(false);
+  
+  // Loading state for edit mode
+  const [isLoadingEditCard, setIsLoadingEditCard] = useState(false);
 
   const [clientData, setClientData] = useState<ClientData | null>(null);
   const [isScanned, setIsScanned] = useState(false);
@@ -215,10 +224,142 @@ export default function WorkCardPage() {
       }
     }
 
-    // Mark hydration complete
+// Mark hydration complete
     setIsHydrated(true);
   }, []);
 
+  // Load draft card for editing when editId is present
+  useEffect(() => {
+    if (!editId || !isHydrated) return;
+    
+    const loadDraftCard = async () => {
+      setIsLoadingEditCard(true);
+      try {
+        const result = await fetchJobCardForEdit(editId);
+        
+        if (!result.success || !result.data) {
+          toast.error("Failed to load job card", {
+            description: result.error || "Job card not found",
+          });
+          router.push("/");
+          return;
+        }
+
+        const data = result.data;
+        
+        // Populate all form fields with loaded data
+        setSavedJobCardId(data.id);
+        setOrderNumber(data.orderNumber);
+        setCardStatus(data.status === "completed" ? "completed" : "draft");
+        
+        // Machine/Client data
+        if (data.machineId) {
+          setSelectedMachineId(data.machineId);
+        }
+        setClientData({
+          machineOwner: data.machineOwner,
+          billingEntity: data.billingEntity,
+          location: data.location,
+          machineModel: data.machineModel,
+          serialNo: data.serialNo,
+          engineSN: data.engineSN,
+          previousEngineHours: data.previousEngineHours,
+        });
+        setIsScanned(true);
+        
+        // Technician
+        if (data.technicianId) {
+          setAssignedTechnicians([data.technicianId]);
+          setLeadTechnicianId(data.technicianId);
+        }
+        
+        // Diagnostics
+        setReasonCode(data.reasonCode);
+        setDefectCode(data.defectCode);
+        setDescription(data.description);
+        setFaultDate(data.faultDate);
+        setRepairStart(data.repairStart);
+        setRepairEnd(data.repairEnd);
+        setCausalPartNo(data.causalPartNo);
+        setAssemblyGroup(data.assemblyGroup);
+        
+        // Engine hours
+        if (data.currentEngineHours) {
+          setCurrentEngineHours(data.currentEngineHours);
+          setEngineHours(String(data.currentEngineHours));
+        }
+        
+        // Photos
+        if (data.hoursPhotoUrl) {
+          setHoursPhotoUrl(data.hoursPhotoUrl);
+        }
+        if (data.missingPhotoReason) {
+          setSkipPhoto(true);
+          setMissingPhotoReason(data.missingPhotoReason);
+        }
+        if (data.photoUrls?.length > 0) {
+          setFaultPhotos(data.photoUrls.map((url, idx) => ({
+            id: `loaded-${idx}`,
+            url,
+            caption: "",
+          })));
+        }
+        
+        // Timer
+        if (data.totalSeconds > 0) {
+          setElapsedSeconds(data.totalSeconds);
+          setTimerStatus("paused");
+        }
+        
+        // Recommendations
+        setRecommendationsData({
+          pendingIssues: data.pendingIssues,
+          pendingReason: data.pendingReason,
+          recommendations: data.recommendations,
+        });
+        
+        // Parts and labor
+        if (data.parts?.length > 0) {
+          setParts(data.parts.map(p => ({
+            id: p.id,
+            partId: p.partId,
+            partNo: p.partNo,
+            description: p.description,
+            qty: p.qty,
+            price: p.price,
+          })));
+        }
+        if (data.laborItems?.length > 0) {
+          setLaborItems(data.laborItems.map(l => ({
+            id: l.id,
+            operationId: l.operationId,
+            operationCode: l.operationCode,
+            operationName: l.operationName,
+            techCount: l.techCount,
+            price: l.price,
+            notes: "",
+          })));
+        }
+        
+        toast.success("Draft loaded", {
+          description: `Editing job card: ${data.orderNumber || data.id.slice(0, 8)}`,
+        });
+        
+        // Clear the URL param to prevent reload issues
+        router.replace("/", { scroll: false });
+      } catch (error) {
+        console.error("Error loading draft card:", error);
+        toast.error("Failed to load draft", {
+          description: "An unexpected error occurred",
+        });
+      } finally {
+        setIsLoadingEditCard(false);
+      }
+    };
+    
+    loadDraftCard();
+  }, [editId, isHydrated, router]);
+  
   // Save form state to localStorage whenever it changes (after hydration)
   useEffect(() => {
     if (!isHydrated) return; // Don't save during initial hydration
@@ -688,6 +829,16 @@ export default function WorkCardPage() {
         />
       )}
 
+      {/* Loading overlay for edit mode */}
+      {isLoadingEditCard && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <p className="text-lg font-medium">Loading draft job card...</p>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 lg:px-8">
         {/* Status Badge - shows DRAFT (yellow) or COMPLETED (green) */}
         {cardStatus !== "new" && (
@@ -1098,5 +1249,18 @@ export default function WorkCardPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+// Default export with Suspense boundary for useSearchParams
+export default function WorkCardPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    }>
+      <WorkCardPageContent />
+    </Suspense>
   );
 }

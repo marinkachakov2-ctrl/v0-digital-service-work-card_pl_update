@@ -2252,3 +2252,244 @@ export async function fetchJobCardForPDF(jobCardId: string): Promise<{
     return { success: false, error: String(err) };
   }
 }
+
+// ────────────────────────────── Fetch Job Card For Edit ──────────────────────────────
+
+/**
+ * Fetch complete job card data for reopening and editing a draft
+ */
+export async function fetchJobCardForEdit(jobCardId: string): Promise<{
+  success: boolean;
+  data?: {
+    id: string;
+    orderNumber: string;
+    status: string;
+    // Machine/Client
+    machineId: string | null;
+    machineOwner: string;
+    billingEntity: string;
+    location: string;
+    machineModel: string;
+    serialNo: string;
+    engineSN: string;
+    previousEngineHours: number | null;
+    currentEngineHours: number | null;
+    // Technician
+    technicianId: string | null;
+    technicianName: string;
+    // Diagnostics
+    reasonCode: string;
+    defectCode: string;
+    description: string;
+    faultDate: string;
+    repairStart: string;
+    repairEnd: string;
+    // 3C fields
+    causalPartNo: string;
+    assemblyGroup: string;
+    // Timer
+    totalSeconds: number;
+    startTime: string | null;
+    endTime: string | null;
+    // Photos
+    photoUrls: string[];
+    hoursPhotoUrl: string | null;
+    missingPhotoReason: string | null;
+    // Recommendations
+    pendingIssues: string;
+    pendingReason: string;
+    recommendations: string;
+    // Signature
+    signatureData: string | null;
+    signatureUrl: string | null;
+    signerName: string | null;
+    // Parts
+    parts: Array<{
+      id: string;
+      partId: string;
+      partNo: string;
+      description: string;
+      qty: number;
+      price: number;
+    }>;
+    // Labor
+    laborItems: Array<{
+      id: string;
+      operationId: string;
+      operationCode: string;
+      operationName: string;
+      techCount: number;
+      price: number;
+    }>;
+  };
+  error?: string;
+}> {
+  const supabase = await createClient();
+
+  try {
+    // Fetch job card with machine, technician, parts, and labor
+    const { data: jobCard, error: jobCardError } = await supabase
+      .from("job_cards")
+      .select(`
+        *,
+        machines (
+          id,
+          brand,
+          model,
+          serial_number,
+          engine_sn,
+          client_name,
+          clients (
+            id,
+            name
+          )
+        ),
+        technicians (
+          id,
+          name
+        )
+      `)
+      .eq("id", jobCardId)
+      .single();
+
+    if (jobCardError || !jobCard) {
+      console.error("fetchJobCardForEdit job card error:", jobCardError);
+      return { success: false, error: jobCardError?.message || "Job card not found" };
+    }
+
+    // Fetch parts for this job card
+    const { data: partsData, error: partsError } = await supabase
+      .from("job_card_parts")
+      .select(`
+        id,
+        quantity,
+        price_at_submission,
+        parts (
+          id,
+          part_number,
+          description,
+          selling_price
+        )
+      `)
+      .eq("job_card_id", jobCardId);
+
+    if (partsError) {
+      console.error("fetchJobCardForEdit parts error:", partsError);
+    }
+
+    // Fetch labor items for this job card
+    const { data: laborData, error: laborError } = await supabase
+      .from("job_card_labor")
+      .select(`
+        id,
+        actual_hours,
+        labor_catalog (
+          id,
+          operation_code,
+          operation_name,
+          standard_hours,
+          hourly_rate
+        )
+      `)
+      .eq("job_card_id", jobCardId);
+
+    if (laborError) {
+      console.error("fetchJobCardForEdit labor error:", laborError);
+    }
+
+    // Build parts array
+    const parts = (partsData || []).map((p: {
+      id: string;
+      quantity: number;
+      price_at_submission: number;
+      parts: { id: string; part_number: string; description: string; selling_price: number } | null;
+    }) => ({
+      id: p.id,
+      partId: p.parts?.id || "",
+      partNo: p.parts?.part_number || "",
+      description: p.parts?.description || "",
+      qty: p.quantity || 0,
+      price: p.price_at_submission || p.parts?.selling_price || 0,
+    }));
+
+    // Build labor array
+    const laborItems = (laborData || []).map((l: {
+      id: string;
+      actual_hours: number;
+      labor_catalog: { id: string; operation_code: string; operation_name: string; standard_hours: number; hourly_rate: number } | null;
+    }) => ({
+      id: l.id,
+      operationId: l.labor_catalog?.id || "",
+      operationCode: l.labor_catalog?.operation_code || "",
+      operationName: l.labor_catalog?.operation_name || "",
+      techCount: l.actual_hours || 1,
+      price: (l.labor_catalog?.hourly_rate || 50) * (l.actual_hours || 1),
+    }));
+
+    // Get machine data
+    const machineData = jobCard.machines as {
+      id?: string;
+      brand?: string;
+      model?: string;
+      serial_number?: string;
+      engine_sn?: string;
+      client_name?: string;
+      clients?: { id?: string; name?: string };
+    } | null;
+
+    const techData = jobCard.technicians as { id?: string; name?: string } | null;
+
+    const data = {
+      id: jobCard.id,
+      orderNumber: jobCard.order_no || "",
+      status: jobCard.status || "draft",
+      // Machine/Client
+      machineId: machineData?.id || null,
+      machineOwner: machineData?.client_name || machineData?.clients?.name || "",
+      billingEntity: machineData?.clients?.name || machineData?.client_name || "",
+      location: "",
+      machineModel: `${machineData?.brand || ""} ${machineData?.model || ""}`.trim(),
+      serialNo: machineData?.serial_number || "",
+      engineSN: machineData?.engine_sn || "",
+      previousEngineHours: jobCard.previous_machine_hours || null,
+      currentEngineHours: jobCard.current_machine_hours || null,
+      // Technician
+      technicianId: techData?.id || null,
+      technicianName: techData?.name || "",
+      // Diagnostics
+      reasonCode: jobCard.reason_code || "",
+      defectCode: jobCard.defect_type_code || "",
+      description: jobCard.complaint_description || jobCard.notes?.split(" | ")[0] || "",
+      faultDate: jobCard.fault_date || "",
+      repairStart: jobCard.start_time || "",
+      repairEnd: jobCard.end_time || "",
+      // 3C fields
+      causalPartNo: jobCard.causal_part_no || "",
+      assemblyGroup: jobCard.assembly_group || "",
+      // Timer
+      totalSeconds: jobCard.total_seconds || 0,
+      startTime: jobCard.start_time || null,
+      endTime: jobCard.end_time || null,
+      // Photos
+      photoUrls: jobCard.photo_urls || [],
+      hoursPhotoUrl: jobCard.hours_photo_url || null,
+      missingPhotoReason: jobCard.missing_photo_reason || null,
+      // Recommendations
+      pendingIssues: jobCard.pending_issues || "",
+      pendingReason: jobCard.pending_reason || "",
+      recommendations: jobCard.recommendations || "",
+      // Signature
+      signatureData: jobCard.signature_data || null,
+      signatureUrl: jobCard.signature_url || null,
+      signerName: jobCard.client_name_signed || null,
+      // Parts and Labor
+      parts,
+      laborItems,
+    };
+
+    return { success: true, data };
+  } catch (err) {
+    console.error("fetchJobCardForEdit catch error:", err);
+    return { success: false, error: String(err) };
+  }
+}

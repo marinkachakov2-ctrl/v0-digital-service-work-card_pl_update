@@ -765,7 +765,7 @@ export default function JobCardsAdminPage() {
                                 </DialogContent>
                               </Dialog>
 
-                              {/* Download PDF */}
+                              {/* Download PDF - always enabled */}
                               <Button
                                 size="icon"
                                 variant="ghost"
@@ -780,6 +780,20 @@ export default function JobCardsAdminPage() {
                                   <FileDown className="h-4 w-4" />
                                 )}
                               </Button>
+
+                              {/* Edit button - only for draft cards */}
+                              {card.status === "draft" && (
+                                <Link href={`/?editId=${card.id}`}>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-amber-500 hover:text-amber-500 hover:bg-amber-500/10"
+                                    title="Edit Draft"
+                                  >
+                                    <Edit2 className="h-4 w-4" />
+                                  </Button>
+                                </Link>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
