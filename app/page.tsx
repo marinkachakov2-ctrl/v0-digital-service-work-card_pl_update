@@ -900,6 +900,7 @@ export default function WorkCardPage() {
             onSkipReasonChange={setChecklistSkipReason}
             onSkip={() => setChecklistSkipped(true)}
             skipped={checklistSkipped}
+            jobCardId={savedJobCardId}
           />
 
           <DiagnosticsSection
