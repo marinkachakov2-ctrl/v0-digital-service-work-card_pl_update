@@ -22,7 +22,7 @@ export default function TechnicianPage() {
     machineSerial: "1RW8410DCPD012345",
   };
 
-  const handleImportRepairs = (repairs: Array<{ id: string; description: string; estimatedCost: number }>) => {
+  const handleImportRepairs = (repairs: Array<{ id: string; description: string; estimatedCost: number; machineVin: string; status: string; sourceJobCardId: string | null; partId: string | null; laborId: string | null; createdAt: string }>) => {
     const newParts: PartItem[] = repairs.map((r) => ({
       id: crypto.randomUUID(),
       partNo: "IMPORTED",
@@ -47,12 +47,15 @@ export default function TechnicianPage() {
 
       {/* Technician Header with Tabs */}
       <TechnicianHeader
-        jobCardId={demoJobCard.id}
-        orderNo={demoJobCard.orderNo}
-        customerName={demoJobCard.customerName}
-        location={demoJobCard.location}
-        machineModel={demoJobCard.machineModel}
-        machineSerialNumber={demoJobCard.machineSerial}
+        jobCard={{
+          id: demoJobCard.id,
+          orderNo: demoJobCard.orderNo,
+          customerName: demoJobCard.customerName,
+          location: demoJobCard.location,
+          machineModel: demoJobCard.machineModel,
+          serialNumber: demoJobCard.machineSerial,
+        }}
+        isEnabled={true}
         onImportRepairs={handleImportRepairs}
       />
 
