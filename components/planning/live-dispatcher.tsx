@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -17,7 +17,7 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { GripVertical, Clock, Loader2, AlertCircle, RefreshCw, User } from "lucide-react";
+import { GripVertical, Clock, Loader2, AlertCircle, RefreshCw, User, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -328,7 +328,8 @@ function TechnicianRow({
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
-export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
+export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProps) {
+  const [currentDate, setCurrentDate] = useState<Date>(initialDate);
   const [appointments, setAppointments] = useState<ServiceAppointment[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(true);
@@ -337,8 +338,45 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [dropHour, setDropHour] = useState<number | null>(null);
-
+  const [dropWarning, setDropWarning] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  
+  const scrollRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
+  
+  // Check if selected date is today
+  const isToday = formatDate(currentDate) === formatDate(new Date());
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DATE NAVIGATION
+  // ─────────────────────────────────────────────────────────────────────────
+  const goToPreviousDay = useCallback(() => {
+    setCurrentDate((prev) => {
+      const newDate = new Date(prev);
+      newDate.setDate(newDate.getDate() - 1);
+      return newDate;
+    });
+  }, []);
+
+  const goToNextDay = useCallback(() => {
+    setCurrentDate((prev) => {
+      const newDate = new Date(prev);
+      newDate.setDate(newDate.getDate() + 1);
+      return newDate;
+    });
+  }, []);
+
+  const goToToday = useCallback(() => {
+    setCurrentDate(new Date());
+  }, []);
+
+  // Format date for display (Bulgarian locale)
+  const formattedDisplayDate = currentDate.toLocaleDateString("bg-BG", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    timeZone: "Europe/Sofia",
+  });
 
   // Sensors for drag detection
   const sensors = useSensors(
@@ -357,7 +395,7 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
     setError(null);
 
     try {
-      const dateStr = formatDate(selectedDate);
+      const dateStr = formatDate(currentDate);
 
       // Fetch appointments for selected date
       const { data: appointmentsData, error: appointmentsError } = await supabase
@@ -384,7 +422,7 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, supabase]);
+  }, [currentDate, supabase]);
 
   useEffect(() => {
     fetchData();
@@ -394,7 +432,7 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
   // REALTIME SUBSCRIPTION - Live updates from other users
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const dateStr = formatDate(selectedDate);
+    const dateStr = formatDate(currentDate);
     
     const channel = supabase
       .channel(`appointments-${dateStr}`)
@@ -434,7 +472,33 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedDate, supabase]);
+  }, [currentDate, supabase]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CURRENT TIME UPDATES (every minute)
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // AUTO-SCROLL TO CURRENT HOUR ON TODAY
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (isToday && scrollRef.current && !loading) {
+      const now = new Date();
+      const currentHour = now.getHours();
+      
+      if (currentHour >= START_HOUR && currentHour < END_HOUR) {
+        const scrollPosition = (currentHour - START_HOUR - 1) * CELL_WIDTH;
+        scrollRef.current.scrollTo({ left: Math.max(0, scrollPosition), behavior: "smooth" });
+      }
+    }
+  }, [isToday, loading]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // DRAG HANDLERS
@@ -469,6 +533,7 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
     setActiveId(null);
     setOverId(null);
     setDropHour(null);
+    setDropWarning(null);
 
     if (!over) return;
 
@@ -488,6 +553,30 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
       newStartHour = dropHour;
     }
     const newStartTime = hoursToTimeStr(newStartHour);
+
+    // ─────────────────────────────────────────────────────────────────────
+    // PAST TIME VALIDATION
+    // ─────────────────────────────────────────────────────────────────────
+    const now = new Date();
+    const todayStr = formatDate(now);
+    const selectedDateStr = formatDate(currentDate);
+    
+    // Check if dropping to a past date
+    if (selectedDateStr < todayStr) {
+      setDropWarning("Не можете да планирате задачи в миналото");
+      setTimeout(() => setDropWarning(null), 3000);
+      return;
+    }
+    
+    // Check if dropping to a past time on today
+    if (selectedDateStr === todayStr) {
+      const currentHourNow = now.getHours() + now.getMinutes() / 60;
+      if (newStartHour < currentHourNow) {
+        setDropWarning("Не можете да планирате задачи в минало време");
+        setTimeout(() => setDropWarning(null), 3000);
+        return;
+      }
+    }
 
     // Skip if no changes
     if (appointment.technician_name === newTechnicianName && appointment.start_time === newStartTime) {
@@ -543,14 +632,12 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
   // Active appointment for drag overlay
   const activeAppointment = activeId ? appointments.find((a) => a.id === activeId) : null;
 
-  // Current time line position
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
-  const currentTimeOffset =
-    currentHour >= START_HOUR && currentHour < END_HOUR
-      ? (currentHour - START_HOUR) * CELL_WIDTH + (currentMinute / 60) * CELL_WIDTH
-      : null;
+  // Current time line position (only show on today)
+  const currentHour = currentTime.getHours();
+  const currentMinute = currentTime.getMinutes();
+  const currentTimeOffset = isToday && currentHour >= START_HOUR && currentHour < END_HOUR
+    ? (currentHour - START_HOUR) * CELL_WIDTH + (currentMinute / 60) * CELL_WIDTH
+    : null;
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -584,21 +671,77 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="relative flex h-full gap-4">
-        {/* Saving overlay - positioned over entire dispatcher */}
-        {saving && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-lg">
-            <div className="flex items-center gap-3 rounded-lg bg-card px-6 py-4 shadow-lg border">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <span className="font-medium">Запазване...</span>
+      <div className="relative flex h-full flex-col gap-4">
+        {/* Date Navigation Header */}
+        <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={goToPreviousDay}
+              className="h-8 w-8"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            
+            <div className="flex items-center gap-2 px-3">
+              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-semibold min-w-[180px] text-center">
+                {formattedDisplayDate}
+              </span>
             </div>
+            
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={goToNextDay}
+              className="h-8 w-8"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!isToday && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={goToToday}
+                className="gap-1.5"
+              >
+                <Clock className="h-3.5 w-3.5" />
+                Днес
+              </Button>
+            )}
+            
+            <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            </Button>
+          </div>
+        </div>
+
+        {/* Warning Toast */}
+        {dropWarning && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-lg bg-destructive px-4 py-2 text-destructive-foreground shadow-lg animate-in fade-in slide-in-from-top-2">
+            <AlertCircle className="h-4 w-4" />
+            <span className="text-sm font-medium">{dropWarning}</span>
           </div>
         )}
 
-        {/* Main Timeline Area */}
-        <div className="flex-1 rounded-lg border border-border bg-card overflow-hidden">
+        <div className="relative flex flex-1 gap-4 min-h-0">
+          {/* Saving overlay - positioned over entire dispatcher */}
+          {saving && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-lg">
+              <div className="flex items-center gap-3 rounded-lg bg-card px-6 py-4 shadow-lg border">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <span className="font-medium">Запазване...</span>
+              </div>
+            </div>
+          )}
 
-          <ScrollArea className="h-full">
+          {/* Main Timeline Area */}
+          <div className="flex-1 rounded-lg border border-border bg-card overflow-hidden">
+            <ScrollArea className="h-full" ref={scrollRef}>
             <div style={{ minWidth: SIDEBAR_WIDTH + HOURS.length * CELL_WIDTH }}>
               {/* Header with hours */}
               <div className="sticky top-0 z-20 flex border-b border-border bg-secondary/80 backdrop-blur">
@@ -659,10 +802,10 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
               )}
             </div>
             <ScrollBar orientation="horizontal" />
-          </ScrollArea>
-        </div>
+            </ScrollArea>
+          </div>
 
-        {/* Waiting List Sidebar */}
+          {/* Waiting List Sidebar */}
         <div className="w-72 flex-shrink-0 rounded-lg border border-border bg-card">
           <div className="border-b border-border bg-secondary/50 px-4 py-3">
             <div className="flex items-center justify-between">
@@ -710,6 +853,7 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
               </div>
             </div>
           </div>
+        </div>
         </div>
       </div>
 
