@@ -1216,33 +1216,6 @@ export interface ServiceHistoryIssue {
   status: string;
 }
 
-export async function fetchMachineServiceHistory(machineId: string): Promise<ServiceHistoryIssue[]> {
-  if (!machineId) return [];
-
-  const supabase = await createClient();
-
-  const { data, error } = await supabase
-    .from("job_cards")
-    .select("id, created_at, pending_issues, pending_reason, status")
-    .eq("machine_id", machineId)
-    .not("pending_issues", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(2);
-
-  if (error) {
-    console.error("[Server Action] fetchMachineServiceHistory error:", error);
-    return [];
-  }
-
-  return (data || []).map((jc) => ({
-    jobCardId: jc.id,
-    date: jc.created_at,
-    pendingIssues: jc.pending_issues,
-    pendingReason: jc.pending_reason,
-    status: jc.status || "unknown",
-  }));
-}
-
 /**
  * Get all active technicians for assignment dropdowns
  */
