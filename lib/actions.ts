@@ -135,6 +135,92 @@ export async function fetchAdminStats(): Promise<{
   };
 }
 
+// ────────────────────────────── Machine Service History ──────────────────────────────
+
+export interface MachineServiceHistoryItem {
+  id: string;
+  serviceDate: string;
+  technicianName: string;
+  orderNo: string | null;
+  description: string;
+  partsReplaced: string[];
+  totalCost: number;
+  hoursRecorded: number;
+}
+
+/**
+ * Fetch service history for a machine by serial number
+ */
+export async function fetchMachineServiceHistory(
+  machineSerialNumber: string
+): Promise<MachineServiceHistoryItem[]> {
+  if (!machineSerialNumber || machineSerialNumber.trim().length < 3) {
+    return [];
+  }
+
+  const supabase = await createClient();
+
+  // First get the machine ID
+  const { data: machine } = await supabase
+    .from("machines")
+    .select("id")
+    .eq("serial_number", machineSerialNumber.trim())
+    .single();
+
+  if (!machine) {
+    return [];
+  }
+
+  // Fetch job cards for this machine
+  const { data: jobCards, error } = await supabase
+    .from("job_cards")
+    .select(`
+      id,
+      order_no,
+      created_at,
+      complaint_description,
+      current_machine_hours,
+      recommendations,
+      technicians:technician_id (name),
+      job_card_parts (
+        quantity,
+        parts:part_id (description, part_number)
+      )
+    `)
+    .eq("machine_id", machine.id)
+    .not("status", "eq", "draft")
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (error) {
+    console.error("[Server Action] fetchMachineServiceHistory error:", error);
+    return [];
+  }
+
+  return (jobCards || []).map((jc) => {
+    const tech = jc.technicians as { name?: string } | null;
+    const parts = (jc.job_card_parts || []) as Array<{
+      quantity?: number;
+      parts?: { description?: string; part_number?: string };
+    }>;
+
+    const partsReplaced = parts
+      .filter((p) => p.parts)
+      .map((p) => `${p.parts?.part_number || "N/A"} - ${p.parts?.description || "Unknown"}`);
+
+    return {
+      id: jc.id,
+      serviceDate: jc.created_at,
+      technicianName: tech?.name || "Unknown",
+      orderNo: jc.order_no,
+      description: jc.complaint_description || jc.recommendations || "Service performed",
+      partsReplaced,
+      totalCost: 0,
+      hoursRecorded: jc.current_machine_hours || 0,
+    };
+  });
+}
+
 // ────────────────────────────── Machine Pending Repairs ──────────────────────────────
 
 export interface PendingRepairItem {
