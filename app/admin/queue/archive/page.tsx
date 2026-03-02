@@ -23,16 +23,6 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
-import {
   Loader2,
   Search,
   ArrowLeft,
@@ -46,9 +36,8 @@ import {
   Archive,
   Filter,
   X,
-  Play,
-  CheckCircle2,
 } from "lucide-react";
+import { RestartJobButton } from "@/components/admin/reopen-job-modal";
 
 // Types
 interface ArchiveRecord {
@@ -91,12 +80,6 @@ export default function ServiceHistoryArchivePage() {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
-
-  // Re-open modal state
-  const [isReopenModalOpen, setIsReopenModalOpen] = useState(false);
-  const [selectedRecord, setSelectedRecord] = useState<ArchiveRecord | null>(null);
-  const [newNavisionNumber, setNewNavisionNumber] = useState("");
-  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
 
   // Fetch data from Supabase
   const fetchData = useCallback(async () => {
@@ -265,103 +248,6 @@ export default function ServiceHistoryArchivePage() {
   };
 
   const hasActiveFilters = searchQuery || technicianFilter !== "all" || dateRange !== "all";
-
-  // Open re-open modal
-  const handleOpenReopenModal = (record: ArchiveRecord) => {
-    setSelectedRecord(record);
-    setNewNavisionNumber("");
-    setIsReopenModalOpen(true);
-  };
-
-  // Handle creating new order from archived record
-  const handleCreateNewOrder = async () => {
-    if (!selectedRecord || !newNavisionNumber.trim()) {
-      toast.error("Please enter a valid Navision Number");
-      return;
-    }
-
-    setIsCreatingOrder(true);
-    const supabase = createClient();
-
-    try {
-      // Fetch the original job card data
-      const { data: originalCard, error: fetchError } = await supabase
-        .from("job_cards")
-        .select("*")
-        .eq("id", selectedRecord.id)
-        .single();
-
-      if (fetchError || !originalCard) {
-        throw new Error("Failed to fetch original job card data");
-      }
-
-      // Create a new job card based on the archived one
-      const { data: newCard, error: createError } = await supabase
-        .from("job_cards")
-        .insert({
-          // Copy relevant fields from original
-          machine_id: originalCard.machine_id,
-          technician_id: originalCard.technician_id,
-          machine_model: originalCard.machine_model,
-          serial_number: originalCard.serial_number,
-          technician_name: originalCard.technician_name,
-          reason_code: originalCard.reason_code,
-          defect_type_code: originalCard.defect_type_code,
-          complaint_description: originalCard.complaint_description,
-          previous_machine_hours: originalCard.current_machine_hours,
-          // New fields
-          order_no: newNavisionNumber.trim(),
-          navision_order_no: newNavisionNumber.trim(),
-          status: "draft",
-          notes: `Re-opened from archived job card ${selectedRecord.id}. Original Navision: ${selectedRecord.navision_order_no || "N/A"}`,
-        })
-        .select()
-        .single();
-
-      if (createError) {
-        throw createError;
-      }
-
-      // Copy free check results if they exist
-      const { data: freeCheckResults } = await supabase
-        .from("free_check_results")
-        .select("*")
-        .eq("job_card_id", selectedRecord.id);
-
-      if (freeCheckResults && freeCheckResults.length > 0 && newCard) {
-        const newFreeCheckResults = freeCheckResults.map((result) => ({
-          job_card_id: newCard.id,
-          control_point_no: result.control_point_no,
-          control_point_name: result.control_point_name,
-          status: result.status,
-          comments: result.comments,
-          photo_url: result.photo_url,
-        }));
-
-        await supabase.from("free_check_results").insert(newFreeCheckResults);
-      }
-
-      // Success!
-      setIsReopenModalOpen(false);
-      setSelectedRecord(null);
-      setNewNavisionNumber("");
-
-      toast.success("New Job Card Created", {
-        description: "New Job Card created based on historical inspection data.",
-        icon: <CheckCircle2 className="h-5 w-5 text-emerald-500" />,
-      });
-
-      // Refresh the data
-      fetchData();
-    } catch (error) {
-      console.error("Error creating new order:", error);
-      toast.error("Failed to create new order", {
-        description: "Please try again or contact support.",
-      });
-    } finally {
-      setIsCreatingOrder(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -594,16 +480,10 @@ export default function ServiceHistoryArchivePage() {
                               <span className="hidden lg:inline">View Report</span>
                             </Button>
                           </Link>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleOpenReopenModal(record)}
-                            className="gap-2 border-amber-500/30 text-amber-500 hover:bg-amber-500/10 hover:border-amber-500"
-                            title="Re-open as New Order"
-                          >
-                            <Play className="h-4 w-4" />
-                            <span className="hidden lg:inline">Re-open</span>
-                          </Button>
+                          <RestartJobButton
+                            record={record}
+                            onSuccess={() => fetchData()}
+                          />
                         </div>
                       </TableCell>
                     </TableRow>
@@ -643,95 +523,6 @@ export default function ServiceHistoryArchivePage() {
           )}
         </Card>
       </main>
-
-      {/* Re-open as New Order Modal */}
-      <Dialog open={isReopenModalOpen} onOpenChange={setIsReopenModalOpen}>
-        <DialogContent className="sm:max-w-[480px] bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl">
-              <Play className="h-5 w-5 text-amber-500" />
-              Re-open as New Order
-            </DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              Create a new Job Card based on this archived service record. The inspection data will be copied to skip the inspection phase.
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedRecord && (
-            <div className="space-y-4 py-4">
-              {/* Original Record Info */}
-              <div className="rounded-lg border border-border/50 bg-muted/30 p-4 space-y-2">
-                <p className="text-sm text-muted-foreground">Original Record:</p>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Machine:</span>
-                    <p className="font-medium text-foreground">{selectedRecord.machine_model || "Unknown"}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Serial:</span>
-                    <p className="font-medium text-foreground">{selectedRecord.serial_number || "N/A"}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Original Navision:</span>
-                    <p className="font-medium text-foreground">{selectedRecord.navision_order_no || "N/A"}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Technician:</span>
-                    <p className="font-medium text-foreground">{selectedRecord.technician_name || "Unknown"}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* New Navision Number Input */}
-              <div className="space-y-2">
-                <Label htmlFor="navision-number" className="text-sm font-medium">
-                  New Navision Service Order #
-                </Label>
-                <Input
-                  id="navision-number"
-                  type="text"
-                  placeholder="Enter new Navision number..."
-                  value={newNavisionNumber}
-                  onChange={(e) => setNewNavisionNumber(e.target.value)}
-                  className="h-11 bg-background border-border/50 focus:border-primary/50"
-                  autoFocus
-                />
-                <p className="text-xs text-muted-foreground">
-                  This will be the order number for the new Job Card.
-                </p>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              onClick={() => setIsReopenModalOpen(false)}
-              disabled={isCreatingOrder}
-              className="border-border/50"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreateNewOrder}
-              disabled={isCreatingOrder || !newNavisionNumber.trim()}
-              className="gap-2 bg-amber-500 hover:bg-amber-600 text-black"
-            >
-              {isCreatingOrder ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4" />
-                  Create New Order
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
