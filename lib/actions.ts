@@ -7,6 +7,125 @@ import { createClient } from "./supabase/server";
 import { generateOrderNumber, generateJobCardNumber } from "./data";
 import type { MachineSearchResult, Technician, PayerStatus, MachineWithPayerInfo } from "./types";
 
+// ────────────────────────────── Machine Pending Repairs ──────────────────────────────
+
+export interface PendingRepairItem {
+  id: string;
+  machineVin: string;
+  description: string;
+  status: string;
+  estimatedCost: number;
+  sourceJobCardId: string | null;
+  partId: string | null;
+  laborId: string | null;
+  createdAt: string;
+}
+
+/**
+ * Fetch pending repairs for a machine by serial number (VIN)
+ */
+export async function fetchMachinePendingRepairs(
+  machineVin: string
+): Promise<PendingRepairItem[]> {
+  if (!machineVin || machineVin.trim().length < 3) {
+    return [];
+  }
+
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("machine_pending_repairs")
+    .select("*")
+    .eq("machine_vin", machineVin.trim())
+    .in("status", ["pending", "deferred", "next_visit"]) // Only unfulfilled repairs
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[Server Action] fetchMachinePendingRepairs error:", error);
+    return [];
+  }
+
+  return (data || []).map((item) => ({
+    id: item.id,
+    machineVin: item.machine_vin || "",
+    description: item.description || "",
+    status: item.status || "pending",
+    estimatedCost: Number(item.estimated_cost) || 0,
+    sourceJobCardId: item.source_job_card_id,
+    partId: item.part_id,
+    laborId: item.labor_id,
+    createdAt: item.created_at,
+  }));
+}
+
+/**
+ * Save pending repairs when closing a job card
+ * Items with status "deferred" or "next_visit" get saved to machine history
+ */
+export async function savePendingRepairs(
+  machineVin: string,
+  sourceJobCardId: string,
+  repairs: Array<{
+    description: string;
+    status: "deferred" | "next_visit";
+    estimatedCost: number;
+    partId?: string | null;
+    laborId?: string | null;
+  }>
+): Promise<{ success: boolean; error?: string }> {
+  if (!machineVin || repairs.length === 0) {
+    return { success: true };
+  }
+
+  const supabase = await createClient();
+
+  const dataToInsert = repairs.map((r) => ({
+    machine_vin: machineVin,
+    source_job_card_id: sourceJobCardId,
+    description: r.description,
+    status: r.status,
+    estimated_cost: r.estimatedCost,
+    part_id: r.partId || null,
+    labor_id: r.laborId || null,
+  }));
+
+  const { error } = await supabase
+    .from("machine_pending_repairs")
+    .insert(dataToInsert);
+
+  if (error) {
+    console.error("[Server Action] savePendingRepairs error:", error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/**
+ * Mark pending repairs as completed when they are addressed
+ */
+export async function markPendingRepairsCompleted(
+  repairIds: string[]
+): Promise<{ success: boolean; error?: string }> {
+  if (repairIds.length === 0) {
+    return { success: true };
+  }
+
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("machine_pending_repairs")
+    .update({ status: "completed" })
+    .in("id", repairIds);
+
+  if (error) {
+    console.error("[Server Action] markPendingRepairsCompleted error:", error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
 // ────────────────────────────── Labor Catalog ──────────────────────────────
 
 export interface LaborCatalogItem {

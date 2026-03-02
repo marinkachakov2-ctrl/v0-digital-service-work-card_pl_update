@@ -17,8 +17,9 @@ import { CreditWarningBanner } from "@/components/work-card/credit-warning-banne
 import { HistoricalIssuesBanner } from "@/components/work-card/historical-issues-banner";
 import { RecommendationsSection, type RecommendationsData } from "@/components/work-card/recommendations-section";
 import { FutureIssuesSection } from "@/components/work-card/future-issues-section";
-import type { ServiceHistoryIssue } from "@/lib/actions";
-import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours, uploadEngineHoursPhoto, fetchUnresolvedMachineIssues, type MachineIssue } from "@/lib/actions";
+import { PendingRepairsBanner } from "@/components/work-card/pending-repairs-banner";
+import type { ServiceHistoryIssue, PendingRepairItem } from "@/lib/actions";
+import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours, uploadEngineHoursPhoto, fetchUnresolvedMachineIssues, savePendingRepairs, type MachineIssue } from "@/lib/actions";
 import { Footer } from "@/components/work-card/footer";
 import { useClocking } from "@/lib/clocking-context";
 import type { PayerStatus } from "@/lib/types";
@@ -28,6 +29,7 @@ export interface PartItem {
   partId?: string; // UUID from parts table (for linking to job_card_parts)
   partNo: string;
   description: string;
+  status?: "pending" | "completed" | "deferred" | "next_visit"; // For tracking repair status
   qty: number;
   price: number;
   stockQuantity?: number; // Current stock level from database
@@ -603,6 +605,25 @@ export default function WorkCardPage() {
       // Store the job card ID for subsequent UPDATE operations
       if (result.success && result.jobCardId) {
         setSavedJobCardId(result.jobCardId);
+
+        // If card is being finalized (signed), save deferred repairs to machine history
+        if (isSigned && clientData?.serialNo) {
+          const deferredParts = parts.filter(
+            (p) => p.status === "deferred" || p.status === "next_visit"
+          );
+          if (deferredParts.length > 0) {
+            await savePendingRepairs(
+              clientData.serialNo,
+              result.jobCardId,
+              deferredParts.map((p) => ({
+                description: p.description,
+                status: (p.status as "deferred" | "next_visit") || "deferred",
+                estimatedCost: p.unitPrice * p.qty,
+                partId: p.partId || null,
+              }))
+            );
+          }
+        }
       }
       
       return { success: result.success, message: result.message, jobCardId: result.jobCardId, pendingOrder: result.pendingOrder };
@@ -616,7 +637,7 @@ export default function WorkCardPage() {
     description, faultDate, repairStart, repairEnd, engineHours, parts,
     laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned, savedJobCardId,
     faultPhotos, hoursPhotoUrl, skipPhoto, missingPhotoReason, selectedMachineId, payerStatus, recommendationsData,
-    causalPartNo, assemblyGroup, correction, workDone
+    causalPartNo, assemblyGroup, correction, workDone, savePendingRepairs
   ]);
 
   // Show loading skeleton during hydration to prevent flickering
@@ -802,10 +823,37 @@ export default function WorkCardPage() {
         />
 
         <div className="mt-6 space-y-6">
-          {/* Historical Issues Banner - Yellow alert for pending issues from previous visits */}
-          {historicalIssues.length > 0 && (
-            <HistoricalIssuesBanner issues={historicalIssues} />
-          )}
+  {/* Historical Issues Banner - Yellow alert for pending issues from previous visits */}
+  {historicalIssues.length > 0 && (
+  <HistoricalIssuesBanner issues={historicalIssues} />
+  )}
+
+  {/* Pending Repairs Banner - Deferred repairs from machine history */}
+  <PendingRepairsBanner
+    machineSerialNumber={clientData?.serialNo || null}
+    isEnabled={isScanned}
+    onImportRepairs={(repairs) => {
+      // Import repairs as parts/recommendations in the current job card
+      const newParts: PartItem[] = repairs.map((r) => ({
+        id: crypto.randomUUID(),
+        partId: r.partId || undefined,
+        partNo: "IMPORTED",
+        description: r.description,
+        qty: 1,
+        unitPrice: r.estimatedCost,
+        status: "deferred" as const,
+      }));
+      setParts((prev) => [...prev, ...newParts]);
+      // Also add to recommendations if there are deferred items
+      const descriptions = repairs.map((r) => r.description).join("; ");
+      setRecommendationsData((prev) => ({
+        ...prev,
+        pendingIssues: prev.pendingIssues
+          ? `${prev.pendingIssues}\n[Импортирано]: ${descriptions}`
+          : `[Импортирано]: ${descriptions}`,
+      }));
+    }}
+  />
 
   {/* Unresolved Issues Alert Banner — prominent at top, fetched from database */}
   {isScanned && machineIssues.length > 0 && (
