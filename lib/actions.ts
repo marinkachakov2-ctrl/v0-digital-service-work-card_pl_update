@@ -230,6 +230,104 @@ export async function savePendingRepairs(
 }
 
 /**
+ * Fetch all pending repairs across all machines (for admin dashboard)
+ */
+export interface AdminPendingRepair {
+  id: string;
+  machineVin: string;
+  machineModel: string;
+  customerName: string;
+  description: string;
+  status: string;
+  estimatedCost: number;
+  sourceJobCardId: string | null;
+  sourceOrderNo: string | null;
+  photoUrls: string[];
+  createdAt: string;
+  daysSinceDiscovery: number;
+}
+
+export async function fetchAllPendingRepairs(filters?: {
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}): Promise<AdminPendingRepair[]> {
+  const supabase = await createClient();
+
+  let query = supabase
+    .from("machine_pending_repairs")
+    .select(`
+      *,
+      job_cards:source_job_card_id (
+        order_no,
+        photo_urls,
+        machines:machine_id (
+          model,
+          brand,
+          client_name
+        )
+      )
+    `)
+    .in("status", ["pending", "deferred", "next_visit"])
+    .order("created_at", { ascending: false });
+
+  // Apply date filters
+  if (filters?.dateFrom) {
+    query = query.gte("created_at", filters.dateFrom);
+  }
+  if (filters?.dateTo) {
+    query = query.lte("created_at", filters.dateTo);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("[Server Action] fetchAllPendingRepairs error:", error);
+    return [];
+  }
+
+  const now = new Date();
+  let results = (data || []).map((item) => {
+    const jobCard = item.job_cards as {
+      order_no?: string;
+      photo_urls?: string[];
+      machines?: { model?: string; brand?: string; client_name?: string };
+    } | null;
+    const machine = jobCard?.machines;
+    const createdDate = new Date(item.created_at);
+    const daysSince = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    return {
+      id: item.id,
+      machineVin: item.machine_vin || "",
+      machineModel: machine ? `${machine.brand || ""} ${machine.model || ""}`.trim() : "N/A",
+      customerName: machine?.client_name || "N/A",
+      description: item.description || "",
+      status: item.status || "pending",
+      estimatedCost: Number(item.estimated_cost) || 0,
+      sourceJobCardId: item.source_job_card_id,
+      sourceOrderNo: jobCard?.order_no || null,
+      photoUrls: jobCard?.photo_urls || [],
+      createdAt: item.created_at,
+      daysSinceDiscovery: daysSince,
+    };
+  });
+
+  // Apply search filter client-side (for flexibility)
+  if (filters?.search) {
+    const searchLower = filters.search.toLowerCase();
+    results = results.filter(
+      (r) =>
+        r.machineVin.toLowerCase().includes(searchLower) ||
+        r.customerName.toLowerCase().includes(searchLower) ||
+        r.description.toLowerCase().includes(searchLower)
+    );
+  }
+
+  return results;
+}
+
+/**
  * Mark pending repairs as completed when they are addressed
  */
 export async function markPendingRepairsCompleted(
