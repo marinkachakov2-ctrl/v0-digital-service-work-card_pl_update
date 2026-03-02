@@ -103,6 +103,15 @@ export async function POST(request: Request) {
     const hasPendingOrder = !data.orderNumber || data.orderNumber.trim() === "";
     const totalSeconds = data.timerData?.elapsedSeconds ?? 0;
 
+    // Generate temporary internal order number if none provided
+    // Format: TEMP-YYYY-XXXX where XXXX is random 4-digit number
+    let orderNoToSave = data.orderNumber?.trim() || null;
+    if (hasPendingOrder) {
+      const year = new Date().getFullYear();
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000); // 1000-9999
+      orderNoToSave = `TEMP-${year}-${randomSuffix}`;
+    }
+
     // Build notes from diagnostics and other info
     const notesArray: string[] = [];
     if (hasPendingOrder) notesArray.push("[PENDING ORDER]");
@@ -137,7 +146,7 @@ export async function POST(request: Request) {
     const insertData = {
       technician_id: primaryTechnicianId, // UUID string
       machine_id: data.machineId || null, // UUID string or null
-      order_no: hasPendingOrder ? null : data.orderNumber, // text or null
+      order_no: orderNoToSave, // text - either real order number or TEMP-YYYY-XXXX
       start_time: data.timerData?.startedAt || new Date().toISOString(), // timestamp
       end_time: data.submittedAt || new Date().toISOString(), // timestamp
       total_seconds: Math.floor(totalSeconds), // integer
@@ -270,6 +279,8 @@ export async function POST(request: Request) {
       message: isUpdate ? "Job card updated successfully" : "Job card created successfully",
       jobCardId: resultId,
       pendingOrder: hasPendingOrder,
+      tempOrderNo: hasPendingOrder ? orderNoToSave : null, // Return temp order number if generated
+      status: data.signatureData ? (hasPendingOrder ? "pending_order" : "completed") : "draft",
       isUpdate,
     });
   } catch (error) {

@@ -286,7 +286,7 @@ export function Footer({
             {savedResult.pendingOrder && (
               <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-500 px-4 py-2">
                 <Clock className="mr-2 h-4 w-4" />
-                Чака Order No.
+                pending_order (TEMP номер)
               </Badge>
             )}
           </div>
@@ -454,7 +454,8 @@ export function Footer({
         <div className="flex items-center justify-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3">
           <Clock className="h-4 w-4 shrink-0 text-amber-500" />
           <p className="text-sm text-amber-500">
-            Няма номер на поръчка. Картата ще бъде записана като &quot;Чака присвояване&quot;.
+            Няма номер на поръчка (Navision). Ще бъде генериран временен вътрешен номер (TEMP-2026-XXXX).
+            Картата ще има статус &quot;pending_order&quot; докато се присвои реален номер.
           </p>
         </div>
       )}
