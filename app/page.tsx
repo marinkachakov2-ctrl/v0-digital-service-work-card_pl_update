@@ -382,7 +382,7 @@ export default function WorkCardPage() {
     },
     {
       id: "prev-2",
-      description: "Лек теч на масло при предната ос",
+      description: "Лек теч на масл�� при предната ос",
       severity: "medium",
       fromPreviousCard: true,
       previousCardId: "JC-0012",
@@ -662,29 +662,31 @@ export default function WorkCardPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       {/* Technician Mobile Header - High contrast interface for outdoor use */}
-      <TechnicianHeader
-        jobCard={{
-          id: savedJobCardId || jobCardNumber || "NEW",
-          orderNo: orderNumber || "N/A",
-          customerName: clientData?.machineOwner || "Сканирайте машина",
-          location: clientData?.ownerAddress || "",
-          machineModel: clientData?.machineType ? `${clientData.machineBrand || ""} ${clientData.machineType}`.trim() : "N/A",
-          serialNumber: clientData?.serialNo || "",
-        }}
-        isEnabled={isScanned}
-        onImportRepairs={(repairs) => {
-          const newParts: PartItem[] = repairs.map((r) => ({
-            id: crypto.randomUUID(),
-            partId: r.partId || undefined,
-            partNo: "IMPORTED",
-            description: r.description,
-            qty: 1,
-            price: r.estimatedCost,
-            status: "deferred" as const,
-          }));
-          setParts((prev) => [...prev, ...newParts]);
-        }}
-      />
+      {isScanned && clientData?.serialNo && (
+        <TechnicianHeader
+          jobCard={{
+            id: savedJobCardId || jobCardNumber || "NEW",
+            orderNo: orderNumber || "N/A",
+            customerName: clientData?.machineOwner || "Сканирайте машина",
+            location: clientData?.ownerAddress || "",
+            machineModel: clientData?.machineType ? `${clientData.machineBrand || ""} ${clientData.machineType}`.trim() : "N/A",
+            serialNumber: clientData?.serialNo || "",
+          }}
+          isEnabled={isScanned}
+          onImportRepairs={(repairs) => {
+            const newParts: PartItem[] = repairs.map((r) => ({
+              id: crypto.randomUUID(),
+              partId: r.partId || undefined,
+              partNo: "IMPORTED",
+              description: r.description,
+              qty: 1,
+              price: r.estimatedCost,
+              status: "deferred" as const,
+            }));
+            setParts((prev) => [...prev, ...newParts]);
+          }}
+        />
+      )}
 
       <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 lg:px-8">
         {/* Status Badge - shows DRAFT (yellow) or COMPLETED (green) */}
