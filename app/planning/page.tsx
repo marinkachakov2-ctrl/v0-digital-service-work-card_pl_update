@@ -9,11 +9,12 @@ import { WorkshopDiary } from "@/components/planning/workshop-diary";
 import { TechnicianRoster } from "@/components/planning/technician-roster";
 import { DragDropScheduler } from "@/components/planning/drag-drop-scheduler";
 import { HourlyGantt } from "@/components/planning/hourly-gantt";
+import { LiveDispatcher } from "@/components/planning/live-dispatcher";
 import { WeeklyTaskView, type WeeklyTask, type WeeklyNote } from "@/components/planning/weekly-task-view";
 import { ServiceWideView, type ServiceTask } from "@/components/planning/service-wide-view";
 import { ServicePlanningCalendar } from "@/components/planning/service-planning-calendar";
 
-type ViewLevel = "diary" | "roster" | "gantt" | "calendar";
+type ViewLevel = "diary" | "roster" | "gantt" | "calendar" | "dispatcher";
 
 interface NavigationState {
   level: ViewLevel;
@@ -237,6 +238,15 @@ export default function PlanningBoardPage() {
 
           <div className="flex items-center gap-2">
             <Button 
+              variant={navigation.level === "dispatcher" ? "default" : "outline"} 
+              size="sm" 
+              className={navigation.level === "dispatcher" ? "" : "bg-transparent"}
+              onClick={() => setNavigation({ level: "dispatcher", selectedDate: new Date(), selectedTechnicianId: null, selectedTechnicianName: null })}
+            >
+              <Users className="h-4 w-4 mr-1.5" />
+              Dispatcher
+            </Button>
+            <Button 
               variant={navigation.level === "calendar" ? "default" : "outline"} 
               size="sm" 
               className={navigation.level === "calendar" ? "" : "bg-transparent"}
@@ -312,6 +322,13 @@ export default function PlanningBoardPage() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto p-4">
+        {/* Live Dispatcher View - Full-stack with Supabase */}
+        {navigation.level === "dispatcher" && navigation.selectedDate && (
+          <div className="h-[calc(100vh-180px)]">
+            <LiveDispatcher selectedDate={navigation.selectedDate} />
+          </div>
+        )}
+
         {/* Calendar View - Full-stack planning calendar */}
         {navigation.level === "calendar" && (
           <div className="h-[calc(100vh-180px)]">
@@ -424,6 +441,14 @@ export default function PlanningBoardPage() {
       {/* Level Indicator */}
       <footer className="border-t border-border bg-card px-4 py-2">
         <div className="flex items-center justify-center gap-6 text-xs text-muted-foreground">
+          <div
+            className={`flex items-center gap-1.5 ${navigation.level === "dispatcher" ? "text-primary" : ""}`}
+          >
+            <div
+              className={`h-2 w-2 rounded-full ${navigation.level === "dispatcher" ? "bg-primary" : "bg-muted"}`}
+            />
+            <span>Dispatcher</span>
+          </div>
           <div
             className={`flex items-center gap-1.5 ${navigation.level === "calendar" ? "text-primary" : ""}`}
           >
