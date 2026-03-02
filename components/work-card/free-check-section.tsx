@@ -13,7 +13,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Check, AlertTriangle, Camera, Loader2, CheckCircle2, Trash2, ClipboardCheck } from "lucide-react";
-import { saveFreeCheckResult, uploadFreeCheckPhoto } from "@/lib/actions";
+import { saveFreeCheckResult, uploadFreeCheckPhoto, fetchFreeCheckResults } from "@/lib/actions";
 
 // John Deere Free Check 14 control points for 6030/7030 series
 const FREE_CHECK_POINTS = [
@@ -56,35 +56,158 @@ export function FreeCheckSection({ jobCardId, isEnabled, onItemsChange }: FreeCh
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [uploadingIds, setUploadingIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasLoadedFromDb, setHasLoadedFromDb] = useState(false);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const commentDebounceRefs = useRef<Record<string, NodeJS.Timeout | null>>({});
+
+  // Reset loading flag when jobCardId changes to allow reloading for different cards
+  useEffect(() => {
+    setHasLoadedFromDb(false);
+    setItems({});
+    setSavedIds(new Set());
+  }, [jobCardId]);
+
+  // Load saved results from database when jobCardId changes
+  useEffect(() => {
+    async function loadSavedResults() {
+      if (!jobCardId || hasLoadedFromDb) return;
+      
+      setIsLoading(true);
+      try {
+        const { results, error } = await fetchFreeCheckResults(jobCardId);
+        
+        if (error) {
+          console.error("Error loading free check results:", error);
+          return;
+        }
+        
+        if (results.length > 0) {
+          // Convert results array to items record
+          const loadedItems: Record<string, FreeCheckItem> = {};
+          const loadedSavedIds = new Set<string>();
+          
+          results.forEach((result) => {
+            loadedItems[result.controlPointNo] = {
+              status: result.status,
+              comments: result.comments || "",
+              photoUrl: result.photoUrl,
+            };
+            loadedSavedIds.add(result.controlPointNo);
+          });
+          
+          setItems(loadedItems);
+          setSavedIds(loadedSavedIds);
+        }
+        setHasLoadedFromDb(true);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    loadSavedResults();
+  }, [jobCardId, hasLoadedFromDb]);
 
   // Notify parent when items change
   useEffect(() => {
     onItemsChange?.(items);
   }, [items, onItemsChange]);
 
-  const updateStatus = (id: string, status: CheckStatus) => {
+  const updateStatus = async (id: string, status: CheckStatus) => {
+    // Update local state immediately for responsive UI
+    const currentItem = items[id];
+    const newComments = currentItem?.comments || "";
+    const newPhotoUrl = currentItem?.photoUrl || null;
+    
     setItems((prev) => ({
       ...prev,
-      [id]: { ...prev[id], status, comments: prev[id]?.comments || "", photoUrl: prev[id]?.photoUrl || null },
+      [id]: { ...prev[id], status, comments: newComments, photoUrl: newPhotoUrl },
     }));
-    setSavedIds((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(id);
-      return newSet;
-    });
+    
+    // Auto-save to database if we have a jobCardId
+    if (jobCardId && status) {
+      const point = FREE_CHECK_POINTS.find(p => p.id === id);
+      if (point) {
+        setSavingIds((prev) => new Set(prev).add(id));
+        
+        const result = await saveFreeCheckResult({
+          jobCardId,
+          controlPointNo: id,
+          controlPointName: point.name,
+          status,
+          comments: newComments || null,
+          photoUrl: newPhotoUrl,
+        });
+        
+        if (result.success) {
+          setSavedIds((prev) => new Set(prev).add(id));
+        }
+        
+        setSavingIds((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(id);
+          return newSet;
+        });
+      }
+    } else {
+      // No jobCardId yet, just mark as unsaved
+      setSavedIds((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
+    }
   };
 
   const updateComments = (id: string, comments: string) => {
+    // Update local state immediately
     setItems((prev) => ({
       ...prev,
       [id]: { ...prev[id], comments },
     }));
+    
+    // Mark as unsaved
     setSavedIds((prev) => {
       const newSet = new Set(prev);
       newSet.delete(id);
       return newSet;
     });
+    
+    // Clear existing debounce timer for this point
+    if (commentDebounceRefs.current[id]) {
+      clearTimeout(commentDebounceRefs.current[id]!);
+    }
+    
+    // Debounced auto-save after 1 second of no typing
+    if (jobCardId) {
+      commentDebounceRefs.current[id] = setTimeout(async () => {
+        const currentItem = items[id];
+        const point = FREE_CHECK_POINTS.find(p => p.id === id);
+        
+        if (point && currentItem?.status) {
+          setSavingIds((prev) => new Set(prev).add(id));
+          
+          const result = await saveFreeCheckResult({
+            jobCardId,
+            controlPointNo: id,
+            controlPointName: point.name,
+            status: currentItem.status,
+            comments: comments || null,
+            photoUrl: currentItem.photoUrl || null,
+          });
+          
+          if (result.success) {
+            setSavedIds((prev) => new Set(prev).add(id));
+          }
+          
+          setSavingIds((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(id);
+            return newSet;
+          });
+        }
+      }, 1000);
+    }
   };
 
   const handlePhotoCapture = async (pointId: string, file: File) => {
@@ -96,18 +219,34 @@ export function FreeCheckSection({ jobCardId, isEnabled, onItemsChange }: FreeCh
       const reader = new FileReader();
       reader.onload = async () => {
         const base64 = reader.result as string;
-        const result = await uploadFreeCheckPhoto(jobCardId, pointId, base64);
+        const uploadResult = await uploadFreeCheckPhoto(jobCardId, pointId, base64);
 
-        if (result.success && result.url) {
+        if (uploadResult.success && uploadResult.url) {
+          const newPhotoUrl = uploadResult.url;
+          
           setItems((prev) => ({
             ...prev,
-            [pointId]: { ...prev[pointId], photoUrl: result.url! },
+            [pointId]: { ...prev[pointId], photoUrl: newPhotoUrl },
           }));
-          setSavedIds((prev) => {
-            const newSet = new Set(prev);
-            newSet.delete(pointId);
-            return newSet;
-          });
+          
+          // Auto-save to database after photo upload
+          const currentItem = items[pointId];
+          const point = FREE_CHECK_POINTS.find(p => p.id === pointId);
+          
+          if (point && currentItem?.status) {
+            const saveResult = await saveFreeCheckResult({
+              jobCardId,
+              controlPointNo: pointId,
+              controlPointName: point.name,
+              status: currentItem.status,
+              comments: currentItem.comments || null,
+              photoUrl: newPhotoUrl,
+            });
+            
+            if (saveResult.success) {
+              setSavedIds((prev) => new Set(prev).add(pointId));
+            }
+          }
         }
         setUploadingIds((prev) => {
           const newSet = new Set(prev);
@@ -154,16 +293,46 @@ export function FreeCheckSection({ jobCardId, isEnabled, onItemsChange }: FreeCh
     });
   };
 
-  const removePhoto = (pointId: string) => {
+  const removePhoto = async (pointId: string) => {
     setItems((prev) => ({
       ...prev,
       [pointId]: { ...prev[pointId], photoUrl: null },
     }));
-    setSavedIds((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(pointId);
-      return newSet;
-    });
+    
+    // Auto-save the removal to database
+    if (jobCardId) {
+      const currentItem = items[pointId];
+      const point = FREE_CHECK_POINTS.find(p => p.id === pointId);
+      
+      if (point && currentItem?.status) {
+        setSavingIds((prev) => new Set(prev).add(pointId));
+        
+        const result = await saveFreeCheckResult({
+          jobCardId,
+          controlPointNo: pointId,
+          controlPointName: point.name,
+          status: currentItem.status,
+          comments: currentItem.comments || null,
+          photoUrl: null,
+        });
+        
+        if (result.success) {
+          setSavedIds((prev) => new Set(prev).add(pointId));
+        }
+        
+        setSavingIds((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(pointId);
+          return newSet;
+        });
+      }
+    } else {
+      setSavedIds((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(pointId);
+        return newSet;
+      });
+    }
   };
 
   const completedCount = Object.values(items).filter((item) => item.status).length;
@@ -272,6 +441,12 @@ export function FreeCheckSection({ jobCardId, isEnabled, onItemsChange }: FreeCh
           </DialogHeader>
 
           {/* 14-point checklist inside modal */}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-yellow-500" />
+              <span className="ml-3 text-muted-foreground">Зареждане на запазени резултати...</span>
+            </div>
+          ) : (
           <div className="space-y-4 py-4">
             {FREE_CHECK_POINTS.map((point) => {
               const item = items[point.id];
@@ -487,6 +662,7 @@ export function FreeCheckSection({ jobCardId, isEnabled, onItemsChange }: FreeCh
               );
             })}
           </div>
+          )}
 
           {/* Modal footer with close button */}
           <div className="flex justify-between items-center border-t border-border pt-4 mt-4">
