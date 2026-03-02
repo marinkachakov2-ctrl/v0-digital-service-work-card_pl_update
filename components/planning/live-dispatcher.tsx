@@ -341,7 +341,6 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
       setAppointments(appointmentsData || []);
       setTechnicians(techniciansData || []);
     } catch (err) {
-      console.error("[v0] Error fetching data:", err);
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
       setLoading(false);
@@ -369,8 +368,6 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
           filter: `work_date=eq.${dateStr}`,
         },
         (payload) => {
-          console.log("[v0] Realtime update received:", payload.eventType);
-          
           if (payload.eventType === "INSERT") {
             const newAppointment = payload.new as ServiceAppointment;
             setAppointments((prev) => {
@@ -393,12 +390,9 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
           }
         }
       )
-      .subscribe((status) => {
-        console.log("[v0] Realtime subscription status:", status);
-      });
+      .subscribe();
 
     return () => {
-      console.log("[v0] Cleaning up realtime subscription");
       supabase.removeChannel(channel);
     };
   }, [selectedDate, supabase]);
@@ -487,7 +481,6 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
 
       if (updateError) throw updateError;
     } catch (err) {
-      console.error("[v0] Error updating appointment:", err);
       // Revert on error
       fetchData();
       setError(err instanceof Error ? err.message : "Failed to save changes");
