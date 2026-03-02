@@ -135,7 +135,8 @@ export function Footer({
         laborTotal,
         vat,
         grandTotal,
-        customerSignature: signatureData,
+        // Use saved signature URL from storage if available, fallback to base64 data
+        customerSignature: savedSignatureUrl || signatureData,
         customerName: signerName,
         technicianSignature: techSignatureData,
         technicianName: technicianName,
@@ -248,17 +249,9 @@ export function Footer({
     }
   };
 
-  // Auto-reset ONLY for completed cards (not drafts - keep form data for drafts)
+  // For drafts, just clear the savedResult after showing confirmation briefly (keep form data)
+  // For completed cards, do NOT auto-reset - user must manually click "Start New Job"
   useEffect(() => {
-    if (savedResult?.success && savedResult.status === "completed") {
-      // Longer timeout (10s) to allow user to download PDF
-      const timer = setTimeout(() => {
-        setSavedResult(null);
-        onFormReset();
-      }, 10000);
-      return () => clearTimeout(timer);
-    }
-    // For drafts, just clear the savedResult after showing confirmation briefly
     if (savedResult?.success && savedResult.status === "draft") {
       const timer = setTimeout(() => {
         setSavedResult(null);
@@ -266,7 +259,7 @@ export function Footer({
       }, 2000);
       return () => clearTimeout(timer);
     }
-  }, [savedResult, onFormReset]);
+  }, [savedResult]);
 
   // Show success screen ONLY for completed cards - drafts stay on the form
   if (savedResult?.success && savedResult.status === "completed") {
@@ -337,12 +330,13 @@ export function Footer({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-center gap-3 pt-4">
-            {/* Download PDF Button */}
+          <div className="flex flex-col sm:flex-row items-center gap-4 pt-4">
+            {/* Download PDF Button - Primary action */}
             <Button
               onClick={handleExportPDF}
               disabled={isExportingPDF}
-              className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-5"
+              size="lg"
+              className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-base font-semibold shadow-lg"
             >
               {isExportingPDF ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -352,7 +346,7 @@ export function Footer({
               Download PDF Report
             </Button>
             
-            {/* New Card Button */}
+            {/* New Job Button - Secondary action */}
             <Button
               onClick={() => {
                 setSavedResult(null);
@@ -360,16 +354,13 @@ export function Footer({
                 onFormReset();
               }}
               variant="outline"
-              className="gap-2 px-6 py-5"
+              size="lg"
+              className="gap-2 px-8 py-6 text-base border-2"
             >
               <FileText className="h-5 w-5" />
-              Нова Карта
+              Start New Job
             </Button>
           </div>
-
-          <p className="text-xs text-muted-foreground pt-2">
-            Формулярът ще се нулира автоматично след 10 секунди...
-          </p>
         </CardContent>
       </Card>
     );

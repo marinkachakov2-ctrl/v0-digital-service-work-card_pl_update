@@ -382,7 +382,7 @@ export default function WorkCardPage() {
     },
     {
       id: "prev-2",
-      description: "Лек теч на масл�� при предната ос",
+      description: "Лек теч на масл���� при предната ос",
       severity: "medium",
       fromPreviousCard: true,
       previousCardId: "JC-0012",
@@ -1084,7 +1084,13 @@ export default function WorkCardPage() {
               repairEnd,
               parts,
               laborItems,
-              photoUrls: faultPhotos.map(p => p.url),
+              photoUrls: [
+                ...faultPhotos.map(p => p.url),
+                // Include Free Check inspection photos
+                ...Object.values(freeCheckItems)
+                  .filter(item => item.photoUrl)
+                  .map(item => item.photoUrl as string),
+              ],
               engineHoursPhotoUrl: hoursPhotoUrl,
               totalWorkTime: elapsedTime,
             }}
