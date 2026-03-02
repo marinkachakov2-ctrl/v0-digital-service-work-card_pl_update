@@ -1,13 +1,10 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   Search,
   Filter,
   Link2,
-  ChevronDown,
   FileText,
   Users,
   Clock,
@@ -15,13 +12,14 @@ import {
   AlertCircle,
   PenLine,
   X,
-  CreditCard,
   Wrench,
+  PlayCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -52,11 +50,6 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useClocking, getStatusColor, type WorkOrder } from "@/lib/clocking-context";
-
-const BG_MONTHS = [
-  "януари", "февруари", "март", "април", "май", "юни",
-  "юли", "август", "септември", "октомври", "ноември", "декември",
-];
 
 function statusBadge(order: WorkOrder) {
   const color = getStatusColor(order);
@@ -152,188 +145,175 @@ export default function AdminDashboardPage() {
     return Array.from(set).sort();
   }, [workOrders]);
 
-  const now = new Date();
-  const dateStr = `${now.getDate()} ${BG_MONTHS[now.getMonth()]} ${now.getFullYear()}`;
-
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
-      {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur">
-        <div className="flex h-14 items-center gap-4 px-6">
-          <Link href="/planning">
-            <Button variant="ghost" size="sm" className="gap-1.5">
-              <ArrowLeft className="h-4 w-4" />
-              Planning
-            </Button>
-          </Link>
-          <div className="h-6 w-px bg-border" />
-          <h1 className="text-lg font-semibold">Admin Dashboard</h1>
-          <span className="text-sm text-muted-foreground">{dateStr}</span>
-          <div className="ml-auto flex items-center gap-2">
-            <Link href="/admin/repairs">
-              <Button variant="default" size="sm" className="gap-1.5 bg-red-600 text-white hover:bg-red-700">
-                <Wrench className="h-3.5 w-3.5" />
-                Deferred Repairs
-              </Button>
-            </Link>
-            <Link href="/admin/approval">
-              <Button variant="default" size="sm" className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700">
-                <CreditCard className="h-3.5 w-3.5" />
-                Proposal Approval
-              </Button>
-            </Link>
-            <Link href="/admin/pending">
-              <Button variant="default" size="sm" className="gap-1.5 bg-warning text-black hover:bg-warning/90">
-                <Clock className="h-3.5 w-3.5" />
-                Pending TEMP Jobs
-              </Button>
-            </Link>
-            <Link href="/admin/job-cards">
-              <Button variant="default" size="sm" className="gap-1.5">
-                <FileText className="h-3.5 w-3.5" />
-                Job Cards DB
-              </Button>
-            </Link>
-            <Link href="/">
-              <Button variant="outline" size="sm" className="bg-transparent">
-                Work Card
-              </Button>
-            </Link>
-            <Link href="/tablet">
-              <Button variant="outline" size="sm" className="bg-transparent">
-                Tablet
-              </Button>
-            </Link>
-          </div>
+    <div className="p-6 space-y-6">
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Work In Progress</h1>
+          <p className="text-sm text-muted-foreground">
+            Track active job cards and technician assignments
+          </p>
         </div>
-      </header>
+      </div>
 
-      {/* Stats Bar */}
-      <div className="border-b border-border bg-secondary/30 px-6 py-3">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">{stats.total}</span>
-            <span className="text-xs text-muted-foreground">Total</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-emerald-500" />
-            <span className="text-sm font-medium">{stats.active}</span>
-            <span className="text-xs text-muted-foreground">Active</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">{stats.signed}</span>
-            <span className="text-xs text-muted-foreground">Signed</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-red-500" />
-            <span className="text-sm font-medium">{stats.overdue}</span>
-            <span className="text-xs text-muted-foreground">Overdue</span>
-          </div>
-        </div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="border-border bg-card">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Jobs</p>
+                <p className="text-3xl font-bold text-foreground mt-1">{stats.total}</p>
+                <p className="text-xs text-muted-foreground mt-1">All work orders</p>
+              </div>
+              <FileText className="h-5 w-5 text-muted-foreground" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border bg-card">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Active</p>
+                <p className="text-3xl font-bold text-emerald-500 mt-1">{stats.active}</p>
+                <p className="text-xs text-muted-foreground mt-1">Currently in progress</p>
+              </div>
+              <PlayCircle className="h-5 w-5 text-emerald-500" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border bg-card">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Signed</p>
+                <p className="text-3xl font-bold text-foreground mt-1">{stats.signed}</p>
+                <p className="text-xs text-muted-foreground mt-1">Completed & signed</p>
+              </div>
+              <CheckCircle2 className="h-5 w-5 text-muted-foreground" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border bg-card">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Overdue</p>
+                <p className="text-3xl font-bold text-red-500 mt-1">{stats.overdue}</p>
+                <p className="text-xs text-muted-foreground mt-1">Requires attention</p>
+              </div>
+              <AlertCircle className="h-5 w-5 text-red-500" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Search + Filters */}
-      <div className="border-b border-border bg-card px-6 py-3">
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search by JC #, Order #, client, machine..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-9"
-            />
-          </div>
-          <Button
-            variant={showFilters ? "default" : "outline"}
-            size="sm"
-            onClick={() => setShowFilters((v) => !v)}
-            className={cn(!showFilters && "bg-transparent", "gap-1.5")}
-          >
-            <Filter className="h-3.5 w-3.5" />
-            Filters
-            {(filterStatus !== "all" || filterTech !== "all" || filterType !== "all") && (
-              <span className="ml-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
-                {[filterStatus !== "all", filterTech !== "all", filterType !== "all"].filter(Boolean).length}
-              </span>
-            )}
-          </Button>
-          {(filterStatus !== "all" || filterTech !== "all" || filterType !== "all") && (
+      <Card className="border-border bg-card">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search by JC #, Order #, client, machine..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9"
+              />
+            </div>
             <Button
-              variant="ghost"
+              variant={showFilters ? "default" : "outline"}
               size="sm"
-              onClick={() => {
-                setFilterStatus("all");
-                setFilterTech("all");
-                setFilterType("all");
-              }}
-              className="gap-1 text-xs text-muted-foreground"
+              onClick={() => setShowFilters((v) => !v)}
+              className={cn(!showFilters && "bg-transparent", "gap-1.5")}
             >
-              <X className="h-3 w-3" />
-              Clear
+              <Filter className="h-3.5 w-3.5" />
+              Filters
+              {(filterStatus !== "all" || filterTech !== "all" || filterType !== "all") && (
+                <span className="ml-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                  {[filterStatus !== "all", filterTech !== "all", filterType !== "all"].filter(Boolean).length}
+                </span>
+              )}
             </Button>
-          )}
-          <span className="ml-auto text-xs text-muted-foreground">
-            {filteredOrders.length} of {workOrders.length} records
-          </span>
-        </div>
-        {showFilters && (
-          <div className="mt-3 flex flex-wrap items-end gap-4">
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground">Status</Label>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="h-8 w-36">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="Pending">Pending</SelectItem>
-                  <SelectItem value="In Progress">In Progress</SelectItem>
-                  <SelectItem value="Completed">Completed</SelectItem>
-                  <SelectItem value="Signed">Signed</SelectItem>
-                  <SelectItem value="Overdue">Overdue</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground">Technician</Label>
-              <Select value={filterTech} onValueChange={setFilterTech}>
-                <SelectTrigger className="h-8 w-44">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Technicians</SelectItem>
-                  {technicians.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground">Type</Label>
-              <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger className="h-8 w-36">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="service">Service</SelectItem>
-                  <SelectItem value="repair">Repair</SelectItem>
-                  <SelectItem value="inspection">Inspection</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {(filterStatus !== "all" || filterTech !== "all" || filterType !== "all") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setFilterStatus("all");
+                  setFilterTech("all");
+                  setFilterType("all");
+                }}
+                className="gap-1 text-xs text-muted-foreground"
+              >
+                <X className="h-3 w-3" />
+                Clear
+              </Button>
+            )}
+            <span className="ml-auto text-xs text-muted-foreground">
+              {filteredOrders.length} of {workOrders.length} records
+            </span>
           </div>
-        )}
-      </div>
+          {showFilters && (
+            <div className="mt-3 flex flex-wrap items-end gap-4">
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Status</Label>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="h-8 w-36">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="Pending">Pending</SelectItem>
+                    <SelectItem value="In Progress">In Progress</SelectItem>
+                    <SelectItem value="Completed">Completed</SelectItem>
+                    <SelectItem value="Signed">Signed</SelectItem>
+                    <SelectItem value="Overdue">Overdue</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Technician</Label>
+                <Select value={filterTech} onValueChange={setFilterTech}>
+                  <SelectTrigger className="h-8 w-44">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Technicians</SelectItem>
+                    {technicians.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Type</Label>
+                <Select value={filterType} onValueChange={setFilterType}>
+                  <SelectTrigger className="h-8 w-36">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="service">Service</SelectItem>
+                    <SelectItem value="repair">Repair</SelectItem>
+                    <SelectItem value="inspection">Inspection</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Table */}
-      <main className="flex-1 overflow-auto">
-        <ScrollArea className="h-[calc(100vh-14rem)]">
+      <Card className="border-border bg-card overflow-hidden">
+        <ScrollArea className="h-[calc(100vh-26rem)]">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -481,7 +461,7 @@ export default function AdminDashboardPage() {
             </TableBody>
           </Table>
         </ScrollArea>
-      </main>
+      </Card>
 
       {/* Edit Order Dialog */}
       <Dialog open={!!editingOrder} onOpenChange={() => setEditingOrder(null)}>
@@ -548,3 +528,5 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+
+// Remove unused BG_MONTHS constant
