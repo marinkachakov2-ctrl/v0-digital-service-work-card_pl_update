@@ -40,9 +40,11 @@ const causes = [
   { value: "A", label: "A - Слаб материал" },
   { value: "B", label: "B - Слаба заварка" },
   { value: "C", label: "C - Погрешна изработка" },
+  { value: "D", label: "D - Заварено погрешно" },
   { value: "E", label: "E - Сглобено погрешно" },
   { value: "F", label: "F - Чуждо тяло" },
   { value: "G", label: "G - Лоша отливка" },
+  { value: "Z", label: "Z - Други" },
 ];
 
 const defects = [
@@ -53,8 +55,17 @@ const defects = [
   { value: "05", label: "05 - Хлабав" },
   { value: "06", label: "06 - Корозия" },
   { value: "07", label: "07 - Електрическа повреда" },
+  { value: "08", label: "08 - Замърсен" },
   { value: "09", label: "09 - Теч" },
+  { value: "10", label: "10 - Липсва" },
+  { value: "11", label: "11 - Шумен" },
+  { value: "12", label: "12 - Блокирал" },
   { value: "13", label: "13 - Надраскан" },
+  { value: "14", label: "14 - Износен" },
+  { value: "15", label: "15 - Деформиран" },
+  { value: "16", label: "16 - Неправилно регулиран" },
+  { value: "17", label: "17 - Неправилно монтиран" },
+  { value: "18", label: "18 - Къс" },
   { value: "19", label: "19 - Приплъзване" },
   { value: "99", label: "99 - Други" },
 ];
@@ -86,6 +97,16 @@ interface DiagnosticsSectionProps {
   previousEngineHours?: number | null;
   // For Supabase Storage upload paths
   jobCardId?: string;
+  // 3C fields and warranty-specific fields
+  jobType?: "warranty" | "repair" | "internal";
+  causalPartNo: string;
+  onCausalPartNoChange: (value: string) => void;
+  assemblyGroup: string;
+  onAssemblyGroupChange: (value: string) => void;
+  correction: string;
+  onCorrectionChange: (value: string) => void;
+  recommendations: string;
+  onRecommendationsChange: (value: string) => void;
 }
 
 export function DiagnosticsSection({
@@ -107,6 +128,15 @@ export function DiagnosticsSection({
   onEngineHoursChange,
   onPhotosChange,
   jobCardId,
+  jobType = "repair",
+  causalPartNo,
+  onCausalPartNoChange,
+  assemblyGroup,
+  onAssemblyGroupChange,
+  correction,
+  onCorrectionChange,
+  recommendations,
+  onRecommendationsChange,
 }: DiagnosticsSectionProps) {
   // Hydration flag to prevent SSR/client mismatch
   const [mounted, setMounted] = useState(false);
@@ -462,7 +492,7 @@ export function DiagnosticsSection({
               </Label>
               <Select value={defectCode} onValueChange={onDefectChange}>
                 <SelectTrigger className="bg-secondary text-foreground">
-                  <SelectValue placeholder="Изберете дефект" />
+                  <SelectValue placeholder="Избере��е дефект" />
                 </SelectTrigger>
                 <SelectContent>
                   {defects.map((defect) => (
@@ -491,11 +521,64 @@ export function DiagnosticsSection({
             </div>
           </div>
 
-          {/* Description */}
+          {/* Warranty-specific fields - only shown for warranty orders */}
+          {jobType === "warranty" && (
+            <div className="grid gap-4 sm:grid-cols-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+              <div className="sm:col-span-2">
+                <Badge className="bg-amber-500/15 text-amber-500 border-amber-500/30 text-xs mb-3">
+                  Гаранционни полета
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">
+                  Каталожен № на причинната част *
+                </Label>
+                <Input
+                  value={causalPartNo}
+                  onChange={(e) => onCausalPartNoChange(e.target.value)}
+                  placeholder="Въведете каталожен номер"
+                  className="bg-secondary text-foreground"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">
+                  Възел на повредата *
+                </Label>
+                <Input
+                  value={assemblyGroup}
+                  onChange={(e) => onAssemblyGroupChange(e.target.value)}
+                  placeholder="Въведете възел"
+                  className="bg-secondary text-foreground"
+                />
+              </div>
+              <div className="sm:col-span-2 space-y-2">
+                <Label className="text-xs text-muted-foreground">
+                  Дата на проява на повредата *
+                </Label>
+                <div className="relative max-w-xs">
+                  <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="date"
+                    value={faultDate}
+                    onChange={(e) => onFaultDateChange(e.target.value)}
+                    className="bg-secondary text-foreground pl-10"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 3C Section Header */}
+          <div className="border-t border-border pt-4">
+            <h4 className="text-sm font-medium text-foreground mb-4">3C Анализ</h4>
+          </div>
+
+          {/* C1: Оплакване (Complaint) - Description */}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <Label className="text-xs text-muted-foreground">
-                Описание на повредата (Detailed description of the failure)
+              <Label className="text-xs text-muted-foreground flex items-center gap-2">
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0">C1</Badge>
+                Оплакване / Описание на повредата (Complaint)
               </Label>
               <div className="flex items-center gap-2">
                 {/* Hidden file input for camera */}
@@ -748,20 +831,51 @@ export function DiagnosticsSection({
             )}
           </div>
 
-          {/* Dates and Engine Hours */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Calendar className="h-3 w-3" />
-                Fault Date
-              </Label>
-              <Input
-                type="date"
-                value={faultDate}
-                onChange={(e) => onFaultDateChange(e.target.value)}
-                className="bg-secondary text-foreground"
-              />
-            </div>
+          {/* C2: Описание на повредата и причините (Cause) */}
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground flex items-center gap-2">
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0">C2</Badge>
+              Описание на повредата и причините (Cause)
+            </Label>
+            <Textarea
+              value={correction}
+              onChange={(e) => onCorrectionChange(e.target.value)}
+              placeholder="Опишете подробно причините за повредата..."
+              className="min-h-20 bg-secondary text-foreground placeholder:text-muted-foreground"
+            />
+          </div>
+
+          {/* C3: Извършени дейности (Correction) */}
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground flex items-center gap-2">
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0">C3</Badge>
+              Извършени дейности (Correction)
+            </Label>
+            <Textarea
+              value={recommendations}
+              onChange={(e) => onRecommendationsChange(e.target.value)}
+              placeholder="Опишете извършените ремонтни дейности..."
+              className="min-h-20 bg-secondary text-foreground placeholder:text-muted-foreground"
+            />
+          </div>
+
+          {/* Dates and Times */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Fault Date - only for non-warranty (warranty has it in the warranty fields section) */}
+            {jobType !== "warranty" && (
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Calendar className="h-3 w-3" />
+                  Дата на повреда
+                </Label>
+                <Input
+                  type="date"
+                  value={faultDate}
+                  onChange={(e) => onFaultDateChange(e.target.value)}
+                  className="bg-secondary text-foreground"
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Clock className="h-3 w-3" />

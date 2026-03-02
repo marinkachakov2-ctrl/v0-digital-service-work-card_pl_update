@@ -121,6 +121,11 @@ export default function WorkCardPage() {
   const [repairStart, setRepairStart] = useState("");
   const [repairEnd, setRepairEnd] = useState("");
   const [engineHours, setEngineHours] = useState("");
+  // 3C fields - warranty specific
+  const [causalPartNo, setCausalPartNo] = useState("");
+  const [assemblyGroup, setAssemblyGroup] = useState("");
+  const [correction, setCorrection] = useState(""); // C2: Cause description
+  const [workDone, setWorkDone] = useState(""); // C3: Correction/work done
 
   // Parts & Labor (must be declared before localStorage hydration useEffect)
   const [parts, setParts] = useState<PartItem[]>([]);
@@ -363,7 +368,7 @@ export default function WorkCardPage() {
   const [previousUnresolvedIssues] = useState<UnresolvedIssue[]>([
     {
       id: "prev-1",
-      description: "Хидравличен маркуч на десен цилин��ър показва микропукнатини",
+      description: "Хидравличен маркуч на десен цил��н��ър показва микропукнатини",
       severity: "high",
       fromPreviousCard: true,
       previousCardId: "JC-0015",
@@ -543,6 +548,11 @@ export default function WorkCardPage() {
           repairStart,
           repairEnd,
           engineHours,
+          // 3C fields
+          causalPartNo: causalPartNo || null,
+          assemblyGroup: assemblyGroup || null,
+          correction: correction || null,
+          workDone: workDone || null,
           // Photo URLs for Supabase Storage
           photo_urls: faultPhotos.map(p => p.url),
           hour_meter_photo: hoursPhotoUrl || null,
@@ -595,7 +605,8 @@ export default function WorkCardPage() {
     clockAtJobLevel, timerStatus, elapsedSeconds, clientData, reasonCode, defectCode,
     description, faultDate, repairStart, repairEnd, engineHours, parts,
     laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned, savedJobCardId,
-    faultPhotos, hoursPhotoUrl, skipPhoto, missingPhotoReason, selectedMachineId, payerStatus, recommendationsData
+    faultPhotos, hoursPhotoUrl, skipPhoto, missingPhotoReason, selectedMachineId, payerStatus, recommendationsData,
+    causalPartNo, assemblyGroup, correction, workDone
   ]);
 
   // Show loading skeleton during hydration to prevent flickering
@@ -893,6 +904,15 @@ export default function WorkCardPage() {
             onPhotosChange={setFaultPhotos}
             previousEngineHours={clientData?.previousEngineHours ?? null}
             jobCardId={savedJobCardId || jobCardNumber}
+            jobType={jobType}
+            causalPartNo={causalPartNo}
+            onCausalPartNoChange={setCausalPartNo}
+            assemblyGroup={assemblyGroup}
+            onAssemblyGroupChange={setAssemblyGroup}
+            correction={correction}
+            onCorrectionChange={setCorrection}
+            recommendations={workDone}
+            onRecommendationsChange={setWorkDone}
           />
 
           <PartsTable parts={parts} onPartsChange={setParts} />
