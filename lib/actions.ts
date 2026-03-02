@@ -735,6 +735,46 @@ export async function searchParts(query: string): Promise<PartSearchResult[]> {
 }
 
 /**
+ * Fetch common/frequently used parts for offline caching
+ * Returns filters, belts, oils commonly used for 6030/7030 series tractors
+ */
+export async function fetchCommonParts(): Promise<PartSearchResult[]> {
+  const supabase = await createClient();
+
+  // Common part keywords for John Deere 6030/7030 series
+  const commonKeywords = [
+    "филтър", "filter", "ремък", "belt", "масло", "oil",
+    "6030", "7030", "RE", "AL", "DZ", // Common JD part prefixes
+    "хидравлично", "hydraulic", "въздушен", "air", "маслен", "горивен", "fuel"
+  ];
+
+  // Build OR query for common parts
+  const searchConditions = commonKeywords
+    .map(keyword => `description.ilike.%${keyword}%,part_number.ilike.%${keyword}%`)
+    .join(",");
+
+  const { data, error } = await supabase
+    .from("parts")
+    .select("*")
+    .or(searchConditions)
+    .order("stock_quantity", { ascending: false }) // Prioritize in-stock items
+    .limit(100); // Cache up to 100 common parts
+
+  if (error) {
+    console.error("[Server Action] fetchCommonParts error:", error);
+    return [];
+  }
+
+  return (data || []).map((p) => ({
+    id: p.id,
+    partNumber: p.part_number || "",
+    description: p.description || "",
+    unitPrice: Number(p.unit_price) || 0,
+    stockQuantity: Number(p.stock_quantity) || 0,
+  }));
+}
+
+/**
  * Fetch service history for a machine - returns last 2 job cards with pending issues
  */
 export interface ServiceHistoryIssue {
