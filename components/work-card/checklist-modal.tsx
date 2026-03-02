@@ -148,7 +148,10 @@ export function ChecklistModal({
 
   // Save all checklist items at once using batch upsert
   const handleComplete = async () => {
-    if (!jobCardId) {
+    // Validate jobCardId - must be a valid UUID (36 chars including dashes)
+    if (!jobCardId || jobCardId.length < 30) {
+      console.error("[v0] Invalid or missing Job Card ID:", jobCardId);
+      // Still complete checklist locally without saving to DB
       onComplete();
       onOpenChange(false);
       return;
