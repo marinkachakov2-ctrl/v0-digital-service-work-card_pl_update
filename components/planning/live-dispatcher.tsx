@@ -17,7 +17,16 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { GripVertical, Clock, Loader2, AlertCircle, RefreshCw, User, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
+import { GripVertical, Clock, Loader2, AlertCircle, RefreshCw, User, ChevronLeft, ChevronRight, CalendarDays, Plus, FileText, ArrowRight, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,6 +45,7 @@ interface ServiceAppointment {
   status: string | null;
   priority: string | null;
   notes: string | null;
+  task_type: string | null; // 'order' | 'note' | null
   created_at: string;
   updated_at: string;
 }
@@ -53,10 +63,12 @@ interface LiveDispatcherProps {
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
-const START_HOUR = 7;
-const END_HOUR = 19;
+const START_HOUR = 0;  // Extended to 00:00
+const END_HOUR = 24;   // Extended to 24:00
+const WORK_START_HOUR = 7;  // Visual work start
+const WORK_END_HOUR = 19;   // Visual work end
 const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
-const CELL_WIDTH = 100;
+const CELL_WIDTH = 80; // Slightly smaller for 24 hours
 const ROW_HEIGHT = 70;
 const SIDEBAR_WIDTH = 160;
 
@@ -163,13 +175,22 @@ function toUTCTimestamp(): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Waiting list draggable item
-function WaitingJobCard({ appointment }: { appointment: ServiceAppointment }) {
+function WaitingJobCard({ 
+  appointment, 
+  onConvert 
+}: { 
+  appointment: ServiceAppointment;
+  onConvert?: (apt: ServiceAppointment) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: appointment.id,
     data: { appointment, type: "waiting" },
   });
 
   const colors = getAppointmentColor(appointment);
+  const isNote = appointment.task_type === "note";
+  const appointmentDate = new Date(appointment.work_date);
+  const dateLabel = appointmentDate.toLocaleDateString("bg-BG", { day: "2-digit", month: "short" });
 
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
@@ -178,29 +199,49 @@ function WaitingJobCard({ appointment }: { appointment: ServiceAppointment }) {
   return (
     <div
       ref={setNodeRef}
-      {...listeners}
-      {...attributes}
       style={style}
       className={cn(
         "flex cursor-grab items-center gap-2 rounded-md border p-2 shadow-sm transition-all",
-        colors.bg,
-        colors.border,
-        colors.text,
+        isNote ? "bg-amber-100 border-amber-300 text-amber-900" : colors.bg,
+        !isNote && colors.border,
+        !isNote && colors.text,
         isDragging && "opacity-50 scale-105 shadow-lg"
       )}
     >
-      <GripVertical className="h-4 w-4 flex-shrink-0 opacity-60" />
+      <div {...listeners} {...attributes} className="flex items-center">
+        <GripVertical className="h-4 w-4 flex-shrink-0 opacity-60" />
+      </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium truncate">
-          {appointment.client_name || "Без клиент"}
-        </p>
+        <div className="flex items-center gap-1">
+          {isNote && <FileText className="h-3 w-3 flex-shrink-0" />}
+          <p className="text-xs font-medium truncate">
+            {appointment.client_name || "Без клиент"}
+          </p>
+        </div>
         <p className="text-[10px] opacity-80 truncate">
-          {appointment.machine_model || appointment.serial_number || "Машина"}
+          {isNote ? dateLabel : (appointment.machine_model || appointment.serial_number || "Машина")}
         </p>
       </div>
-      <Badge variant="outline" className="text-[10px] bg-white/20 border-white/30 shrink-0">
-        {appointment.planned_hours || 1}ч
-      </Badge>
+      <div className="flex items-center gap-1">
+        {isNote && onConvert && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onConvert(appointment);
+            }}
+            className="p-1 rounded hover:bg-amber-200 transition-colors"
+            title="Преобразувай в поръчка"
+          >
+            <ArrowRight className="h-3 w-3" />
+          </button>
+        )}
+        <Badge variant="outline" className={cn(
+          "text-[10px] shrink-0",
+          isNote ? "bg-amber-200/50 border-amber-400" : "bg-white/20 border-white/30"
+        )}>
+          {appointment.planned_hours || 1}ч
+        </Badge>
+      </div>
     </div>
   );
 }
@@ -331,6 +372,7 @@ function TechnicianRow({
 export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProps) {
   const [currentDate, setCurrentDate] = useState<Date>(initialDate);
   const [appointments, setAppointments] = useState<ServiceAppointment[]>([]);
+  const [backlog, setBacklog] = useState<ServiceAppointment[]>([]); // Global backlog (no date filter)
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -340,6 +382,15 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
   const [dropHour, setDropHour] = useState<number | null>(null);
   const [dropWarning, setDropWarning] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  
+  // Quick notes state
+  const [quickNoteText, setQuickNoteText] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
+  
+  // Conversion modal state
+  const [convertingNote, setConvertingNote] = useState<ServiceAppointment | null>(null);
+  const [convertMachineModel, setConvertMachineModel] = useState("");
+  const [convertSerialNumber, setConvertSerialNumber] = useState("");
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
@@ -397,14 +448,24 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
     try {
       const dateStr = formatDate(currentDate);
 
-      // Fetch appointments for selected date
+      // Fetch appointments for selected date (assigned to timeline)
       const { data: appointmentsData, error: appointmentsError } = await supabase
         .from("service_appointments")
         .select("*")
         .eq("work_date", dateStr)
+        .not("technician_name", "is", null)
         .order("start_time", { ascending: true });
 
       if (appointmentsError) throw appointmentsError;
+
+      // Fetch GLOBAL backlog - ALL unassigned tasks regardless of date
+      const { data: backlogData, error: backlogError } = await supabase
+        .from("service_appointments")
+        .select("*")
+        .is("technician_name", null)
+        .order("work_date", { ascending: true });
+
+      if (backlogError) throw backlogError;
 
       // Fetch active technicians
       const { data: techniciansData, error: techniciansError } = await supabase
@@ -416,6 +477,7 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
       if (techniciansError) throw techniciansError;
 
       setAppointments(appointmentsData || []);
+      setBacklog(backlogData || []);
       setTechnicians(techniciansData || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
@@ -501,6 +563,81 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
   }, [isToday, loading]);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // QUICK NOTE CREATION
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleAddQuickNote = async () => {
+    if (!quickNoteText.trim()) return;
+    
+    setAddingNote(true);
+    try {
+      const { data, error: insertError } = await supabase
+        .from("service_appointments")
+        .insert({
+          client_name: quickNoteText.trim(),
+          task_type: "note",
+          work_date: formatDate(currentDate),
+          planned_hours: 1,
+          status: "scheduled",
+          priority: "normal",
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+      
+      // Add to backlog immediately
+      if (data) {
+        setBacklog((prev) => [...prev, data]);
+      }
+      setQuickNoteText("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add note");
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // NOTE TO ORDER CONVERSION
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleConvertNoteToOrder = async () => {
+    if (!convertingNote || !convertMachineModel.trim()) return;
+    
+    setSaving(true);
+    try {
+      const { error: updateError } = await supabase
+        .from("service_appointments")
+        .update({
+          task_type: "order",
+          machine_model: convertMachineModel.trim(),
+          serial_number: convertSerialNumber.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", convertingNote.id);
+
+      if (updateError) throw updateError;
+      
+      // Update local state
+      const updateFn = (a: ServiceAppointment) => 
+        a.id === convertingNote.id
+          ? { ...a, task_type: "order", machine_model: convertMachineModel.trim(), serial_number: convertSerialNumber.trim() || null }
+          : a;
+      
+      setAppointments((prev) => prev.map(updateFn));
+      setBacklog((prev) => prev.map(updateFn));
+      
+      // Reset modal
+      setConvertingNote(null);
+      setConvertMachineModel("");
+      setConvertSerialNumber("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to convert note");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
   // DRAG HANDLERS
   // ─────────────────────────────────────────────────────────────────────────
   const handleDragStart = (event: DragStartEvent) => {
@@ -528,7 +665,7 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
     }
   };
 
-  const handleDragEnd = async (event: DragEndEvent) => {
+const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
     setOverId(null);
@@ -538,7 +675,8 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
     if (!over) return;
 
     const appointmentId = active.id as string;
-    const appointment = appointments.find((a) => a.id === appointmentId);
+    // Check both appointments (timeline) and backlog (waiting list)
+    const appointment = appointments.find((a) => a.id === appointmentId) || backlog.find((a) => a.id === appointmentId);
     if (!appointment) return;
 
     // Extract technician info from drop target
@@ -546,9 +684,10 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
     if (!overData?.technicianName) return;
 
     const newTechnicianName = overData.technicianName;
+    const newWorkDate = formatDate(currentDate); // Update work_date to currently viewed date
 
-    // Calculate new start time from drop position
-    let newStartHour = START_HOUR;
+    // Calculate new start time from drop position (default to 8:00 for better UX)
+    let newStartHour = WORK_START_HOUR;
     if (dropHour !== null) {
       newStartHour = dropHour;
     }
@@ -578,24 +717,36 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
       }
     }
 
-    // Skip if no changes
-    if (appointment.technician_name === newTechnicianName && appointment.start_time === newStartTime) {
-      return;
-    }
+    // Check if nothing changed
+    const noChanges = 
+      appointment.technician_name === newTechnicianName && 
+      appointment.start_time === newStartTime &&
+      appointment.work_date === newWorkDate;
+    
+    if (noChanges) return;
 
-    // ─��───────────────────────────────────────────────────────────────────
-    // DATABASE UPDATE
+    // ─────────────────────────────────────────────────────────────────────
+    // DATABASE UPDATE (including work_date for future planning)
     // ─────────────────────────────────────────────────────────────────────
     setSaving(true);
 
-    // Optimistic update
-    setAppointments((prev) =>
-      prev.map((a) =>
-        a.id === appointmentId
-          ? { ...a, technician_name: newTechnicianName, start_time: newStartTime }
-          : a
-      )
-    );
+    // If from backlog, remove from backlog and add to appointments
+    const isFromBacklog = backlog.some((a) => a.id === appointmentId);
+    const updatedAppointment = { 
+      ...appointment, 
+      technician_name: newTechnicianName, 
+      start_time: newStartTime,
+      work_date: newWorkDate,
+    };
+
+    if (isFromBacklog) {
+      setBacklog((prev) => prev.filter((a) => a.id !== appointmentId));
+      setAppointments((prev) => [...prev, updatedAppointment]);
+    } else {
+      setAppointments((prev) =>
+        prev.map((a) => a.id === appointmentId ? updatedAppointment : a)
+      );
+    }
 
     try {
       const { error: updateError } = await supabase
@@ -603,6 +754,7 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
         .update({
           technician_name: newTechnicianName,
           start_time: newStartTime,
+          work_date: newWorkDate,
           updated_at: new Date().toISOString(),
         })
         .eq("id", appointmentId);
@@ -620,17 +772,19 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
   // ─────────────────────────────────────────────────────────────────────────
   // DERIVED DATA
   // ─────────────────────────────────────────────────────────────────────────
-  // Waiting list: appointments with no technician assigned
-  const waitingAppointments = appointments.filter((a) => !a.technician_name);
+  // Waiting list: global backlog (all unassigned tasks regardless of date)
+  const waitingAppointments = backlog;
 
-  // Appointments grouped by technician
+  // Appointments grouped by technician (only assigned tasks for current date)
   const appointmentsByTechnician = technicians.reduce((acc, tech) => {
     acc[tech.name] = appointments.filter((a) => a.technician_name === tech.name);
     return acc;
   }, {} as Record<string, ServiceAppointment[]>);
 
-  // Active appointment for drag overlay
-  const activeAppointment = activeId ? appointments.find((a) => a.id === activeId) : null;
+  // Active appointment for drag overlay (check both lists)
+  const activeAppointment = activeId 
+    ? (appointments.find((a) => a.id === activeId) || backlog.find((a) => a.id === activeId)) 
+    : null;
 
   // Current time line position (only show on today)
   const currentHour = currentTime.getHours();
@@ -806,17 +960,44 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
           </div>
 
           {/* Waiting List Sidebar */}
-        <div className="w-72 flex-shrink-0 rounded-lg border border-border bg-card">
+        <div className="w-72 flex-shrink-0 rounded-lg border border-border bg-card flex flex-col">
           <div className="border-b border-border bg-secondary/50 px-4 py-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-foreground">Чакащи</h3>
+              <h3 className="text-sm font-semibold text-foreground">Чакащи (Всички)</h3>
               <Badge variant="secondary" className="text-xs">
                 {waitingAppointments.length}
               </Badge>
             </div>
           </div>
 
-          <ScrollArea className="h-[calc(100%-52px)]">
+          {/* Quick Note Input */}
+          <div className="border-b border-border p-3">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Добави бърза бележка..."
+                value={quickNoteText}
+                onChange={(e) => setQuickNoteText(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddQuickNote()}
+                disabled={addingNote}
+                className="h-8 text-xs"
+              />
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-8 w-8 flex-shrink-0"
+                onClick={handleAddQuickNote}
+                disabled={addingNote || !quickNoteText.trim()}
+              >
+                {addingNote ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </div>
+
+          <ScrollArea className="flex-1">
             <div className="space-y-2 p-3">
               {waitingAppointments.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
@@ -825,7 +1006,15 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
                 </div>
               ) : (
                 waitingAppointments.map((apt) => (
-                  <WaitingJobCard key={apt.id} appointment={apt} />
+                  <WaitingJobCard 
+                    key={apt.id} 
+                    appointment={apt} 
+                    onConvert={(a) => {
+                      setConvertingNote(a);
+                      setConvertMachineModel("");
+                      setConvertSerialNumber("");
+                    }}
+                  />
                 ))
               )}
             </div>
@@ -844,8 +1033,8 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
                 <span className="text-muted-foreground">Repair</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <div className="h-3 w-6 rounded bg-orange-500" />
-                <span className="text-muted-foreground">Inspection</span>
+                <div className="h-3 w-6 rounded bg-amber-100 border border-amber-300" />
+                <span className="text-muted-foreground">Note</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="h-3 w-6 rounded bg-red-600" />
@@ -856,6 +1045,53 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
         </div>
         </div>
       </div>
+
+      {/* Note to Order Conversion Modal */}
+      <Dialog open={!!convertingNote} onOpenChange={(open) => !open && setConvertingNote(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Преобразувай в поръчка</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="machine">Модел машина *</Label>
+              <Input
+                id="machine"
+                placeholder="напр. John Deere 7R 350"
+                value={convertMachineModel}
+                onChange={(e) => setConvertMachineModel(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="serial">Сериен номер</Label>
+              <Input
+                id="serial"
+                placeholder="напр. JD7R-2024-033"
+                value={convertSerialNumber}
+                onChange={(e) => setConvertSerialNumber(e.target.value)}
+              />
+            </div>
+            {convertingNote && (
+              <div className="rounded-lg bg-muted p-3">
+                <p className="text-xs text-muted-foreground">Бележка:</p>
+                <p className="text-sm font-medium">{convertingNote.client_name}</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConvertingNote(null)}>
+              Отказ
+            </Button>
+            <Button 
+              onClick={handleConvertNoteToOrder}
+              disabled={!convertMachineModel.trim() || saving}
+            >
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Запази като поръчка
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Drag Overlay */}
       <DragOverlay>
