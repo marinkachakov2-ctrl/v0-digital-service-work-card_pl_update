@@ -363,7 +363,7 @@ export default function WorkCardPage() {
   const [previousUnresolvedIssues] = useState<UnresolvedIssue[]>([
     {
       id: "prev-1",
-      description: "Хидравличен маркуч на десен цилиндър показва микропукнатини",
+      description: "Хидравличен маркуч на десен цилин��ър показва микропукнатини",
       severity: "high",
       fromPreviousCard: true,
       previousCardId: "JC-0015",
@@ -545,8 +545,8 @@ export default function WorkCardPage() {
           engineHours,
           // Photo URLs for Supabase Storage
           photo_urls: faultPhotos.map(p => p.url),
-          hour_meter_photo: engineHoursPhoto?.url || null,
-          engine_hours_photo_missing_reason: engineHoursPhotoMissingReason || null,
+          hour_meter_photo: hoursPhotoUrl || null,
+          engine_hours_photo_missing_reason: skipPhoto ? missingPhotoReason : null,
         },
         parts,
         laborItems,
@@ -595,7 +595,7 @@ export default function WorkCardPage() {
     clockAtJobLevel, timerStatus, elapsedSeconds, clientData, reasonCode, defectCode,
     description, faultDate, repairStart, repairEnd, engineHours, parts,
     laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned, savedJobCardId,
-    faultPhotos, engineHoursPhoto, engineHoursPhotoMissingReason, selectedMachineId, payerStatus, recommendationsData
+    faultPhotos, hoursPhotoUrl, skipPhoto, missingPhotoReason, selectedMachineId, payerStatus, recommendationsData
   ]);
 
   // Show loading skeleton during hydration to prevent flickering
@@ -892,10 +892,6 @@ export default function WorkCardPage() {
             onEngineHoursChange={setEngineHours}
             onPhotosChange={setFaultPhotos}
             previousEngineHours={clientData?.previousEngineHours ?? null}
-            engineHoursPhoto={engineHoursPhoto}
-            onEngineHoursPhotoChange={setEngineHoursPhoto}
-            engineHoursPhotoMissingReason={engineHoursPhotoMissingReason}
-            onEngineHoursPhotoMissingReasonChange={setEngineHoursPhotoMissingReason}
             jobCardId={savedJobCardId || jobCardNumber}
           />
 
@@ -957,7 +953,7 @@ export default function WorkCardPage() {
               parts,
               laborItems,
               photoUrls: faultPhotos.map(p => p.url),
-              engineHoursPhotoUrl: engineHoursPhoto?.url,
+              engineHoursPhotoUrl: hoursPhotoUrl,
               totalWorkTime: elapsedTime,
             }}
           />

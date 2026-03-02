@@ -84,10 +84,6 @@ interface DiagnosticsSectionProps {
   onEngineHoursChange: (value: string) => void;
   onPhotosChange?: (photos: FaultPhoto[]) => void;
   previousEngineHours?: number | null;
-  engineHoursPhoto: FaultPhoto | null;
-  onEngineHoursPhotoChange: (photo: FaultPhoto | null) => void;
-  engineHoursPhotoMissingReason: string;
-  onEngineHoursPhotoMissingReasonChange: (reason: string) => void;
   // For Supabase Storage upload paths
   jobCardId?: string;
 }
@@ -102,10 +98,6 @@ export function DiagnosticsSection({
   engineHours,
   photos = [],
   previousEngineHours,
-  engineHoursPhoto,
-  onEngineHoursPhotoChange,
-  engineHoursPhotoMissingReason,
-  onEngineHoursPhotoMissingReasonChange,
   onReasonChange,
   onDefectChange,
   onDescriptionChange,
@@ -126,11 +118,9 @@ export function DiagnosticsSection({
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
   // Upload loading states
   const [isUploadingDiagnostic, setIsUploadingDiagnostic] = useState(false);
-  const [isUploadingEngineHours, setIsUploadingEngineHours] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const descriptionRef = useRef(description);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const engineHoursFileRef = useRef<HTMLInputElement>(null);
 
   // Mark component as mounted (client-side only)
   useEffect(() => {
@@ -412,45 +402,6 @@ export function DiagnosticsSection({
     fileInputRef.current?.click();
   }, []);
 
-  // Engine hours photo capture - uploads to Supabase Storage
-  const handleEngineHoursPhoto = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const files = event.target.files;
-      if (!files || files.length === 0) return;
-      
-      const file = files[0];
-      setIsUploadingEngineHours(true);
-      
-      // Upload to Supabase Storage
-      const uploadResult = await handlePhotoUpload(file, "engine_hours");
-      
-      if (uploadResult) {
-        onEngineHoursPhotoChange({
-          id: `ehp-${Date.now()}`,
-          url: uploadResult.publicUrl,
-          name: file.name,
-          timestamp: new Date(),
-        });
-      } else {
-        // Fallback to local blob URL if upload fails
-        const localUrl = URL.createObjectURL(file);
-        onEngineHoursPhotoChange({
-          id: `ehp-${Date.now()}`,
-          url: localUrl,
-          name: file.name,
-          timestamp: new Date(),
-        });
-      }
-      
-      setIsUploadingEngineHours(false);
-      
-      if (engineHoursFileRef.current) {
-        engineHoursFileRef.current.value = "";
-      }
-    },
-    [onEngineHoursPhotoChange, handlePhotoUpload]
-  );
-
   return (
     <>
       {/* Unsupported Browser Dialog */}
@@ -637,7 +588,7 @@ export function DiagnosticsSection({
                       <p>
                         {isListening
                           ? "Натиснете за да спрете записа"
-                          : "Натиснете и говорете за да опишете повредата"}
+                          : "Натиснете и говор��те за да опишете повредата"}
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -855,132 +806,7 @@ export function DiagnosticsSection({
             </div>
           </div>
 
-          {/* Engine Hours Photo Validation */}
-          <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Camera className="h-3 w-3" />
-                Photo proof of engine hours meter
-                <span className="text-destructive">*</span>
-              </Label>
-              {mounted && engineHoursPhoto && (
-                <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30 text-[10px]">
-                  Photo attached
-                </Badge>
-              )}
-            </div>
 
-            {/* Hidden file input */}
-            <input
-              ref={engineHoursFileRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleEngineHoursPhoto}
-              className="hidden"
-              aria-label="Engine hours meter photo"
-            />
-
-            {engineHoursPhoto ? (
-              <div className="space-y-3">
-                {/* Thumbnail preview with success indicator */}
-                <div className="flex items-start gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
-                  {/* Thumbnail */}
-                  <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border-2 border-emerald-500/40">
-                    <img
-                      src={engineHoursPhoto.url || "/placeholder.svg"}
-                      alt="Engine hours meter"
-                      className="h-full w-full object-cover"
-                    />
-                    {/* Green checkmark overlay */}
-                    <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                    </div>
-                  </div>
-                  
-                  {/* Success message and details */}
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                      <span className="text-sm font-medium text-emerald-500">Photo Uploaded</span>
-                    </div>
-                    <p className="text-xs text-foreground truncate max-w-[180px]">{engineHoursPhoto.name}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {engineHoursPhoto.timestamp.toLocaleTimeString("bg-BG", { hour: "2-digit", minute: "2-digit" })}
-                    </p>
-                  </div>
-                  
-                  {/* Remove button */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Only revoke if it's a blob URL (not Supabase URL)
-                      if (engineHoursPhoto.url.startsWith("blob:")) {
-                        URL.revokeObjectURL(engineHoursPhoto.url);
-                      }
-                      onEngineHoursPhotoChange(null);
-                    }}
-                    className="flex h-6 w-6 items-center justify-center rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
-                    aria-label="Remove photo"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                
-                {/* Re-capture button */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => engineHoursFileRef.current?.click()}
-                  disabled={isUploadingEngineHours}
-                  className="gap-2 bg-transparent text-xs"
-                >
-                  <Camera className="h-3 w-3" />
-                  Retake Photo
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => engineHoursFileRef.current?.click()}
-                  disabled={isUploadingEngineHours}
-                  className="gap-2 bg-transparent"
-                >
-                  {isUploadingEngineHours ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <Camera className="h-3.5 w-3.5" />
-                      Capture Engine Hours Photo
-                    </>
-                  )}
-                </Button>
-
-                {/* Missing photo explanation */}
-                {!engineHoursPhoto && (
-                  <div className="space-y-1.5">
-                    <Label className="text-[10px] text-amber-500 flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      If no photo is available, provide a reason:
-                    </Label>
-                    <Textarea
-                      value={engineHoursPhotoMissingReason}
-                      onChange={(e) => onEngineHoursPhotoMissingReasonChange(e.target.value)}
-                      placeholder="Explain why photo proof is missing..."
-                      className="min-h-12 bg-card text-foreground text-xs"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
         </CardContent>
       </Card>
     </>
