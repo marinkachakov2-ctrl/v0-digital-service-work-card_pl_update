@@ -119,6 +119,45 @@ function formatDate(date: Date): string {
   return date.toISOString().split("T")[0];
 }
 
+// Bulgaria timezone helpers (EET/EEST - Europe/Sofia)
+function getBulgariaTimeNow(): Date {
+  // Get current time formatted for Bulgaria timezone
+  const now = new Date();
+  return new Date(now.toLocaleString("en-US", { timeZone: "Europe/Sofia" }));
+}
+
+function formatTimeForDisplay(timeStr: string | null): string {
+  if (!timeStr) return "";
+  // Convert HH:MM:SS to HH:MM format
+  const [hours, minutes] = timeStr.split(":");
+  return `${hours}:${minutes}`;
+}
+
+function isAppointmentInFuture(appointment: ServiceAppointment): boolean {
+  const now = new Date();
+  const today = now.toISOString().split("T")[0];
+  
+  // If work_date is in the future
+  if (appointment.work_date > today) {
+    return true;
+  }
+  
+  // If work_date is today, check if start_time is in the future
+  if (appointment.work_date === today && appointment.start_time) {
+    const [hours, minutes] = appointment.start_time.split(":").map(Number);
+    const scheduledTime = new Date(now);
+    scheduledTime.setHours(hours, minutes, 0, 0);
+    return scheduledTime.getTime() > now.getTime();
+  }
+  
+  return false;
+}
+
+// Convert local time to UTC for Supabase storage
+function toUTCTimestamp(): string {
+  return new Date().toISOString();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DRAGGABLE COMPONENTS
 // ─────────────────────────────────────────────────────────────────────────────
