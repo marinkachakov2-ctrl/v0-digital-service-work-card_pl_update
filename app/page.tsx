@@ -884,6 +884,26 @@ export default function WorkCardPage() {
   isCapturingPhoto={isCapturingPhoto}
   />
 
+          {/* Mandatory Checklist — between Client and Diagnostics */}
+          <ChecklistButton
+            completed={checklistCompleted}
+            skipped={checklistSkipped}
+            onOpen={() => setChecklistOpen(true)}
+          />
+          <ChecklistModal
+            open={checklistOpen}
+            onOpenChange={setChecklistOpen}
+            items={checklistItems}
+            onItemsChange={setChecklistItems}
+            completed={checklistCompleted}
+            onComplete={() => setChecklistCompleted(true)}
+            skipReason={checklistSkipReason}
+            onSkipReasonChange={setChecklistSkipReason}
+            onSkip={() => setChecklistSkipped(true)}
+            skipped={checklistSkipped}
+            jobCardId={savedJobCardId}
+          />
+
           <DiagnosticsSection
             reasonCode={reasonCode}
             defectCode={defectCode}
