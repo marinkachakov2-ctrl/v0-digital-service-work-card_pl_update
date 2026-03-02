@@ -464,6 +464,8 @@ export interface MasterSearchResult {
   clientName: string;
   // Payer status
   isBlocked?: boolean;
+  // Navision description from service order
+  navisionDescription?: string;
 }
 
 export async function masterSearch(
@@ -471,11 +473,8 @@ export async function masterSearch(
   orderType?: string
 ): Promise<MasterSearchResult[]> {
   if (!query || query.trim().length < 2) {
-    console.log("[v0] masterSearch: Query too short:", query);
     return [];
   }
-
-  console.log("[v0] masterSearch: Searching for:", query, "orderType:", orderType);
 
   const supabase = await createClient();
   const searchTerm = query.trim();
@@ -501,10 +500,8 @@ export async function masterSearch(
 
     const { data: orders, error: orderError } = await orderQuery;
 
-    console.log("[v0] masterSearch orders result:", { count: orders?.length || 0, error: orderError?.message });
-
     if (orderError) {
-      console.error("[v0] masterSearch orders error:", orderError);
+      console.error("masterSearch orders error:", orderError);
     }
 
     if (!orderError && orders) {
@@ -523,11 +520,13 @@ export async function masterSearch(
           clientId: (client?.id as string) || undefined,
           clientName: (client?.name as string) || "",
           isBlocked: (client?.is_blocked as boolean) || false,
+          // Include Navision description from service order
+          navisionDescription: (o.description as string) || (o.fault_description as string) || "",
         });
       }
     }
   } catch (err) {
-    console.error("[v0] masterSearch orders catch:", err);
+    console.error("masterSearch orders catch:", err);
   }
 
   // Search machines directly
@@ -541,10 +540,8 @@ export async function masterSearch(
       .or(`serial_number.ilike.%${searchTerm}%,model.ilike.%${searchTerm}%,brand.ilike.%${searchTerm}%`)
       .limit(10);
 
-    console.log("[v0] masterSearch machines result:", { count: machines?.length || 0, error: machineError?.message });
-
     if (machineError) {
-      console.error("[v0] masterSearch machines error:", machineError);
+      console.error("masterSearch machines error:", machineError);
     }
 
     if (!machineError && machines) {
@@ -569,10 +566,9 @@ export async function masterSearch(
       }
     }
   } catch (err) {
-    console.error("[v0] masterSearch machines catch:", err);
+    console.error("masterSearch machines catch:", err);
   }
 
-  console.log("[v0] masterSearch total results:", results.length);
   return results;
 }
 

@@ -619,6 +619,10 @@ export default function WorkCardPage() {
               // Reset payer change state when selecting new order
               setIsPayerChanged(false);
               setPayerChangeReason("");
+              // Pre-populate description from Navision (editable by technician)
+              if (order.navisionDescription) {
+                setDescription(order.navisionDescription);
+              }
             } else {
               setOrderNumber("");
               setJobCardNumber("");
@@ -630,6 +634,7 @@ export default function WorkCardPage() {
   setPayerChangeReason("");
   setCurrentEngineHours(null);
   setIsHoursWarningConfirmed(false);
+  setDescription("");
   }
   }}
           onOrderTypeChange={(type) => {

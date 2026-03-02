@@ -39,6 +39,8 @@ export interface SelectedOrder {
   machineSerial: string;
   serviceType: OrderTypeValue;
   isBlocked?: boolean;
+  // Navision description - pre-populated from service order
+  navisionDescription?: string;
 }
 
 interface OrderSelectorProps {
@@ -91,18 +93,14 @@ export function OrderSelector({
       return;
     }
 
-    console.log("[v0] OrderSelector: Starting search for:", searchQuery, "type:", orderType);
-
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        console.log("[v0] OrderSelector: Calling masterSearch...");
         const results = await masterSearch(searchQuery, orderType);
-        console.log("[v0] OrderSelector: Got results:", results.length);
         setSearchResults(results);
         setShowResults(true);
       } catch (error) {
-        console.error("[v0] OrderSelector search error:", error);
+        console.error("OrderSelector search error:", error);
         setSearchResults([]);
         setShowResults(true); // Still show dropdown with "no results" message
       } finally {
@@ -127,6 +125,8 @@ export function OrderSelector({
       machineSerial: result.machineSerial,
       serviceType: result.serviceType || orderType,
       isBlocked: result.isBlocked,
+      // Pass Navision description from service order
+      navisionDescription: result.navisionDescription,
     };
     onOrderSelect(selected);
     setSearchQuery("");
