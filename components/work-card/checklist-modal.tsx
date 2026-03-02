@@ -14,7 +14,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { ClipboardCheck, AlertTriangle, CheckCircle2, Check, Camera, Loader2, X, Wrench } from "lucide-react";
-import { saveFreeCheckResult, uploadFreeCheckPhoto } from "@/lib/actions";
+import { saveAllFreeCheckResults, uploadFreeCheckPhoto } from "@/lib/actions";
 
 // FREE CHECK control points from Megatron protocol for 6030/7030 series
 const FREE_CHECK_POINTS = [
@@ -86,7 +86,8 @@ export function ChecklistModal({
 }: ChecklistModalProps) {
   const [showSkipField, setShowSkipField] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
-  const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // Update item status
@@ -141,43 +142,53 @@ export function ChecklistModal({
     }
   };
 
-  // Save individual item to database
-  const saveItem = async (item: ChecklistItem) => {
-    if (!jobCardId || !item.status) return;
-
-    setSavingIds((prev) => new Set(prev).add(item.id));
-
-    const point = FREE_CHECK_POINTS.find((p) => p.id === item.id);
-    await saveFreeCheckResult({
-      jobCardId,
-      controlPointNo: item.id,
-      controlPointName: point?.name || item.label,
-      status: item.status,
-      comments: item.comment || null,
-      photoUrl: item.photoUrl || null,
-    });
-
-    setSavingIds((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(item.id);
-      return newSet;
-    });
-  };
-
   const completedCount = items.filter((i) => i.status !== null).length;
   const allCompleted = completedCount === items.length;
   const canSkip = skipReason.trim().length >= 5;
 
+  // Save all checklist items at once using batch upsert
   const handleComplete = async () => {
-    // Save all items before completing
-    for (const item of items) {
-      if (item.status) {
-        await saveItem(item);
-      }
+    if (!jobCardId) {
+      onComplete();
+      onOpenChange(false);
+      return;
     }
-    onComplete();
-    onOpenChange(false);
-    setShowSkipField(false);
+
+    setIsSaving(true);
+    setSaveSuccess(false);
+
+    // Prepare data for batch save
+    const resultsToSave = FREE_CHECK_POINTS.map((point, index) => {
+      const item = items[index] || { status: "+", comment: "", photoUrl: null };
+      return {
+        controlPointNo: point.id,
+        controlPointName: point.name,
+        status: (item.status || "+") as "+" | "0" | "repair",
+        comments: item.comment || null,
+        photoUrl: item.photoUrl || null,
+      };
+    });
+
+    const result = await saveAllFreeCheckResults(jobCardId, resultsToSave);
+
+    setIsSaving(false);
+
+    if (result.success) {
+      setSaveSuccess(true);
+      // Show success briefly before closing
+      setTimeout(() => {
+        onComplete();
+        onOpenChange(false);
+        setShowSkipField(false);
+        setSaveSuccess(false);
+      }, 800);
+    } else {
+      console.error("Failed to save checklist:", result.error);
+      // Still complete but show error was logged
+      onComplete();
+      onOpenChange(false);
+      setShowSkipField(false);
+    }
   };
 
   const handleSkip = () => {
@@ -415,27 +426,44 @@ export function ChecklistModal({
         </div>
 
         <DialogFooter className="flex-col gap-3 sm:flex-row border-t border-border pt-4">
-          {showSkipField && (
+          {saveSuccess && (
+            <div className="flex items-center gap-2 text-emerald-500 animate-in fade-in duration-300">
+              <CheckCircle2 className="h-5 w-5" />
+              <span className="font-medium">Чеклистът е записан успешно!</span>
+            </div>
+          )}
+          {showSkipField && !saveSuccess && (
             <Button
               variant="outline"
               size="lg"
               onClick={handleSkip}
-              disabled={!canSkip}
+              disabled={!canSkip || isSaving}
               className="h-14 gap-2 bg-transparent text-amber-500 border-amber-500/30 hover:bg-amber-500/10 disabled:opacity-50"
             >
               <AlertTriangle className="h-5 w-5" />
               Прескочи с причина
             </Button>
           )}
-          <Button
-            size="lg"
-            onClick={handleComplete}
-            disabled={!allCompleted}
-            className="h-14 gap-2 bg-[#367C2B] text-white hover:bg-[#2d6823] disabled:opacity-50"
-          >
-            <CheckCircle2 className="h-5 w-5" />
-            Завърши FREE CHECK
-          </Button>
+          {!saveSuccess && (
+            <Button
+              size="lg"
+              onClick={handleComplete}
+              disabled={!allCompleted || isSaving}
+              className="h-14 gap-2 bg-[#367C2B] text-white hover:bg-[#2d6823] disabled:opacity-50"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Записване...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-5 w-5" />
+                  Завърши FREE CHECK
+                </>
+              )}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

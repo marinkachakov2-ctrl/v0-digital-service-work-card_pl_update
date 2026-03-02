@@ -1251,6 +1251,49 @@ export async function saveFreeCheckResult(
 }
 
 /**
+ * Batch save all free check results for a job card
+ */
+export async function saveAllFreeCheckResults(
+  jobCardId: string,
+  results: Array<{
+    controlPointNo: string;
+    controlPointName: string;
+    status: "+" | "0" | "repair";
+    comments: string | null;
+    photoUrl: string | null;
+  }>
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    const dataToSave = results.map((item) => ({
+      job_card_id: jobCardId,
+      control_point_no: item.controlPointNo,
+      control_point_name: item.controlPointName,
+      status: item.status,
+      comments: item.comments,
+      photo_url: item.photoUrl,
+    }));
+
+    const { error } = await supabase
+      .from("free_check_results")
+      .upsert(dataToSave, {
+        onConflict: "job_card_id,control_point_no",
+      });
+
+    if (error) {
+      console.error("saveAllFreeCheckResults error:", error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error("saveAllFreeCheckResults catch error:", err);
+    return { success: false, error: String(err) };
+  }
+}
+
+/**
  * Upload a free check photo to Supabase storage
  */
 export async function uploadFreeCheckPhoto(
