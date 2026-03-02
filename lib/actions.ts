@@ -7,6 +7,205 @@ import { createClient } from "./supabase/server";
 import { generateOrderNumber, generateJobCardNumber } from "./data";
 import type { MachineSearchResult, Technician, PayerStatus, MachineWithPayerInfo } from "./types";
 
+// ────────────────────────────── Service Orders ──────────────────────────────
+
+export interface ServiceOrderResult {
+  id: string;
+  orderNumber: string;
+  jobCardNumber: string;
+  clientId: string | null;
+  clientName: string;
+  machineId: string | null;
+  machineModel: string;
+  machineSerial: string;
+  serviceType: "warranty" | "repair" | "service_contract" | "internal";
+  status: string;
+  technicianId: string | null;
+  technicianName: string;
+  createdAt: string;
+}
+
+/**
+ * Search service orders by order number, job card number, client name, or machine
+ */
+export async function searchServiceOrders(
+  query: string,
+  technicianId?: string | null
+): Promise<ServiceOrderResult[]> {
+  const supabase = await createClient();
+
+  let queryBuilder = supabase
+    .from("service_orders")
+    .select(`
+      *,
+      machines:machine_id (model, serial_number),
+      clients:client_id (name)
+    `)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  // Filter by technician if provided
+  if (technicianId) {
+    queryBuilder = queryBuilder.eq("technician_id", technicianId);
+  }
+
+  // Search filter
+  if (query && query.trim().length >= 2) {
+    const searchTerm = `%${query.trim()}%`;
+    queryBuilder = queryBuilder.or(
+      `order_number.ilike.${searchTerm},job_card_number.ilike.${searchTerm},technician_name.ilike.${searchTerm}`
+    );
+  }
+
+  const { data, error } = await queryBuilder;
+
+  if (error) {
+    console.error("[Server Action] searchServiceOrders error:", error);
+    return [];
+  }
+
+  return (data || []).map((so: Record<string, unknown>) => ({
+    id: so.id as string,
+    orderNumber: (so.order_number as string) || "",
+    jobCardNumber: (so.job_card_number as string) || "",
+    clientId: so.client_id as string | null,
+    clientName: (so.clients as Record<string, unknown>)?.name as string || "",
+    machineId: so.machine_id as string | null,
+    machineModel: (so.machines as Record<string, unknown>)?.model as string || "",
+    machineSerial: (so.machines as Record<string, unknown>)?.serial_number as string || "",
+    serviceType: (so.service_type as ServiceOrderResult["serviceType"]) || "repair",
+    status: (so.status as string) || "open",
+    technicianId: so.technician_id as string | null,
+    technicianName: (so.technician_name as string) || "",
+    createdAt: so.created_at as string,
+  }));
+}
+
+/**
+ * Get a single service order with full details including payer info
+ */
+export async function getServiceOrderDetails(orderId: string): Promise<{
+  order: ServiceOrderResult;
+  owner: PayerStatus | null;
+  payer: PayerStatus | null;
+} | null> {
+  const supabase = await createClient();
+
+  const { data: so, error } = await supabase
+    .from("service_orders")
+    .select(`
+      *,
+      machines:machine_id (*),
+      clients:client_id (*)
+    `)
+    .eq("id", orderId)
+    .single();
+
+  if (error || !so) {
+    console.error("[Server Action] getServiceOrderDetails error:", error);
+    return null;
+  }
+
+  const order: ServiceOrderResult = {
+    id: so.id,
+    orderNumber: so.order_number || "",
+    jobCardNumber: so.job_card_number || "",
+    clientId: so.client_id,
+    clientName: (so.clients as Record<string, unknown>)?.name as string || "",
+    machineId: so.machine_id,
+    machineModel: (so.machines as Record<string, unknown>)?.model as string || "",
+    machineSerial: (so.machines as Record<string, unknown>)?.serial_number as string || "",
+    serviceType: so.service_type || "repair",
+    status: so.status || "open",
+    technicianId: so.technician_id,
+    technicianName: so.technician_name || "",
+    createdAt: so.created_at,
+  };
+
+  // Get owner (client) payer status
+  let owner: PayerStatus | null = null;
+  let payer: PayerStatus | null = null;
+
+  if (so.client_id) {
+    const { data: clientData } = await supabase
+      .from("clients")
+      .select("*")
+      .eq("id", so.client_id)
+      .single();
+
+    if (clientData) {
+      const creditLimit = Number(clientData.credit_limit) || 0;
+      const currentBalance = Number(clientData.current_balance) || 0;
+      owner = {
+        payerId: clientData.id,
+        payerName: clientData.name || "",
+        isBlocked: clientData.is_blocked === true,
+        creditLimit,
+        currentBalance,
+        creditWarningMessage: clientData.credit_warning_message || undefined,
+        isOverCreditLimit: creditLimit > 0 && currentBalance > creditLimit,
+      };
+
+      // Check if there's a different payer
+      const payerId = clientData.payer_id || clientData.id;
+      if (payerId !== clientData.id) {
+        const { data: payerData } = await supabase
+          .from("clients")
+          .select("*")
+          .eq("id", payerId)
+          .single();
+
+        if (payerData) {
+          const payerCreditLimit = Number(payerData.credit_limit) || 0;
+          const payerCurrentBalance = Number(payerData.current_balance) || 0;
+          payer = {
+            payerId: payerData.id,
+            payerName: payerData.name || "",
+            isBlocked: payerData.is_blocked === true,
+            creditLimit: payerCreditLimit,
+            currentBalance: payerCurrentBalance,
+            creditWarningMessage: payerData.credit_warning_message || undefined,
+            isOverCreditLimit: payerCreditLimit > 0 && payerCurrentBalance > payerCreditLimit,
+          };
+        }
+      } else {
+        payer = owner;
+      }
+    }
+  }
+
+  return { order, owner, payer };
+}
+
+/**
+ * Update payer for a job card with audit trail
+ */
+export async function updateJobCardPayer(
+  jobCardId: string,
+  newPayerId: string,
+  changeReason: string,
+  originalPayerId?: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("job_cards")
+    .update({
+      payer_id: newPayerId,
+      is_payer_changed: true,
+      payer_change_reason: changeReason,
+      original_payer_id: originalPayerId || null,
+    })
+    .eq("id", jobCardId);
+
+  if (error) {
+    console.error("[Server Action] updateJobCardPayer error:", error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
 /**
  * Search machines by query string across multiple fields using Supabase:
  * - Brand
@@ -246,6 +445,134 @@ export async function fetchPayerStatus(clientId: string): Promise<PayerStatus | 
 }
 
 /**
+ * Combined search for the Master Search bar
+ * Searches both service_orders and machines, returning unified results
+ */
+export interface MasterSearchResult {
+  type: "order" | "machine";
+  id: string;
+  // Order fields (if type === "order")
+  orderNumber?: string;
+  jobCardNumber?: string;
+  serviceType?: "warranty" | "repair" | "service_contract" | "internal";
+  // Machine fields
+  machineId?: string;
+  machineSerial: string;
+  machineModel: string;
+  // Client fields
+  clientId?: string;
+  clientName: string;
+  // Payer status
+  isBlocked?: boolean;
+  // Navision description from service order
+  navisionDescription?: string;
+}
+
+export async function masterSearch(
+  query: string,
+  orderType?: string
+): Promise<MasterSearchResult[]> {
+  if (!query || query.trim().length < 2) {
+    return [];
+  }
+
+  const supabase = await createClient();
+  const searchTerm = query.trim();
+  const results: MasterSearchResult[] = [];
+
+  // Search service orders - use ilike for case-insensitive search
+  try {
+    let orderQuery = supabase
+      .from("service_orders")
+      .select(`
+        *,
+        machines:machine_id (id, model, serial_number, brand),
+        clients:client_id (id, name, is_blocked)
+      `)
+      .or(`order_number.ilike.%${searchTerm}%,job_card_number.ilike.%${searchTerm}%`)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    // Filter by order type if specified
+    if (orderType && orderType !== "all" && orderType !== "repair") {
+      orderQuery = orderQuery.eq("service_type", orderType);
+    }
+
+    const { data: orders, error: orderError } = await orderQuery;
+
+    if (orderError) {
+      console.error("masterSearch orders error:", orderError);
+    }
+
+    if (!orderError && orders) {
+      for (const o of orders) {
+        const machine = o.machines as Record<string, unknown> | null;
+        const client = o.clients as Record<string, unknown> | null;
+        results.push({
+          type: "order",
+          id: o.id as string,
+          orderNumber: o.order_number as string || "",
+          jobCardNumber: o.job_card_number as string || "",
+          serviceType: o.service_type as MasterSearchResult["serviceType"],
+          machineId: (machine?.id as string) || undefined,
+          machineSerial: (machine?.serial_number as string) || "",
+          machineModel: `${machine?.brand || ""} ${machine?.model || ""}`.trim(),
+          clientId: (client?.id as string) || undefined,
+          clientName: (client?.name as string) || "",
+          isBlocked: (client?.is_blocked as boolean) || false,
+          // Include Navision description from service order
+          navisionDescription: (o.description as string) || (o.fault_description as string) || "",
+        });
+      }
+    }
+  } catch (err) {
+    console.error("masterSearch orders catch:", err);
+  }
+
+  // Search machines directly
+  try {
+    const { data: machines, error: machineError } = await supabase
+      .from("machines")
+      .select(`
+        *,
+        clients:client_id (id, name, is_blocked)
+      `)
+      .or(`serial_number.ilike.%${searchTerm}%,model.ilike.%${searchTerm}%,brand.ilike.%${searchTerm}%`)
+      .limit(10);
+
+    if (machineError) {
+      console.error("masterSearch machines error:", machineError);
+    }
+
+    if (!machineError && machines) {
+      for (const m of machines) {
+        const client = m.clients as Record<string, unknown> | null;
+        // Don't add duplicates (machines already in orders)
+        const alreadyInResults = results.some(
+          r => r.machineSerial === m.serial_number
+        );
+        if (!alreadyInResults) {
+          results.push({
+            type: "machine",
+            id: m.id as string,
+            machineId: m.id as string,
+            machineSerial: (m.serial_number as string) || "",
+            machineModel: `${m.brand || ""} ${m.model || ""}`.trim(),
+            clientId: (client?.id as string) || undefined,
+            clientName: (client?.name as string) || m.client_name as string || "",
+            isBlocked: (client?.is_blocked as boolean) || false,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error("masterSearch machines catch:", err);
+  }
+
+  return results;
+}
+
+/**
  * Search parts by part number or description
  */
 export interface PartSearchResult {
@@ -448,4 +775,231 @@ export async function getInitialData(): Promise<{
   ]);
 
   return { technicians, machines };
+}
+
+// ────────────────────────────── Time Logging ──────────────────────────────
+
+export interface StartClockingParams {
+  jobCardId: string;
+  technicianIds: string[];
+  orderType: string;
+  machineId: string | null;
+  currentMachineHours: number | null;
+  hoursConfirmedByTech: boolean;
+  complaintDescription?: string;
+}
+
+export interface StartClockingResult {
+  success: boolean;
+  timeLogIds: string[];
+  error?: string;
+}
+
+/**
+ * Start clocking - creates time_logs entries for each technician
+ * Also updates job_cards with machine hours and description
+ */
+export async function startClocking(params: StartClockingParams): Promise<StartClockingResult> {
+  const supabase = await createClient();
+  const startTime = new Date().toISOString();
+  const timeLogIds: string[] = [];
+
+  try {
+    // Update job_cards with machine hours and description
+    const { error: jobCardError } = await supabase
+      .from("job_cards")
+      .update({
+        current_machine_hours: params.currentMachineHours,
+        hours_confirmed_by_tech: params.hoursConfirmedByTech,
+        complaint_description: params.complaintDescription || null,
+        start_time: startTime,
+        status: "in_progress",
+      })
+      .eq("id", params.jobCardId);
+
+    if (jobCardError) {
+      console.error("startClocking job_cards update error:", jobCardError);
+      // Continue anyway - job card might not exist yet
+    }
+
+    // Create time_log entries for each technician
+    for (const techId of params.technicianIds) {
+      if (!techId) continue;
+      
+      const { data, error } = await supabase
+        .from("time_logs")
+        .insert({
+          job_card_id: params.jobCardId,
+          technician_id: techId,
+          order_type: params.orderType,
+          start_time: startTime,
+          status: "running",
+        })
+        .select("id")
+        .single();
+
+      if (error) {
+        console.error("startClocking time_logs insert error:", error);
+      } else if (data) {
+        timeLogIds.push(data.id);
+      }
+    }
+
+    return { success: true, timeLogIds };
+  } catch (err) {
+    console.error("startClocking catch error:", err);
+    return { success: false, timeLogIds: [], error: String(err) };
+  }
+}
+
+export interface StopClockingParams {
+  jobCardId: string;
+  technicianIds: string[];
+  machineId: string | null;
+  currentMachineHours: number | null;
+  hoursConfirmedByTech: boolean;
+  complaintDescription?: string;
+  totalSeconds: number;
+}
+
+export interface StopClockingResult {
+  success: boolean;
+  updatedCount: number;
+  machineHistoryId?: string;
+  error?: string;
+}
+
+/**
+ * Stop clocking - updates time_logs with end_time and status='completed'
+ * Also saves machine hours to job_cards and creates machine_history record
+ */
+export async function stopClocking(params: StopClockingParams): Promise<StopClockingResult> {
+  const supabase = await createClient();
+  const endTime = new Date().toISOString();
+  let updatedCount = 0;
+  let machineHistoryId: string | undefined;
+
+  try {
+    // Update job_cards with final machine hours and description
+    const { error: jobCardError } = await supabase
+      .from("job_cards")
+      .update({
+        current_machine_hours: params.currentMachineHours,
+        hours_confirmed_by_tech: params.hoursConfirmedByTech,
+        complaint_description: params.complaintDescription || null,
+        end_time: endTime,
+        total_seconds: params.totalSeconds,
+        status: "completed",
+      })
+      .eq("id", params.jobCardId);
+
+    if (jobCardError) {
+      console.error("stopClocking job_cards update error:", jobCardError);
+    }
+
+    // Update time_log entries for each technician
+    for (const techId of params.technicianIds) {
+      if (!techId) continue;
+      
+      const { error, count } = await supabase
+        .from("time_logs")
+        .update({
+          end_time: endTime,
+          status: "completed",
+        })
+        .eq("job_card_id", params.jobCardId)
+        .eq("technician_id", techId)
+        .eq("status", "running");
+
+      if (error) {
+        console.error("stopClocking time_logs update error:", error);
+      } else {
+        updatedCount += count || 1;
+      }
+    }
+
+    // Create machine_history record if machine and hours provided
+    if (params.machineId && params.currentMachineHours !== null) {
+      const { data, error } = await supabase
+        .from("machine_history")
+        .insert({
+          machine_id: params.machineId,
+          job_card_id: params.jobCardId,
+          recorded_hours: params.currentMachineHours,
+          service_date: new Date().toISOString().split("T")[0],
+          technician_note: params.hoursConfirmedByTech ? "Confirmed by technician" : null,
+        })
+        .select("id")
+        .single();
+
+      if (error) {
+        console.error("stopClocking machine_history insert error:", error);
+      } else if (data) {
+        machineHistoryId = data.id;
+      }
+    }
+
+    return { success: true, updatedCount, machineHistoryId };
+  } catch (err) {
+    console.error("stopClocking catch error:", err);
+    return { success: false, updatedCount: 0, error: String(err) };
+  }
+}
+
+/**
+ * Update job card description (called when description field changes)
+ */
+export async function updateJobCardDescription(
+  jobCardId: string,
+  description: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    const { error } = await supabase
+      .from("job_cards")
+      .update({ complaint_description: description })
+      .eq("id", jobCardId);
+
+    if (error) {
+      console.error("updateJobCardDescription error:", error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error("updateJobCardDescription catch error:", err);
+    return { success: false, error: String(err) };
+  }
+}
+
+/**
+ * Get previous machine hours from machine_history
+ */
+export async function getPreviousMachineHours(
+  machineId: string
+): Promise<{ hours: number | null; date: string | null }> {
+  const supabase = await createClient();
+
+  try {
+    const { data, error } = await supabase
+      .from("machine_history")
+      .select("recorded_hours, service_date")
+      .eq("machine_id", machineId)
+      .order("service_date", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error || !data) {
+      return { hours: null, date: null };
+    }
+
+    return {
+      hours: data.recorded_hours as number,
+      date: data.service_date as string,
+    };
+  } catch (err) {
+    console.error("getPreviousMachineHours error:", err);
+    return { hours: null, date: null };
+  }
 }

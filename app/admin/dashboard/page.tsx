@@ -39,7 +39,7 @@ import {
   ShieldCheck,
   Lock,
   ArrowLeft,
-  Send,
+  Cloud,
   Image as ImageIcon,
   PenLine,
   X,
@@ -465,7 +465,7 @@ export default function ServiceManagerDashboard() {
                       <TableHead>Payer</TableHead>
                       <TableHead className="text-right">Total Cost</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
+                      <TableHead className="text-right">Действие</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -508,7 +508,12 @@ export default function ServiceManagerDashboard() {
                           {getStatusBadge(card.status, card.payer_blocked)}
                         </TableCell>
                         <TableCell className="text-right">
-                          {card.status === "pending_order" || card.status === "completed" ? (
+                          {card.status === "synced" ? (
+                            <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30">
+                              <CheckCircle2 className="h-3 w-3 mr-1" />
+                              Synced
+                            </Badge>
+                          ) : (
                             <Button
                               size="sm"
                               variant="outline"
@@ -522,16 +527,11 @@ export default function ServiceManagerDashboard() {
                               {syncingId === card.id ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               ) : (
-                                <Send className="h-3.5 w-3.5" />
+                                <Cloud className="h-3.5 w-3.5" />
                               )}
                               Push to Navision
                             </Button>
-                          ) : card.status === "synced" ? (
-                            <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/30">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Synced
-                            </Badge>
-                          ) : null}
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}

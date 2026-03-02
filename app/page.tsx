@@ -4,6 +4,8 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Lock, FileEdit } from "lucide-react";
 import { WorkCardHeader } from "@/components/work-card/header";
+import { OrderSelector, type SelectedOrder } from "@/components/work-card/order-selector";
+import { TechniciansSection } from "@/components/work-card/technicians-section";
 import { ClientSection } from "@/components/work-card/client-section";
 import { ChecklistModal, ChecklistButton, getDefaultChecklist, type ChecklistItem } from "@/components/work-card/checklist-modal";
 import { DiagnosticsSection, type FaultPhoto } from "@/components/work-card/diagnostics-section";
@@ -14,9 +16,10 @@ import { CreditWarningBanner } from "@/components/work-card/credit-warning-banne
 import { HistoricalIssuesBanner } from "@/components/work-card/historical-issues-banner";
 import { RecommendationsSection, type RecommendationsData } from "@/components/work-card/recommendations-section";
 import type { ServiceHistoryIssue } from "@/lib/actions";
+import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours } from "@/lib/actions";
 import { Footer } from "@/components/work-card/footer";
 import { useClocking } from "@/lib/clocking-context";
-import type { MachineSearchResult, PayerStatus } from "@/lib/types";
+import type { PayerStatus } from "@/lib/types";
 
 export interface PartItem {
   id: string;
@@ -56,7 +59,6 @@ export default function WorkCardPage() {
   // Hydration flag to prevent UI flickering
   const [isHydrated, setIsHydrated] = useState(false);
 
-  const [searchValue, setSearchValue] = useState("");
   const [clientData, setClientData] = useState<ClientData | null>(null);
   const [isScanned, setIsScanned] = useState(false);
 
@@ -64,6 +66,11 @@ export default function WorkCardPage() {
   const [orderNumber, setOrderNumber] = useState("");
   const [jobCardNumber, setJobCardNumber] = useState("");
   const [jobType, setJobType] = useState<"warranty" | "repair" | "internal">("repair");
+  
+  // Selected order from unified search
+  const [selectedOrder, setSelectedOrder] = useState<SelectedOrder | null>(null);
+  const [isPayerChanged, setIsPayerChanged] = useState(false);
+  const [payerChangeReason, setPayerChangeReason] = useState<string>("");
 
   // Technicians — dynamic list
   const [assignedTechnicians, setAssignedTechnicians] = useState<string[]>([""]);
@@ -85,6 +92,10 @@ export default function WorkCardPage() {
 
   // Machine and Payer IDs for database relations
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
+
+  // Engine hours validation
+  const [currentEngineHours, setCurrentEngineHours] = useState<number | null>(null);
+  const [isHoursWarningConfirmed, setIsHoursWarningConfirmed] = useState(false);
 
   // Historical issues from previous job cards
   const [historicalIssues, setHistoricalIssues] = useState<ServiceHistoryIssue[]>([]);
@@ -139,7 +150,6 @@ export default function WorkCardPage() {
         if (form.jobType) setJobType(form.jobType);
         if (form.clientData) setClientData(form.clientData);
         if (form.isScanned !== undefined) setIsScanned(form.isScanned);
-        if (form.searchValue) setSearchValue(form.searchValue);
         if (form.assignedTechnicians) setAssignedTechnicians(form.assignedTechnicians);
         if (form.leadTechnicianId) setLeadTechnicianId(form.leadTechnicianId);
         if (form.clockAtJobLevel !== undefined) setClockAtJobLevel(form.clockAtJobLevel);
@@ -197,7 +207,6 @@ export default function WorkCardPage() {
       jobType,
       clientData,
       isScanned,
-      searchValue,
       assignedTechnicians,
       leadTechnicianId,
       clockAtJobLevel,
@@ -218,7 +227,7 @@ export default function WorkCardPage() {
 
     localStorage.setItem(STORAGE_KEY_FORM, JSON.stringify(formData));
   }, [
-    isHydrated, orderNumber, jobCardNumber, jobType, clientData, isScanned, searchValue,
+    isHydrated, orderNumber, jobCardNumber, jobType, clientData, isScanned,
     assignedTechnicians, leadTechnicianId, clockAtJobLevel, reasonCode, defectCode,
     description, faultDate, repairStart, repairEnd, engineHours, parts, laborItems, paymentMethod,
     savedJobCardId, cardStatus
@@ -258,16 +267,65 @@ export default function WorkCardPage() {
     };
   }, [timerStatus]);
 
- const handleTimerStart = () => {
+ const handleTimerStart = async () => {
   // Prevent starting work if payer is blocked
   if (isPayerBlocked) {
     return;
   }
-  setTimerJobCardId(jobCardNumber);
+  
+  // Set timer state first for immediate UI feedback
+  setTimerJobCardId(savedJobCardId || jobCardNumber);
   setTimerStatus("running");
+  
+  // Call server action to create time_logs entries
+  if (savedJobCardId) {
+    const result = await startClocking({
+      jobCardId: savedJobCardId,
+      technicianIds: assignedTechnicians.filter(Boolean),
+      orderType: jobType,
+      machineId: selectedMachineId,
+      currentMachineHours: currentEngineHours,
+      hoursConfirmedByTech: isHoursWarningConfirmed || (
+        currentEngineHours !== null && 
+        (clientData?.previousEngineHours === null || 
+         clientData?.previousEngineHours === undefined ||
+         currentEngineHours >= clientData.previousEngineHours)
+      ),
+      complaintDescription: description,
+    });
+    
+    if (!result.success) {
+      console.error("Failed to start clocking:", result.error);
+    }
+  }
   };
+  
   const handleTimerPause = () => setTimerStatus("paused");
-  const handleTimerStop = () => {
+  
+  const handleTimerStop = async () => {
+    // Call server action to stop time_logs entries
+    if (savedJobCardId) {
+      const result = await stopClocking({
+        jobCardId: savedJobCardId,
+        technicianIds: assignedTechnicians.filter(Boolean),
+        machineId: selectedMachineId,
+        currentMachineHours: currentEngineHours,
+        hoursConfirmedByTech: isHoursWarningConfirmed || (
+          currentEngineHours !== null && 
+          (clientData?.previousEngineHours === null || 
+           clientData?.previousEngineHours === undefined ||
+           currentEngineHours >= clientData.previousEngineHours)
+        ),
+        complaintDescription: description,
+        totalSeconds: elapsedSeconds,
+      });
+      
+      if (!result.success) {
+        console.error("Failed to stop clocking:", result.error);
+      }
+    }
+    
+    // Reset timer state
     setTimerStatus("idle");
     setElapsedSeconds(0);
     setTimerJobCardId(null);
@@ -313,55 +371,32 @@ export default function WorkCardPage() {
     },
   ]);
 
-  const handleSimulateScan = () => {
-    setClientData({
-      machineOwner: "Агроинвест ЕООД",
-      billingEntity: "Агроинвест ЕООД",
-      location: "София, България",
-      machineModel: "John Deere 8370R",
-      serialNo: "RW8370R001234",
-      engineSN: "PE6068T123456",
-      previousEngineHours: 4520,
-    });
-    setSearchValue("RW8370R001234");
-    setIsScanned(true);
-    setOrderNumber("ON-5521");
-    setJobCardNumber("JC-0018");
-  };
-
   const handleBillingEntityChange = (value: string) => {
     if (clientData) {
       setClientData({ ...clientData, billingEntity: value });
     }
   };
 
-  // Handle machine selection from search - auto-fills all machine details and order numbers
-  const handleMachineSelect = useCallback((machine: MachineSearchResult) => {
-  // Store machine ID for database relation
-  setSelectedMachineId(machine.id);
-  
-  // Auto-fill client/machine data including Engine SN
-  setClientData({
-  machineOwner: machine.ownerName,
-  billingEntity: machine.ownerName,
-  location: machine.location || "",
-  machineModel: `${machine.manufacturer} ${machine.model}`,
-  serialNo: machine.serialNo,
-  engineSN: machine.engineSN || "",
-  previousEngineHours: machine.engineHours,
-  });
+  // Debounced description save to database
+  const descriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const handleDescriptionChange = useCallback((value: string) => {
+    setDescription(value);
     
-    // Auto-fill order numbers from server-generated suggestions
-    if (machine.suggestedOrderNumber) {
-      setOrderNumber(machine.suggestedOrderNumber);
-    }
-    if (machine.suggestedJobCardNumber) {
-      setJobCardNumber(machine.suggestedJobCardNumber);
+    // Clear existing timeout
+    if (descriptionTimeoutRef.current) {
+      clearTimeout(descriptionTimeoutRef.current);
     }
     
-    setIsScanned(true);
-    setSearchValue(machine.serialNo);
-  }, []);
+    // Debounce save to database (1 second after typing stops)
+    if (savedJobCardId) {
+      descriptionTimeoutRef.current = setTimeout(async () => {
+        const result = await updateJobCardDescription(savedJobCardId, value);
+        if (!result.success) {
+          console.error("Failed to save description:", result.error);
+        }
+      }, 1000);
+    }
+  }, [savedJobCardId]);
 
   // Reset form and clear ALL localStorage (called ONLY after successful save)
   const handleFormReset = useCallback(() => {
@@ -376,10 +411,11 @@ export default function WorkCardPage() {
     // Reset all form fields
     setOrderNumber("");
     setJobCardNumber("");
-    setClientData(null);
-    setIsScanned(false);
-    setSearchValue("");
-    setAssignedTechnicians([""]);
+  setClientData(null);
+  setIsScanned(false);
+  setCurrentEngineHours(null);
+  setIsHoursWarningConfirmed(false);
+  setAssignedTechnicians([""]);
     setLeadTechnicianId(null);
     setClockAtJobLevel(false);
     setReasonCode("");
@@ -402,6 +438,11 @@ export default function WorkCardPage() {
     // Clear machine and payer IDs
     setSelectedMachineId(null);
     setPayerStatus(null);
+    
+    // Clear selected order and payer change state
+    setSelectedOrder(null);
+    setIsPayerChanged(false);
+    setPayerChangeReason("");
     
     // Clear historical issues and recommendations
     setHistoricalIssues([]);
@@ -611,12 +652,87 @@ export default function WorkCardPage() {
           <div className="h-20" />
         )}
 
+        {/* Header with Megatron branding */}
         <WorkCardHeader
-          searchValue={searchValue}
-          onSearchChange={setSearchValue}
-          onSimulateScan={handleSimulateScan}
-          orderNumber={orderNumber}
-          jobCardNumber={jobCardNumber}
+          orderNumber={selectedOrder?.orderNumber || orderNumber}
+          jobCardNumber={selectedOrder?.jobCardNumber || jobCardNumber}
+          isAdmin={isAdmin}
+          onAdminToggle={setIsAdmin}
+        />
+
+        {/* Order Type Selector & Unified Search - Right below header */}
+        <OrderSelector
+          onOrderSelect={async (order) => {
+            setSelectedOrder(order);
+            if (order) {
+              setOrderNumber(order.orderNumber);
+              setJobCardNumber(order.jobCardNumber);
+              setSelectedMachineId(order.machineId);
+              setIsScanned(true);
+              // Map service type to job type
+              const typeMap: Record<string, "warranty" | "repair" | "internal"> = {
+                warranty: "warranty",
+                repair: "repair",
+                internal: "internal",
+                service_contract: "repair",
+              };
+              setJobType(typeMap[order.serviceType] || "repair");
+              
+              // Fetch previous machine hours from database
+              let previousHours: number | null = null;
+              if (order.machineId) {
+                const hoursData = await getPreviousMachineHours(order.machineId);
+                previousHours = hoursData.hours;
+              }
+              
+              // Set client data from order with previous hours
+              setClientData({
+                machineOwner: order.clientName,
+                billingEntity: order.clientName,
+                location: "",
+                machineModel: order.machineModel,
+                serialNo: order.machineSerial,
+                engineSN: "",
+                previousEngineHours: previousHours,
+              });
+              // Reset payer change state when selecting new order
+              setIsPayerChanged(false);
+              setPayerChangeReason("");
+              // Reset engine hours inputs
+              setCurrentEngineHours(null);
+              setIsHoursWarningConfirmed(false);
+              // Pre-populate description from Navision (editable by technician)
+              if (order.navisionDescription) {
+                setDescription(order.navisionDescription);
+              }
+            } else {
+              setOrderNumber("");
+              setJobCardNumber("");
+              setSelectedMachineId(null);
+              setIsScanned(false);
+  setClientData(null);
+  setPayerStatus(null);
+  setIsPayerChanged(false);
+  setPayerChangeReason("");
+  setCurrentEngineHours(null);
+  setIsHoursWarningConfirmed(false);
+  setDescription("");
+  }
+  }}
+          onOrderTypeChange={(type) => {
+            const typeMap: Record<string, "warranty" | "repair" | "internal"> = {
+              warranty: "warranty",
+              repair: "repair",
+              internal: "internal",
+              service_contract: "repair",
+            };
+            setJobType(typeMap[type] || "repair");
+          }}
+          selectedOrder={selectedOrder}
+        />
+
+        {/* Technicians Section - Below search, above client section */}
+        <TechniciansSection
           assignedTechnicians={assignedTechnicians}
           onAssignedTechniciansChange={setAssignedTechnicians}
           leadTechnicianId={leadTechnicianId}
@@ -625,14 +741,21 @@ export default function WorkCardPage() {
           onClockAtJobLevelChange={setClockAtJobLevel}
           timerStatus={timerStatus}
           elapsedTime={elapsedTime}
-  onTimerStart={handleTimerStart}
-  onTimerPause={handleTimerPause}
-  onTimerStop={handleTimerStop}
-  isAdmin={isAdmin}
-  onAdminToggle={setIsAdmin}
-  isSigned={isSigned}
-  isPayerBlocked={isPayerBlocked}
-  />
+          onTimerStart={handleTimerStart}
+          onTimerPause={handleTimerPause}
+          onTimerStop={handleTimerStop}
+          isJobSelected={isScanned || selectedOrder !== null}
+          isHoursValid={
+            currentEngineHours !== null && (
+              // Hours are valid if: no previous hours OR current >= previous OR warning confirmed
+              clientData?.previousEngineHours === null ||
+              clientData?.previousEngineHours === undefined ||
+              currentEngineHours >= clientData.previousEngineHours ||
+              isHoursWarningConfirmed
+            )
+          }
+          currentOrderType={jobType}
+        />
 
         <div className="mt-6 space-y-6">
           {/* Historical Issues Banner - Yellow alert for pending issues from previous visits */}
@@ -648,12 +771,23 @@ export default function WorkCardPage() {
  <ClientSection
   clientData={clientData}
   isScanned={isScanned}
-  jobType={jobType}
-  onJobTypeChange={handleJobTypeChange}
   onBillingEntityChange={handleBillingEntityChange}
-  onMachineSelect={handleMachineSelect}
   onPayerStatusChange={setPayerStatus}
-  onHistoricalIssuesChange={setHistoricalIssues}
+  currentPayer={payerStatus}
+  originalOwner={clientData?.machineOwner || null}
+  onPayerChange={(payer, reason) => {
+    setPayerStatus(payer);
+    if (payer && reason) {
+      setIsPayerChanged(true);
+      setPayerChangeReason(reason);
+    }
+  }}
+  isPayerChanged={isPayerChanged}
+  payerChangeReason={payerChangeReason}
+  currentEngineHours={currentEngineHours}
+  onEngineHoursChange={setCurrentEngineHours}
+  isHoursWarningConfirmed={isHoursWarningConfirmed}
+  onHoursWarningConfirm={setIsHoursWarningConfirmed}
   />
 
           {/* Mandatory Checklist — between Client and Diagnostics */}
@@ -686,7 +820,7 @@ export default function WorkCardPage() {
             photos={faultPhotos}
             onReasonChange={setReasonCode}
             onDefectChange={setDefectCode}
-            onDescriptionChange={setDescription}
+            onDescriptionChange={handleDescriptionChange}
             onFaultDateChange={setFaultDate}
             onRepairStartChange={setRepairStart}
             onRepairEndChange={setRepairEnd}
