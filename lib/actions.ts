@@ -7,6 +7,134 @@ import { createClient } from "./supabase/server";
 import { generateOrderNumber, generateJobCardNumber } from "./data";
 import type { MachineSearchResult, Technician, PayerStatus, MachineWithPayerInfo } from "./types";
 
+// ────────────────────────────── Admin Dashboard Actions ──────────────────────────────
+
+export interface PendingJobCard {
+  id: string;
+  tempId: string; // order_no with TEMP prefix
+  technicianName: string;
+  machineModel: string;
+  serialNumber: string;
+  createdAt: string;
+  status: string;
+  clientName: string;
+}
+
+/**
+ * Fetch job cards with pending_order status (TEMP IDs awaiting Navision allocation)
+ */
+export async function fetchPendingJobCards(): Promise<PendingJobCard[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("job_cards")
+    .select(`
+      id,
+      order_no,
+      status,
+      created_at,
+      client_name_signed,
+      machines:machine_id (
+        model,
+        serial_number,
+        brand
+      ),
+      technicians:technician_id (
+        name
+      )
+    `)
+    .or("status.eq.pending_order,order_no.ilike.TEMP-%")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[Server Action] fetchPendingJobCards error:", error);
+    return [];
+  }
+
+  return (data || []).map((jc) => {
+    const machine = jc.machines as { model?: string; serial_number?: string; brand?: string } | null;
+    const tech = jc.technicians as { name?: string } | null;
+    return {
+      id: jc.id,
+      tempId: jc.order_no || "N/A",
+      technicianName: tech?.name || "Неизвестен",
+      machineModel: machine ? `${machine.brand || ""} ${machine.model || ""}`.trim() : "N/A",
+      serialNumber: machine?.serial_number || "N/A",
+      createdAt: jc.created_at,
+      status: jc.status || "pending_order",
+      clientName: jc.client_name_signed || "N/A",
+    };
+  });
+}
+
+/**
+ * Link a Navision order number to a pending job card
+ */
+export async function linkNavisionOrder(
+  jobCardId: string,
+  navisionOrderNo: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!jobCardId || !navisionOrderNo?.trim()) {
+    return { success: false, error: "Job Card ID и Navision номер са задължителни" };
+  }
+
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("job_cards")
+    .update({
+      order_no: navisionOrderNo.trim(),
+      status: "completed", // Change from pending_order to completed
+    })
+    .eq("id", jobCardId);
+
+  if (error) {
+    console.error("[Server Action] linkNavisionOrder error:", error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true };
+}
+
+/**
+ * Fetch admin dashboard statistics
+ */
+export async function fetchAdminStats(): Promise<{
+  pendingCount: number;
+  todayCount: number;
+  totalPartsValue: number;
+  blockedClients: number;
+}> {
+  const supabase = await createClient();
+  const today = new Date().toISOString().split("T")[0];
+
+  // Pending job cards
+  const { count: pendingCount } = await supabase
+    .from("job_cards")
+    .select("*", { count: "exact", head: true })
+    .or("status.eq.pending_order,order_no.ilike.TEMP-%");
+
+  // Today's job cards
+  const { count: todayCount } = await supabase
+    .from("job_cards")
+    .select("*", { count: "exact", head: true })
+    .gte("created_at", `${today}T00:00:00`)
+    .lte("created_at", `${today}T23:59:59`);
+
+  // Blocked clients
+  const { count: blockedClients } = await supabase
+    .from("clients")
+    .select("*", { count: "exact", head: true })
+    .eq("is_blocked", true);
+
+  return {
+    pendingCount: pendingCount || 0,
+    todayCount: todayCount || 0,
+    totalPartsValue: 0, // Would need aggregation query
+    blockedClients: blockedClients || 0,
+  };
+}
+
 // ────────────────────────────── Machine Pending Repairs ──────────────────────────────
 
 export interface PendingRepairItem {
