@@ -20,7 +20,9 @@ import { SignaturePad } from "@/components/ui/signature-pad";
 import { TechnicianSignaturePad } from "@/components/ui/technician-signature-pad";
 import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, Lock, Download, AlertCircle, ShieldCheck } from "lucide-react";
 import { generateJobCardPDF, type PDFJobCardData } from "@/lib/pdf-export";
+import { uploadSignature } from "@/lib/actions";
 import { toast } from "sonner";
+import Image from "next/image";
 
 const ADMIN_PIN = "1234";
 
@@ -73,6 +75,8 @@ export function Footer({
   // Technician signature state
   const [techSignatureData, setTechSignatureData] = useState<string | null>(null);
   const [technicianName, setTechnicianName] = useState<string>("");
+  // Saved signature URL (from Supabase Storage)
+  const [savedSignatureUrl, setSavedSignatureUrl] = useState<string | null>(null);
   // Admin PIN dialog state
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [pinInput, setPinInput] = useState("");
@@ -204,13 +208,32 @@ export function Footer({
 
     setIsSaving(true);
     try {
-      const result = await onSaveCard(signatureData, signerName); // With signature = completed
-      if (result.success) {
-        setSavedResult({ ...result, status: "completed" });
-        onStatusChange?.("completed");
-        toast.success("Картата е финализирана!", {
-          description: "Клиентът е подписал и картата е заключена.",
-        });
+      // First save the job card to get/confirm the ID
+      const result = await onSaveCard(signatureData, signerName);
+      
+      if (result.success && result.jobCardId) {
+        // Upload signature to Supabase Storage and update job_cards with URL
+        const uploadResult = await uploadSignature(
+          result.jobCardId,
+          signatureData,
+          signerName || null
+        );
+
+        if (uploadResult.success && uploadResult.url) {
+          setSavedSignatureUrl(uploadResult.url);
+          setSavedResult({ ...result, status: "completed" });
+          onStatusChange?.("completed");
+          toast.success("Картата е финализирана!", {
+            description: "Подписът е качен успешно и картата е заключена.",
+          });
+        } else {
+          // Signature upload failed, but job card was saved
+          setSavedResult({ ...result, status: "completed" });
+          onStatusChange?.("completed");
+          toast.warning("Картата е записана", {
+            description: `Подписът не можа да бъде качен: ${uploadResult.error}`,
+          });
+        }
       } else {
         toast.error("Грешка при финализиране", {
           description: result.message || "Моля, опитайте отново.",
@@ -274,6 +297,28 @@ export function Footer({
             </div>
           </div>
 
+          {/* Saved Signature Preview */}
+          {savedSignatureUrl && (
+            <div className="flex flex-col items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <PenLine className="h-3 w-3" />
+                Запазен подпис
+              </p>
+              <div className="relative h-16 w-48 rounded border border-emerald-500/20 bg-card overflow-hidden">
+                <Image
+                  src={savedSignatureUrl}
+                  alt="Запазен подпис"
+                  fill
+                  className="object-contain p-1"
+                  unoptimized
+                />
+              </div>
+              {signerName && (
+                <p className="text-xs text-emerald-400 font-medium">{signerName}</p>
+              )}
+            </div>
+          )}
+
           {/* Status Badges */}
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Badge 
@@ -311,6 +356,7 @@ export function Footer({
             <Button
               onClick={() => {
                 setSavedResult(null);
+                setSavedSignatureUrl(null);
                 onFormReset();
               }}
               variant="outline"

@@ -1937,3 +1937,116 @@ export async function fetchFreeCheckResults(
     return { results: [], error: String(err) };
   }
 }
+
+// ────────────────────────────── Signature Upload ──────────────────────────────
+
+/**
+ * Upload signature image to Supabase Storage and update job_cards with the URL
+ * Also sets status to 'completed' upon successful signature save
+ */
+export async function uploadSignature(
+  jobCardId: string,
+  base64Image: string,
+  signerName?: string | null
+): Promise<{ success: boolean; url?: string; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    // Convert base64 to blob
+    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, "base64");
+
+    // Generate unique filename for signature
+    const filename = `${jobCardId}/signature-${Date.now()}.png`;
+
+    // Upload to Supabase storage (job-card-photos bucket)
+    const { data, error } = await supabase.storage
+      .from("job-card-photos")
+      .upload(filename, buffer, {
+        contentType: "image/png",
+        upsert: true,
+      });
+
+    if (error) {
+      console.error("uploadSignature storage error:", error);
+      return { success: false, error: error.message };
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from("job-card-photos")
+      .getPublicUrl(filename);
+
+    const publicUrl = urlData.publicUrl;
+
+    // Determine new status based on whether order number exists
+    const { data: jobCard, error: fetchError } = await supabase
+      .from("job_cards")
+      .select("order_no")
+      .eq("id", jobCardId)
+      .single();
+
+    if (fetchError) {
+      console.error("uploadSignature fetch job card error:", fetchError);
+      return { success: false, error: fetchError.message };
+    }
+
+    // Status logic: 
+    // - If order_no starts with "TEMP-" = pending_order
+    // - Otherwise = completed
+    const hasPendingOrder = !jobCard?.order_no || jobCard.order_no.startsWith("TEMP-");
+    const newStatus = hasPendingOrder ? "pending_order" : "completed";
+
+    // Update job_cards with signature URL, signer name, and status
+    const { error: updateError } = await supabase
+      .from("job_cards")
+      .update({ 
+        signature_url: publicUrl,
+        signature_data: base64Image, // Keep base64 for PDF generation
+        client_name_signed: signerName || null,
+        status: newStatus,
+      })
+      .eq("id", jobCardId);
+
+    if (updateError) {
+      console.error("uploadSignature update error:", updateError);
+      return { success: false, error: updateError.message };
+    }
+
+    console.log("[Server Action] Signature uploaded successfully:", publicUrl, "Status:", newStatus);
+    return { success: true, url: publicUrl };
+  } catch (err) {
+    console.error("uploadSignature catch error:", err);
+    return { success: false, error: String(err) };
+  }
+}
+
+/**
+ * Fetch signature URL for a job card (for displaying saved signature preview)
+ */
+export async function fetchSignatureUrl(
+  jobCardId: string
+): Promise<{ url: string | null; signerName: string | null; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    const { data, error } = await supabase
+      .from("job_cards")
+      .select("signature_url, client_name_signed")
+      .eq("id", jobCardId)
+      .single();
+
+    if (error) {
+      console.error("fetchSignatureUrl error:", error);
+      return { url: null, signerName: null, error: error.message };
+    }
+
+    return { 
+      url: data?.signature_url || null, 
+      signerName: data?.client_name_signed || null 
+    };
+  } catch (err) {
+    console.error("fetchSignatureUrl catch error:", err);
+    return { url: null, signerName: null, error: String(err) };
+  }
+}
