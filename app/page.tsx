@@ -7,7 +7,8 @@ import { WorkCardHeader } from "@/components/work-card/header";
 import { OrderSelector, type SelectedOrder } from "@/components/work-card/order-selector";
 import { TechniciansSection } from "@/components/work-card/technicians-section";
 import { ClientSection } from "@/components/work-card/client-section";
-import { ChecklistModal, ChecklistButton, getDefaultChecklist, type ChecklistItem } from "@/components/work-card/checklist-modal";
+import { ChecklistModal, ChecklistButton, getDefaultChecklist, FREE_CHECK_POINTS, type ChecklistItem, type FreeCheckStatus } from "@/components/work-card/checklist-modal";
+import type { DetectedIssue } from "@/components/work-card/future-issues-section";
 import { DiagnosticsSection, type FaultPhoto } from "@/components/work-card/diagnostics-section";
 import { PartsTable } from "@/components/work-card/parts-table";
 import { LaborTable } from "@/components/work-card/labor-table";
@@ -954,11 +955,29 @@ export default function WorkCardPage() {
             onChange={setRecommendationsData}
           />
 
-          {/* Future Issues - for next technician */}
+          {/* Future Issues - for next technician + Detected issues from FREE CHECK */}
           <FutureIssuesSection
             machineId={selectedMachineId}
             jobCardId={savedJobCardId}
             isReadOnly={isReadOnly}
+            detectedIssues={checklistItems
+              .filter((item) => item.status === "0" || item.status === "repair")
+              .map((item, idx) => {
+                const point = FREE_CHECK_POINTS.find((p) => p.id === item.id) || FREE_CHECK_POINTS[idx];
+                return {
+                  id: item.id,
+                  name: point?.name || item.label,
+                  desc: point?.desc || "",
+                  status: item.status as FreeCheckStatus,
+                  comment: item.comment,
+                  photoUrl: item.photoUrl,
+                };
+              })}
+            onGenerateQuote={(issue) => {
+              // Navigate to parts section or open quote modal
+              console.log("[v0] Generate quote for issue:", issue);
+              // Could add a part with the issue name as description
+            }}
           />
 
           <Footer

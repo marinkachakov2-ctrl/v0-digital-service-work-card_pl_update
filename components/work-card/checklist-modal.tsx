@@ -17,7 +17,7 @@ import { ClipboardCheck, AlertTriangle, CheckCircle2, Check, Camera, Loader2, X,
 import { saveAllFreeCheckResults, uploadFreeCheckPhoto } from "@/lib/actions";
 
 // FREE CHECK control points from Megatron protocol for 6030/7030 series
-const FREE_CHECK_POINTS = [
+export const FREE_CHECK_POINTS = [
   { id: "01", name: "Горивен филтър", desc: "Проверка за вода, остатъци и течове" },
   { id: "02", name: "Пистов ремък", desc: "Състояние и обтяжна шайба" },
   { id: "03", name: "Водна помпа", desc: "Проверка за теч" },

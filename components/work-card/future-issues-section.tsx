@@ -6,13 +6,28 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Lightbulb, Plus, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Lightbulb, Plus, Loader2, CheckCircle2, AlertTriangle, Wrench, FileText, Camera
+} from "lucide-react";
 import { createMachineIssue } from "@/lib/actions";
+import type { FreeCheckStatus } from "./checklist-modal";
+
+// Detected issue from FREE CHECK
+export interface DetectedIssue {
+  id: string;
+  name: string;
+  desc: string;
+  status: FreeCheckStatus;
+  comment?: string;
+  photoUrl?: string | null;
+}
 
 interface FutureIssuesSectionProps {
   machineId: string | null;
   jobCardId: string | null;
   isReadOnly?: boolean;
+  // Issues detected from FREE CHECK (items marked as "0" or "repair")
+  detectedIssues?: DetectedIssue[];
+  onGenerateQuote?: (issue: DetectedIssue) => void;
 }
 
 type Priority = "low" | "medium" | "high";
@@ -42,6 +57,8 @@ export function FutureIssuesSection({
   machineId,
   jobCardId,
   isReadOnly = false,
+  detectedIssues = [],
+  onGenerateQuote,
 }: FutureIssuesSectionProps) {
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<Priority>("medium");
@@ -82,6 +99,85 @@ export function FutureIssuesSection({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Detected Issues from FREE CHECK */}
+        {detectedIssues.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Wrench className="h-4 w-4 text-red-500" />
+              <span className="text-sm font-medium text-foreground">
+                Открити проблеми от FREE CHECK
+              </span>
+              <Badge className="bg-red-500/15 text-red-500 border-red-500/30 text-xs">
+                {detectedIssues.length}
+              </Badge>
+            </div>
+            <div className="space-y-2">
+              {detectedIssues.map((issue) => (
+                <div
+                  key={issue.id}
+                  className={`rounded-lg border p-3 space-y-2 ${
+                    issue.status === "repair"
+                      ? "border-red-500/30 bg-red-500/5"
+                      : "border-amber-500/30 bg-amber-500/5"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
+                          {issue.id}
+                        </span>
+                        <span className="text-sm font-medium text-foreground">
+                          {issue.name}
+                        </span>
+                        <Badge
+                          className={`text-[10px] ${
+                            issue.status === "repair"
+                              ? "bg-red-500/15 text-red-500 border-red-500/30"
+                              : "bg-amber-500/15 text-amber-500 border-amber-500/30"
+                          }`}
+                        >
+                          {issue.status === "repair" ? "Ремонт" : "Изтрит"}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">{issue.desc}</p>
+                      {issue.comment && (
+                        <p className="text-xs text-foreground mt-1 bg-secondary/50 rounded p-2">
+                          {issue.comment}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {issue.photoUrl && (
+                        <div className="h-10 w-10 rounded border border-border overflow-hidden">
+                          <img
+                            src={issue.photoUrl}
+                            alt="Issue"
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      )}
+                      {onGenerateQuote && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onGenerateQuote(issue)}
+                          className="gap-1.5 text-xs h-8 border-primary/30 text-primary hover:bg-primary/10"
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                          Оферта
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-border pt-4" />
+          </div>
+        )}
+
         {/* Disabled state message */}
         {isDisabled && !isReadOnly && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
@@ -91,6 +187,12 @@ export function FutureIssuesSection({
             </p>
           </div>
         )}
+
+        {/* New Issue Section Header */}
+        <div className="flex items-center gap-2">
+          <Plus className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium text-foreground">Нова забележка</span>
+        </div>
 
         {/* Description textarea */}
         <div className="space-y-2">
