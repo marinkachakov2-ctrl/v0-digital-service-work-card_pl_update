@@ -202,7 +202,7 @@ export default function PortalSelectionPage() {
                 </li>
               </ul>
             </CardContent>
-            <CardFooter className="pt-0">
+            <CardFooter className="pt-0 flex flex-col gap-2">
               <Link href="/technician" className="w-full">
                 <Button 
                   className="w-full h-12 bg-[#367C2B] hover:bg-[#2d6a24] text-white font-semibold text-base gap-2 transition-all duration-300 group-hover:shadow-lg group-hover:shadow-[#367C2B]/20"
@@ -265,7 +265,7 @@ export default function PortalSelectionPage() {
               </ul>
             </CardContent>
             <CardFooter className="pt-0">
-              <Link href="/admin/queue" className="w-full">
+              <Link href="/app" className="w-full">
                 <Button 
                   variant="outline"
                   className="w-full h-12 border-2 border-[#FFDE00] bg-transparent hover:bg-[#FFDE00]/10 text-[#FFDE00] font-semibold text-base gap-2 transition-all duration-300 group-hover:shadow-lg group-hover:shadow-[#FFDE00]/10"
