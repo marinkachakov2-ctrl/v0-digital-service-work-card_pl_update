@@ -47,6 +47,9 @@ interface KPIData {
   potentialRevenue: number;
   completedJobs: number;
   efficiency: number;
+  totalRevenue: number;
+  partsValue: number;
+  laborValue: number;
 }
 
 interface TechnicianRevenue {
@@ -92,6 +95,9 @@ export default function ManagerDashboard() {
     potentialRevenue: 0,
     completedJobs: 0,
     efficiency: 0,
+    totalRevenue: 0,
+    partsValue: 0,
+    laborValue: 0,
   });
 
   // Chart Data
@@ -200,11 +206,23 @@ export default function ManagerDashboard() {
         ? Math.round((approvedProposals / allProposals.length) * 100)
         : 0;
 
+      // Calculate total parts and labor values
+      const totalPartsValue = (partsData || []).reduce((sum: number, part: { price_at_submission?: number; quantity?: number }) => {
+        return sum + ((part.price_at_submission || 0) * (part.quantity || 1));
+      }, 0);
+
+      const totalLaborValue = (laborData || []).reduce((sum: number, labor: { actual_hours?: number }) => {
+        return sum + ((labor.actual_hours || 0) * 50); // 50 BGN/hour
+      }, 0);
+
       setKpiData({
         wip: wipCount,
         potentialRevenue,
         completedJobs: completedThisMonth,
         efficiency,
+        totalRevenue: totalPartsValue + totalLaborValue,
+        partsValue: totalPartsValue,
+        laborValue: totalLaborValue,
       });
 
       // Calculate status distribution
@@ -340,37 +358,66 @@ export default function ManagerDashboard() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+      <header className="sticky top-0 z-40 border-b border-border/50 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="container flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-4">
             <Link href="/admin/queue">
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="hover:bg-muted">
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl font-bold text-foreground">Manager Dashboard</h1>
-              <p className="text-xs text-muted-foreground">Megatron Digital Service</p>
+              <h1 className="text-xl font-bold text-foreground tracking-tight">Manager Dashboard</h1>
+              <p className="text-xs text-muted-foreground">Megatron Digital Service - KPI Overview</p>
             </div>
           </div>
           <Button
             variant="outline"
-            size="sm"
             onClick={fetchData}
             disabled={isLoading}
-            className="gap-2"
+            className="gap-2 border-primary/30 hover:border-primary hover:bg-primary/5 transition-colors"
           >
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
+            <span className="hidden sm:inline">Refresh Data</span>
+            <span className="sm:hidden">Refresh</span>
           </Button>
         </div>
       </header>
 
-      <main className="container px-4 py-6 space-y-6">
+      <main className="container px-4 py-6 space-y-8">
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+          {/* Total Revenue Card - Highlighted */}
+          <Card className="border border-emerald-500/30 bg-emerald-500/5 sm:col-span-2 xl:col-span-1">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-semibold text-emerald-400">
+                Total Revenue
+              </CardTitle>
+              <DollarSign className="h-5 w-5 text-emerald-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-emerald-400">
+                {isLoading ? (
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                ) : (
+                  `${kpiData.totalRevenue.toLocaleString()} BGN`
+                )}
+              </div>
+              <div className="flex flex-col gap-1 mt-2 text-xs">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>Parts Value:</span>
+                  <span className="font-medium text-amber-400">{kpiData.partsValue.toLocaleString()} BGN</span>
+                </div>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>Labor Value:</span>
+                  <span className="font-medium text-emerald-400">{kpiData.laborValue.toLocaleString()} BGN</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* WIP Card */}
-          <Card className="border-l-4 border-l-amber-500">
+          <Card className="border border-border/50 hover:border-amber-500/30 transition-colors">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 WIP (Work In Progress)
@@ -388,12 +435,12 @@ export default function ManagerDashboard() {
           </Card>
 
           {/* Potential Revenue Card */}
-          <Card className="border-l-4 border-l-emerald-500">
+          <Card className="border border-border/50 hover:border-blue-500/30 transition-colors">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Potential Revenue
               </CardTitle>
-              <DollarSign className="h-5 w-5 text-emerald-500" />
+              <TrendingUp className="h-5 w-5 text-blue-500" />
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-foreground">
@@ -410,12 +457,12 @@ export default function ManagerDashboard() {
           </Card>
 
           {/* Completed Jobs Card */}
-          <Card className="border-l-4 border-l-blue-500">
+          <Card className="border border-border/50 hover:border-emerald-500/30 transition-colors">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Completed Jobs
               </CardTitle>
-              <CheckCircle className="h-5 w-5 text-blue-500" />
+              <CheckCircle className="h-5 w-5 text-emerald-500" />
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-foreground">
@@ -428,7 +475,7 @@ export default function ManagerDashboard() {
           </Card>
 
           {/* Efficiency Card */}
-          <Card className="border-l-4 border-l-slate-500">
+          <Card className="border border-border/50 hover:border-slate-500/30 transition-colors">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Efficiency
@@ -452,36 +499,38 @@ export default function ManagerDashboard() {
 
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Bar Chart - Revenue by Technician */}
-          <Card>
-            <CardHeader>
+          {/* Stacked Bar Chart - Revenue by Technician */}
+          <Card className="border border-border/50">
+            <CardHeader className="border-b border-border/30 pb-4">
               <div className="flex items-center gap-2">
                 <Users className="h-5 w-5 text-primary" />
-                <CardTitle>Revenue by Technician</CardTitle>
+                <CardTitle className="text-lg font-semibold">Revenue by Technician</CardTitle>
               </div>
-              <CardDescription>Comparing labor vs parts revenue (BGN)</CardDescription>
+              <CardDescription className="text-sm">Stacked breakdown: Labor vs Parts (BGN)</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               {isLoading ? (
-                <div className="h-[300px] flex items-center justify-center">
+                <div className="h-[320px] flex items-center justify-center">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : technicianRevenue.length === 0 ? (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                <div className="h-[320px] flex items-center justify-center text-muted-foreground">
                   No technician revenue data available
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={320}>
                   <BarChart data={technicianRevenue} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
                     <XAxis 
                       dataKey="name" 
                       tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
                       axisLine={{ stroke: "hsl(var(--border))" }}
+                      tickLine={{ stroke: "hsl(var(--border))" }}
                     />
                     <YAxis 
                       tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
                       axisLine={{ stroke: "hsl(var(--border))" }}
+                      tickLine={{ stroke: "hsl(var(--border))" }}
                       tickFormatter={(value) => `${value}`}
                     />
                     <Tooltip
@@ -490,21 +539,29 @@ export default function ManagerDashboard() {
                         border: "1px solid hsl(var(--border))",
                         borderRadius: "8px",
                         color: "hsl(var(--foreground))",
+                        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
                       }}
-                      formatter={(value: number) => [`${value.toLocaleString()} BGN`]}
+                      formatter={(value: number, name: string) => [
+                        `${value.toLocaleString()} BGN`,
+                        name
+                      ]}
+                      labelStyle={{ fontWeight: "bold", marginBottom: "4px" }}
                     />
                     <Legend 
-                      wrapperStyle={{ color: "hsl(var(--foreground))" }}
+                      wrapperStyle={{ paddingTop: "16px" }}
+                      iconType="square"
                     />
                     <Bar 
                       dataKey="labor" 
-                      name="Labor" 
+                      name="Labor Revenue" 
+                      stackId="revenue"
                       fill={CHART_COLORS.emerald} 
-                      radius={[4, 4, 0, 0]}
+                      radius={[0, 0, 0, 0]}
                     />
                     <Bar 
                       dataKey="parts" 
-                      name="Parts" 
+                      name="Parts Revenue" 
+                      stackId="revenue"
                       fill={CHART_COLORS.amber} 
                       radius={[4, 4, 0, 0]}
                     />
@@ -515,37 +572,37 @@ export default function ManagerDashboard() {
           </Card>
 
           {/* Pie Chart - Job Status Distribution */}
-          <Card>
-            <CardHeader>
+          <Card className="border border-border/50">
+            <CardHeader className="border-b border-border/30 pb-4">
               <div className="flex items-center gap-2">
                 <Wrench className="h-5 w-5 text-primary" />
-                <CardTitle>Job Status Distribution</CardTitle>
+                <CardTitle className="text-lg font-semibold">Job Status Distribution</CardTitle>
               </div>
-              <CardDescription>Current status of all job cards</CardDescription>
+              <CardDescription className="text-sm">Current status of all job cards</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               {isLoading ? (
-                <div className="h-[300px] flex items-center justify-center">
+                <div className="h-[320px] flex items-center justify-center">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
               ) : statusDistribution.length === 0 ? (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                <div className="h-[320px] flex items-center justify-center text-muted-foreground">
                   No job status data available
                 </div>
               ) : (
-                <div className="flex flex-col lg:flex-row items-center justify-center gap-4">
-                  <ResponsiveContainer width="100%" height={300}>
+                <div className="flex flex-col items-center gap-6">
+                  <ResponsiveContainer width="100%" height={250}>
                     <PieChart>
                       <Pie
                         data={statusDistribution}
                         cx="50%"
                         cy="50%"
-                        innerRadius={60}
-                        outerRadius={100}
-                        paddingAngle={4}
+                        innerRadius={55}
+                        outerRadius={95}
+                        paddingAngle={3}
                         dataKey="value"
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        labelLine={{ stroke: "hsl(var(--muted-foreground))" }}
+                        label={({ name, value, percent }) => `${value} (${(percent * 100).toFixed(0)}%)`}
+                        labelLine={{ stroke: "hsl(var(--muted-foreground))", strokeWidth: 1 }}
                       >
                         {statusDistribution.map((entry, index) => (
                           <Cell 
@@ -562,22 +619,26 @@ export default function ManagerDashboard() {
                           border: "1px solid hsl(var(--border))",
                           borderRadius: "8px",
                           color: "hsl(var(--foreground))",
+                          boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
                         }}
                         formatter={(value: number, name: string) => [`${value} jobs`, name]}
                       />
                     </PieChart>
                   </ResponsiveContainer>
                   
-                  {/* Legend */}
-                  <div className="flex flex-row lg:flex-col gap-3 flex-wrap justify-center">
+                  {/* Legend - Clear status labels */}
+                  <div className="grid grid-cols-3 gap-4 w-full px-4 pt-2 border-t border-border/30">
                     {statusDistribution.map((entry, index) => (
-                      <div key={index} className="flex items-center gap-2">
+                      <div key={index} className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-muted/50 transition-colors">
                         <div 
-                          className="w-3 h-3 rounded-full" 
+                          className="w-4 h-4 rounded-sm" 
                           style={{ backgroundColor: entry.color }}
                         />
-                        <span className="text-sm text-muted-foreground">
-                          {entry.name}: <span className="font-medium text-foreground">{entry.value}</span>
+                        <span className="text-xs font-medium text-muted-foreground text-center">
+                          {entry.name}
+                        </span>
+                        <span className="text-lg font-bold text-foreground">
+                          {entry.value}
                         </span>
                       </div>
                     ))}
@@ -589,33 +650,33 @@ export default function ManagerDashboard() {
         </div>
 
         {/* Quick Links */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Quick Actions</CardTitle>
+        <Card className="border border-border/50">
+          <CardHeader className="border-b border-border/30 pb-4">
+            <CardTitle className="text-lg font-semibold">Quick Actions</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-4">
             <div className="flex flex-wrap gap-3">
               <Link href="/admin/queue">
-                <Button variant="outline" className="gap-2">
-                  <Activity className="h-4 w-4" />
+                <Button variant="outline" className="gap-2 border-border/50 hover:border-amber-500/50 hover:bg-amber-500/5">
+                  <Activity className="h-4 w-4 text-amber-500" />
                   Pending Queue
                 </Button>
               </Link>
               <Link href="/admin/queue/proposals">
-                <Button variant="outline" className="gap-2">
-                  <DollarSign className="h-4 w-4" />
+                <Button variant="outline" className="gap-2 border-border/50 hover:border-blue-500/50 hover:bg-blue-500/5">
+                  <DollarSign className="h-4 w-4 text-blue-500" />
                   Proposals
                 </Button>
               </Link>
               <Link href="/admin/job-cards">
-                <Button variant="outline" className="gap-2">
-                  <Wrench className="h-4 w-4" />
+                <Button variant="outline" className="gap-2 border-border/50 hover:border-slate-500/50 hover:bg-slate-500/5">
+                  <Wrench className="h-4 w-4 text-slate-400" />
                   All Job Cards
                 </Button>
               </Link>
               <Link href="/admin/dashboard">
-                <Button variant="outline" className="gap-2">
-                  <CheckCircle className="h-4 w-4" />
+                <Button variant="outline" className="gap-2 border-border/50 hover:border-emerald-500/50 hover:bg-emerald-500/5">
+                  <CheckCircle className="h-4 w-4 text-emerald-500" />
                   Service Dashboard
                 </Button>
               </Link>
