@@ -13,8 +13,10 @@ import { LiveDispatcher } from "@/components/planning/live-dispatcher";
 import { WeeklyTaskView, type WeeklyTask, type WeeklyNote } from "@/components/planning/weekly-task-view";
 import { ServiceWideView, type ServiceTask } from "@/components/planning/service-wide-view";
 import { ServicePlanningCalendar } from "@/components/planning/service-planning-calendar";
+import { KanbanBoard } from "@/components/planning/kanban-board";
+import { Columns3 } from "lucide-react";
 
-type ViewLevel = "diary" | "roster" | "gantt" | "calendar" | "dispatcher";
+type ViewLevel = "diary" | "roster" | "gantt" | "calendar" | "dispatcher" | "kanban";
 
 interface NavigationState {
   level: ViewLevel;
@@ -244,7 +246,7 @@ export default function PlanningBoardPage() {
               onClick={() => setNavigation({ level: "dispatcher", selectedDate: new Date(), selectedTechnicianId: null, selectedTechnicianName: null })}
             >
               <Users className="h-4 w-4 mr-1.5" />
-              Dispatcher
+              Gantt
             </Button>
             <Button 
               variant={navigation.level === "calendar" ? "default" : "outline"} 
@@ -254,6 +256,15 @@ export default function PlanningBoardPage() {
             >
               <CalendarRange className="h-4 w-4 mr-1.5" />
               Calendar
+            </Button>
+            <Button 
+              variant={navigation.level === "kanban" ? "default" : "outline"} 
+              size="sm" 
+              className={navigation.level === "kanban" ? "" : "bg-transparent"}
+              onClick={() => setNavigation({ level: "kanban", selectedDate: null, selectedTechnicianId: null, selectedTechnicianName: null })}
+            >
+              <Columns3 className="h-4 w-4 mr-1.5" />
+              Kanban
             </Button>
             <Link href="/admin">
               <Button variant="outline" size="sm" className="bg-transparent">
@@ -333,6 +344,13 @@ export default function PlanningBoardPage() {
         {navigation.level === "calendar" && (
           <div className="h-[calc(100vh-180px)]">
             <ServicePlanningCalendar userRole="admin" />
+          </div>
+        )}
+
+        {/* Kanban View - Status-based board */}
+        {navigation.level === "kanban" && (
+          <div className="h-[calc(100vh-180px)]">
+            <KanbanBoard />
           </div>
         )}
 
@@ -456,6 +474,14 @@ export default function PlanningBoardPage() {
               className={`h-2 w-2 rounded-full ${navigation.level === "calendar" ? "bg-primary" : "bg-muted"}`}
             />
             <span>Calendar</span>
+          </div>
+          <div
+            className={`flex items-center gap-1.5 ${navigation.level === "kanban" ? "text-primary" : ""}`}
+          >
+            <div
+              className={`h-2 w-2 rounded-full ${navigation.level === "kanban" ? "bg-primary" : "bg-muted"}`}
+            />
+            <span>Kanban</span>
           </div>
           <div
             className={`flex items-center gap-1.5 ${navigation.level === "diary" ? "text-primary" : ""}`}
