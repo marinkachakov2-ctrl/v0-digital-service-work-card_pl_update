@@ -1092,3 +1092,109 @@ export async function updateMissingPhotoReason(
     return { success: false, error: String(err) };
   }
 }
+
+// ────────────────────────────── Machine Issues ──────────────────────────────
+
+export interface MachineIssue {
+  id: string;
+  machine_id: string;
+  job_card_id: string | null;
+  description: string;
+  priority: "low" | "medium" | "high";
+  status: "unresolved" | "resolved";
+  created_at: string;
+}
+
+/**
+ * Fetch unresolved issues for a machine
+ */
+export async function fetchUnresolvedMachineIssues(
+  machineId: string
+): Promise<{ issues: MachineIssue[]; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    const { data, error } = await supabase
+      .from("machine_issues")
+      .select("*")
+      .eq("machine_id", machineId)
+      .eq("status", "unresolved")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("fetchUnresolvedMachineIssues error:", error);
+      return { issues: [], error: error.message };
+    }
+
+    return { issues: (data || []) as MachineIssue[] };
+  } catch (err) {
+    console.error("fetchUnresolvedMachineIssues catch error:", err);
+    return { issues: [], error: String(err) };
+  }
+}
+
+/**
+ * Resolve a machine issue and link it to the current job card
+ */
+export async function resolveMachineIssue(
+  issueId: string,
+  jobCardId: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    const { error } = await supabase
+      .from("machine_issues")
+      .update({
+        status: "resolved",
+        job_card_id: jobCardId,
+      })
+      .eq("id", issueId);
+
+    if (error) {
+      console.error("resolveMachineIssue error:", error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error("resolveMachineIssue catch error:", err);
+    return { success: false, error: String(err) };
+  }
+}
+
+/**
+ * Create a new machine issue (unresolved)
+ */
+export async function createMachineIssue(
+  machineId: string,
+  jobCardId: string,
+  description: string,
+  priority: "low" | "medium" | "high"
+): Promise<{ success: boolean; issueId?: string; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    const { data, error } = await supabase
+      .from("machine_issues")
+      .insert({
+        machine_id: machineId,
+        job_card_id: jobCardId,
+        description,
+        priority,
+        status: "unresolved",
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("createMachineIssue error:", error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, issueId: data?.id };
+  } catch (err) {
+    console.error("createMachineIssue catch error:", err);
+    return { success: false, error: String(err) };
+  }
+}

@@ -11,12 +11,12 @@ import { ChecklistModal, ChecklistButton, getDefaultChecklist, type ChecklistIte
 import { DiagnosticsSection, type FaultPhoto } from "@/components/work-card/diagnostics-section";
 import { PartsTable } from "@/components/work-card/parts-table";
 import { LaborTable } from "@/components/work-card/labor-table";
-import { UnresolvedIssuesAlert, UnresolvedIssuesSection, type UnresolvedIssue } from "@/components/work-card/unresolved-issues";
+import { UnresolvedIssuesAlert, UnresolvedIssuesSection, DynamicUnresolvedIssuesAlert, type UnresolvedIssue } from "@/components/work-card/unresolved-issues";
 import { CreditWarningBanner } from "@/components/work-card/credit-warning-banner";
 import { HistoricalIssuesBanner } from "@/components/work-card/historical-issues-banner";
 import { RecommendationsSection, type RecommendationsData } from "@/components/work-card/recommendations-section";
 import type { ServiceHistoryIssue } from "@/lib/actions";
-import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours, uploadEngineHoursPhoto } from "@/lib/actions";
+import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours, uploadEngineHoursPhoto, fetchUnresolvedMachineIssues, type MachineIssue } from "@/lib/actions";
 import { Footer } from "@/components/work-card/footer";
 import { useClocking } from "@/lib/clocking-context";
 import type { PayerStatus } from "@/lib/types";
@@ -105,6 +105,9 @@ export default function WorkCardPage() {
 
   // Historical issues from previous job cards
   const [historicalIssues, setHistoricalIssues] = useState<ServiceHistoryIssue[]>([]);
+  
+  // Machine issues from database (unresolved issues for selected machine)
+  const [machineIssues, setMachineIssues] = useState<MachineIssue[]>([]);
 
   // Recommendations and pending issues for current card
   const [recommendationsData, setRecommendationsData] = useState<RecommendationsData>({
@@ -695,11 +698,17 @@ export default function WorkCardPage() {
               };
               setJobType(typeMap[order.serviceType] || "repair");
               
-              // Fetch previous machine hours from database
+              // Fetch previous machine hours and unresolved issues from database
               let previousHours: number | null = null;
               if (order.machineId) {
                 const hoursData = await getPreviousMachineHours(order.machineId);
                 previousHours = hoursData.hours;
+                
+                // Fetch unresolved machine issues
+                const issuesData = await fetchUnresolvedMachineIssues(order.machineId);
+                setMachineIssues(issuesData.issues);
+              } else {
+                setMachineIssues([]);
               }
               
               // Set client data from order with previous hours
@@ -740,6 +749,7 @@ export default function WorkCardPage() {
   setSkipPhoto(false);
   setMissingPhotoReason("");
   setDescription("");
+  setMachineIssues([]);
   }
   }}
           onOrderTypeChange={(type) => {
@@ -790,10 +800,16 @@ export default function WorkCardPage() {
             <HistoricalIssuesBanner issues={historicalIssues} />
           )}
 
-          {/* Unresolved Issues Alert Banner — prominent at top */}
-          {isScanned && (
-            <UnresolvedIssuesAlert previousIssues={previousUnresolvedIssues} />
-          )}
+  {/* Unresolved Issues Alert Banner — prominent at top, fetched from database */}
+  {isScanned && machineIssues.length > 0 && (
+    <DynamicUnresolvedIssuesAlert
+      machineIssues={machineIssues}
+      onIssueResolved={(issueId) => {
+        setMachineIssues(prev => prev.filter(issue => issue.id !== issueId));
+      }}
+      currentJobCardId={savedJobCardId}
+    />
+  )}
 
  <ClientSection
   clientData={clientData}
