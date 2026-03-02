@@ -17,7 +17,8 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { GripVertical, Clock, Loader2, AlertCircle, RefreshCw, User, ChevronLeft, ChevronRight, CalendarDays, Plus, FileText, ArrowRight, X } from "lucide-react";
+import { GripVertical, Clock, Loader2, AlertCircle, RefreshCw, User, ChevronLeft, ChevronRight, CalendarDays, Plus, FileText, FileEdit, X } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -247,7 +248,15 @@ function WaitingJobCard({
 }
 
 // Timeline draggable task
-function TimelineTask({ appointment, isOverlay = false }: { appointment: ServiceAppointment; isOverlay?: boolean }) {
+function TimelineTask({ 
+  appointment, 
+  isOverlay = false,
+  onConvert,
+}: { 
+  appointment: ServiceAppointment; 
+  isOverlay?: boolean;
+  onConvert?: (apt: ServiceAppointment) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: appointment.id,
     data: { appointment, type: "timeline" },
@@ -257,6 +266,7 @@ function TimelineTask({ appointment, isOverlay = false }: { appointment: Service
   const durationHours = appointment.planned_hours || 1;
   const pos = getPositionFromTime(startHours, durationHours);
   const colors = getAppointmentColor(appointment);
+  const isNote = appointment.task_type === "note";
 
   const style: React.CSSProperties = isOverlay
     ? { width: pos.width }
@@ -274,18 +284,31 @@ function TimelineTask({ appointment, isOverlay = false }: { appointment: Service
       style={style}
       className={cn(
         "flex h-10 cursor-grab items-center gap-1 rounded border px-2 text-xs font-medium shadow-sm",
-        colors.bg,
-        colors.border,
-        colors.text,
+        isNote ? "bg-amber-100 border-amber-300 text-amber-900" : colors.bg,
+        !isNote && colors.border,
+        !isNote && colors.text,
         isDragging && !isOverlay && "opacity-50",
         isOverlay && "shadow-xl ring-2 ring-white/50"
       )}
-      title={`${appointment.client_name} - ${appointment.machine_model}`}
+      title={`${appointment.client_name} - ${appointment.machine_model || "Бележка"}`}
     >
       <GripVertical className="h-3 w-3 flex-shrink-0 opacity-60" />
-      <span className="truncate">
-        {appointment.client_name?.split(" ")[0] || "?"} - {appointment.machine_model?.substring(0, 10) || "Машина"}
+      {isNote && <FileText className="h-3 w-3 flex-shrink-0" />}
+      <span className="truncate flex-1">
+        {appointment.client_name?.split(" ")[0] || "?"} {!isNote && `- ${appointment.machine_model?.substring(0, 10) || "Машина"}`}
       </span>
+      {isNote && onConvert && !isOverlay && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onConvert(appointment);
+          }}
+          className="p-0.5 rounded hover:bg-amber-200 transition-colors flex-shrink-0"
+          title="Преобразувай в поръчка"
+        >
+          <FileEdit className="h-3 w-3" />
+        </button>
+      )}
     </div>
   );
 }
@@ -296,11 +319,13 @@ function TechnicianRow({
   appointments,
   isOver,
   dropHour,
+  onConvertNote,
 }: {
   technician: Technician;
   appointments: ServiceAppointment[];
   isOver: boolean;
   dropHour: number | null;
+  onConvertNote?: (apt: ServiceAppointment) => void;
 }) {
   const { setNodeRef } = useDroppable({
     id: `tech-${technician.id}`,
@@ -358,7 +383,7 @@ function TechnicianRow({
         {/* Tasks */}
         <div className="relative h-full pt-2">
           {appointments.map((apt) => (
-            <TimelineTask key={apt.id} appointment={apt} />
+            <TimelineTask key={apt.id} appointment={apt} onConvert={onConvertNote} />
           ))}
         </div>
       </div>
@@ -391,6 +416,7 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
   const [convertingNote, setConvertingNote] = useState<ServiceAppointment | null>(null);
   const [convertMachineModel, setConvertMachineModel] = useState("");
   const [convertSerialNumber, setConvertSerialNumber] = useState("");
+  const [convertPriority, setConvertPriority] = useState<string>("normal");
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
@@ -611,16 +637,23 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
           task_type: "order",
           machine_model: convertMachineModel.trim(),
           serial_number: convertSerialNumber.trim() || null,
+          priority: convertPriority,
           updated_at: new Date().toISOString(),
         })
         .eq("id", convertingNote.id);
 
       if (updateError) throw updateError;
       
-      // Update local state
+      // Update local state - the color will automatically change based on priority/notes
       const updateFn = (a: ServiceAppointment) => 
         a.id === convertingNote.id
-          ? { ...a, task_type: "order", machine_model: convertMachineModel.trim(), serial_number: convertSerialNumber.trim() || null }
+          ? { 
+              ...a, 
+              task_type: "order", 
+              machine_model: convertMachineModel.trim(), 
+              serial_number: convertSerialNumber.trim() || null,
+              priority: convertPriority,
+            }
           : a;
       
       setAppointments((prev) => prev.map(updateFn));
@@ -630,6 +663,7 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
       setConvertingNote(null);
       setConvertMachineModel("");
       setConvertSerialNumber("");
+      setConvertPriority("normal");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to convert note");
     } finally {
@@ -771,7 +805,7 @@ const handleDragEnd = async (event: DragEndEvent) => {
 
   // ─────────────────────────────────────────────────────────────────────────
   // DERIVED DATA
-  // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────��───────────────────────────────────
   // Waiting list: global backlog (all unassigned tasks regardless of date)
   const waitingAppointments = backlog;
 
@@ -929,6 +963,12 @@ const handleDragEnd = async (event: DragEndEvent) => {
                     appointments={appointmentsByTechnician[tech.name] || []}
                     isOver={overId === `tech-${tech.id}`}
                     dropHour={overId === `tech-${tech.id}` ? dropHour : null}
+                    onConvertNote={(apt) => {
+                      setConvertingNote(apt);
+                      setConvertMachineModel("");
+                      setConvertSerialNumber("");
+                      setConvertPriority("normal");
+                    }}
                   />
                 ))}
 
@@ -1013,6 +1053,7 @@ const handleDragEnd = async (event: DragEndEvent) => {
                       setConvertingNote(a);
                       setConvertMachineModel("");
                       setConvertSerialNumber("");
+                      setConvertPriority("normal");
                     }}
                   />
                 ))
@@ -1070,6 +1111,20 @@ const handleDragEnd = async (event: DragEndEvent) => {
                 value={convertSerialNumber}
                 onChange={(e) => setConvertSerialNumber(e.target.value)}
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="priority">Приоритет</Label>
+              <Select value={convertPriority} onValueChange={setConvertPriority}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Изберете приоритет" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Нисък</SelectItem>
+                  <SelectItem value="normal">Нормален</SelectItem>
+                  <SelectItem value="high">Висок</SelectItem>
+                  <SelectItem value="emergency">Спешен</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             {convertingNote && (
               <div className="rounded-lg bg-muted p-3">
