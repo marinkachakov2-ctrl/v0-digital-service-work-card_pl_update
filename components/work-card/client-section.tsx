@@ -32,6 +32,11 @@ interface ClientSectionProps {
   onPayerChange?: (payer: PayerStatus | null, reason?: string) => void;
   isPayerChanged?: boolean;
   payerChangeReason?: string;
+  // Machine hours handling
+  currentEngineHours: number | null;
+  onEngineHoursChange: (hours: number | null) => void;
+  isHoursWarningConfirmed: boolean;
+  onHoursWarningConfirm: (confirmed: boolean) => void;
 }
 
 export function ClientSection({
@@ -44,6 +49,10 @@ export function ClientSection({
   onPayerChange,
   isPayerChanged = false,
   payerChangeReason,
+  currentEngineHours,
+  onEngineHoursChange,
+  isHoursWarningConfirmed,
+  onHoursWarningConfirm,
 }: ClientSectionProps) {
   // Payer editing state
   const [isEditingPayer, setIsEditingPayer] = useState(false);
@@ -386,16 +395,86 @@ export function ClientSection({
           />
         </div>
 
-        {/* Previous Engine Hours — read-only reference */}
-        {clientData?.previousEngineHours != null && (
-          <div className="sm:col-span-2 flex items-center gap-3 rounded-md border border-border bg-secondary/50 px-4 py-2.5">
-            <Clock className="h-4 w-4 text-muted-foreground" />
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Previous Engine Hours (last completed JC)</p>
-              <p className="font-mono text-sm font-semibold text-foreground">{clientData.previousEngineHours.toLocaleString()} h</p>
+        {/* Machine Hours Section - Previous and Current */}
+        <div className="sm:col-span-2 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            {/* Previous Engine Hours — read-only reference */}
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                Предишни моточасове
+              </Label>
+              <div className="flex h-10 items-center rounded-md border border-border bg-secondary/50 px-3">
+                <span className="font-mono text-sm font-semibold text-foreground">
+                  {clientData?.previousEngineHours != null 
+                    ? `${clientData.previousEngineHours.toLocaleString()} h` 
+                    : "--"}
+                </span>
+              </div>
+            </div>
+
+            {/* Current Engine Hours — editable input */}
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                Текущи моточасове *
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                value={currentEngineHours ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  onEngineHoursChange(val === "" ? null : Number(val));
+                  // Reset confirmation when value changes
+                  if (isHoursWarningConfirmed) {
+                    onHoursWarningConfirm(false);
+                  }
+                }}
+                placeholder="Въведете часове"
+                className={cn(
+                  "font-mono bg-background",
+                  currentEngineHours !== null && 
+                  clientData?.previousEngineHours !== null && 
+                  clientData?.previousEngineHours !== undefined &&
+                  currentEngineHours < clientData.previousEngineHours &&
+                  !isHoursWarningConfirmed
+                    ? "border-amber-500 focus-visible:ring-amber-500"
+                    : ""
+                )}
+                disabled={!isScanned}
+              />
             </div>
           </div>
-        )}
+
+          {/* Warning message when current < previous */}
+          {currentEngineHours !== null && 
+           clientData?.previousEngineHours !== null && 
+           clientData?.previousEngineHours !== undefined &&
+           currentEngineHours < clientData.previousEngineHours && (
+            <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <p className="text-sm text-amber-500">
+                    Въведените часове ({currentEngineHours.toLocaleString()} h) са по-малко от последните записани ({clientData.previousEngineHours.toLocaleString()} h). Сигурни ли сте?
+                  </p>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isHoursWarningConfirmed}
+                      onChange={(e) => onHoursWarningConfirm(e.target.checked)}
+                      className="h-4 w-4 rounded border-amber-500 text-amber-500 focus:ring-amber-500"
+                    />
+                    <span className="text-sm font-medium text-amber-500">
+                      Потвърждавам
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

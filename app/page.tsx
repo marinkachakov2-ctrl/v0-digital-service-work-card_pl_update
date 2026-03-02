@@ -92,6 +92,10 @@ export default function WorkCardPage() {
   // Machine and Payer IDs for database relations
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(null);
 
+  // Engine hours validation
+  const [currentEngineHours, setCurrentEngineHours] = useState<number | null>(null);
+  const [isHoursWarningConfirmed, setIsHoursWarningConfirmed] = useState(false);
+
   // Historical issues from previous job cards
   const [historicalIssues, setHistoricalIssues] = useState<ServiceHistoryIssue[]>([]);
 
@@ -338,6 +342,8 @@ export default function WorkCardPage() {
     setJobCardNumber("");
   setClientData(null);
   setIsScanned(false);
+  setCurrentEngineHours(null);
+  setIsHoursWarningConfirmed(false);
   setAssignedTechnicians([""]);
     setLeadTechnicianId(null);
     setClockAtJobLevel(false);
@@ -618,12 +624,14 @@ export default function WorkCardPage() {
               setJobCardNumber("");
               setSelectedMachineId(null);
               setIsScanned(false);
-              setClientData(null);
-              setPayerStatus(null);
-              setIsPayerChanged(false);
-              setPayerChangeReason("");
-            }
-          }}
+  setClientData(null);
+  setPayerStatus(null);
+  setIsPayerChanged(false);
+  setPayerChangeReason("");
+  setCurrentEngineHours(null);
+  setIsHoursWarningConfirmed(false);
+  }
+  }}
           onOrderTypeChange={(type) => {
             const typeMap: Record<string, "warranty" | "repair" | "internal"> = {
               warranty: "warranty",
@@ -650,6 +658,15 @@ export default function WorkCardPage() {
           onTimerPause={handleTimerPause}
           onTimerStop={handleTimerStop}
           isJobSelected={isScanned || selectedOrder !== null}
+          isHoursValid={
+            currentEngineHours !== null && (
+              // Hours are valid if: no previous hours OR current >= previous OR warning confirmed
+              clientData?.previousEngineHours === null ||
+              clientData?.previousEngineHours === undefined ||
+              currentEngineHours >= clientData.previousEngineHours ||
+              isHoursWarningConfirmed
+            )
+          }
           currentOrderType={jobType}
         />
 
@@ -680,6 +697,10 @@ export default function WorkCardPage() {
   }}
   isPayerChanged={isPayerChanged}
   payerChangeReason={payerChangeReason}
+  currentEngineHours={currentEngineHours}
+  onEngineHoursChange={setCurrentEngineHours}
+  isHoursWarningConfirmed={isHoursWarningConfirmed}
+  onHoursWarningConfirm={setIsHoursWarningConfirmed}
   />
 
           {/* Mandatory Checklist — between Client and Diagnostics */}

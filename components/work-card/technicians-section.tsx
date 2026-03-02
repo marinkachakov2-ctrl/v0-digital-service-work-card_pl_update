@@ -32,6 +32,7 @@ interface TechniciansSectionProps {
   onTimerStop: () => void;
   // Control props
   isJobSelected: boolean; // True when a Job Card or Machine is selected
+  isHoursValid: boolean; // True when engine hours are entered and valid
   currentOrderType: string; // Current order type for tracking
   onOrderTypeCapture?: (orderType: string) => void; // Callback when timer starts
 }
@@ -49,6 +50,7 @@ export function TechniciansSection({
   onTimerPause,
   onTimerStop,
   isJobSelected,
+  isHoursValid,
   currentOrderType,
   onOrderTypeCapture,
 }: TechniciansSectionProps) {
@@ -123,8 +125,13 @@ export function TechniciansSection({
     t => !assignedTechnicians.includes(t.id)
   );
 
-  // Buttons are disabled when no job is selected
-  const buttonsDisabled = !isJobSelected;
+  // Buttons are disabled when no job is selected OR hours not valid
+  const buttonsDisabled = !isJobSelected || !isHoursValid;
+  const disabledReason = !isJobSelected 
+    ? "Първо изберете поръчка или машина" 
+    : !isHoursValid 
+      ? "Въведете валидни моточасове" 
+      : "";
 
   if (!mounted) {
     return null;
@@ -238,7 +245,7 @@ export function TechniciansSection({
                     ? "bg-emerald-600/50 text-white cursor-not-allowed"
                     : "bg-emerald-600 hover:bg-emerald-500 text-white hover:scale-105 hover:shadow-lg"
               }`}
-              title={buttonsDisabled ? "Първо изберете поръчка или машина" : "Старт на работа"}
+              title={buttonsDisabled ? disabledReason : "Старт на работа"}
             >
               <Play className="h-5 w-5" />
               Старт
