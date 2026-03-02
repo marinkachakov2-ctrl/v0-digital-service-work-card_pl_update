@@ -7,7 +7,7 @@ import { WorkCardHeader } from "@/components/work-card/header";
 import { OrderSelector, type SelectedOrder } from "@/components/work-card/order-selector";
 import { TechniciansSection } from "@/components/work-card/technicians-section";
 import { ClientSection } from "@/components/work-card/client-section";
-import { ChecklistModal, ChecklistButton, getDefaultChecklist, FREE_CHECK_POINTS, type ChecklistItem, type FreeCheckStatus } from "@/components/work-card/checklist-modal";
+import { FreeCheckSection, FREE_CHECK_POINTS, type FreeCheckItem } from "@/components/work-card/free-check-section";
 import type { DetectedIssue } from "@/components/work-card/future-issues-section";
 import { DiagnosticsSection, type FaultPhoto } from "@/components/work-card/diagnostics-section";
 import { PartsTable } from "@/components/work-card/parts-table";
@@ -360,12 +360,8 @@ export default function WorkCardPage() {
 
 
 
-  // Checklist
-  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>(getDefaultChecklist());
-  const [checklistOpen, setChecklistOpen] = useState(false);
-  const [checklistCompleted, setChecklistCompleted] = useState(false);
-  const [checklistSkipped, setChecklistSkipped] = useState(false);
-  const [checklistSkipReason, setChecklistSkipReason] = useState("");
+  // FREE CHECK items state (managed by FreeCheckSection, mirrored here for FutureIssuesSection)
+  const [freeCheckItems, setFreeCheckItems] = useState<Record<string, FreeCheckItem>>({});
 
   // Unresolved issues
   const [unresolvedIssues, setUnresolvedIssues] = useState<UnresolvedIssue[]>([]);
@@ -884,24 +880,11 @@ export default function WorkCardPage() {
   isCapturingPhoto={isCapturingPhoto}
   />
 
-          {/* Mandatory Checklist — between Client and Diagnostics */}
-          <ChecklistButton
-            completed={checklistCompleted}
-            skipped={checklistSkipped}
-            onOpen={() => setChecklistOpen(true)}
-          />
-          <ChecklistModal
-            open={checklistOpen}
-            onOpenChange={setChecklistOpen}
-            items={checklistItems}
-            onItemsChange={setChecklistItems}
-            completed={checklistCompleted}
-            onComplete={() => setChecklistCompleted(true)}
-            skipReason={checklistSkipReason}
-            onSkipReasonChange={setChecklistSkipReason}
-            onSkip={() => setChecklistSkipped(true)}
-            skipped={checklistSkipped}
+          {/* FREE CHECK Section - 14 point John Deere inspection */}
+          <FreeCheckSection
             jobCardId={savedJobCardId}
+            isEnabled={isScanned}
+            onItemsChange={setFreeCheckItems}
           />
 
           <DiagnosticsSection
@@ -960,16 +943,16 @@ export default function WorkCardPage() {
             machineId={selectedMachineId}
             jobCardId={savedJobCardId}
             isReadOnly={isReadOnly}
-            detectedIssues={checklistItems
-              .filter((item) => item.status === "0" || item.status === "repair")
-              .map((item, idx) => {
-                const point = FREE_CHECK_POINTS.find((p) => p.id === item.id) || FREE_CHECK_POINTS[idx];
+            detectedIssues={Object.entries(freeCheckItems)
+              .filter(([, item]) => item.status === "0" || item.status === "repair")
+              .map(([id, item]) => {
+                const point = FREE_CHECK_POINTS.find((p) => p.id === id);
                 return {
-                  id: item.id,
-                  name: point?.name || item.label,
+                  id,
+                  name: point?.name || id,
                   desc: point?.desc || "",
-                  status: item.status as FreeCheckStatus,
-                  comment: item.comment,
+                  status: item.status as "+" | "0" | "repair" | null,
+                  comment: item.comments,
                   photoUrl: item.photoUrl,
                 };
               })}

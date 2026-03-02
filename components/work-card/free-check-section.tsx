@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,17 +34,32 @@ interface CheckItem {
   photoUrl: string | null;
 }
 
+export interface FreeCheckItem {
+  status: CheckStatus;
+  comments: string;
+  photoUrl: string | null;
+}
+
+// Export the control points for use in other components
+export { FREE_CHECK_POINTS };
+
 interface FreeCheckSectionProps {
   jobCardId: string | null;
   isEnabled: boolean;
+  onItemsChange?: (items: Record<string, FreeCheckItem>) => void;
 }
 
-export function FreeCheckSection({ jobCardId, isEnabled }: FreeCheckSectionProps) {
-  const [items, setItems] = useState<Record<string, CheckItem>>({});
+export function FreeCheckSection({ jobCardId, isEnabled, onItemsChange }: FreeCheckSectionProps) {
+  const [items, setItems] = useState<Record<string, FreeCheckItem>>({});
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [uploadingIds, setUploadingIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  // Notify parent when items change
+  useEffect(() => {
+    onItemsChange?.(items);
+  }, [items, onItemsChange]);
 
   const updateStatus = (id: string, status: CheckStatus) => {
     setItems((prev) => ({
