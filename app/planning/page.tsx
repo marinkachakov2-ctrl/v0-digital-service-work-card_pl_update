@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Wrench, ChevronRight, Home, Calendar, Users, Clock, ArrowLeft, LayoutGrid, GanttChart } from "lucide-react";
+import { Wrench, ChevronRight, Home, Calendar, Users, Clock, ArrowLeft, LayoutGrid, GanttChart, CalendarRange } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -11,8 +11,9 @@ import { DragDropScheduler } from "@/components/planning/drag-drop-scheduler";
 import { HourlyGantt } from "@/components/planning/hourly-gantt";
 import { WeeklyTaskView, type WeeklyTask, type WeeklyNote } from "@/components/planning/weekly-task-view";
 import { ServiceWideView, type ServiceTask } from "@/components/planning/service-wide-view";
+import { ServicePlanningCalendar } from "@/components/planning/service-planning-calendar";
 
-type ViewLevel = "diary" | "roster" | "gantt";
+type ViewLevel = "diary" | "roster" | "gantt" | "calendar";
 
 interface NavigationState {
   level: ViewLevel;
@@ -235,14 +236,28 @@ export default function PlanningBoardPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button 
+              variant={navigation.level === "calendar" ? "default" : "outline"} 
+              size="sm" 
+              className={navigation.level === "calendar" ? "" : "bg-transparent"}
+              onClick={() => setNavigation({ level: "calendar", selectedDate: null, selectedTechnicianId: null, selectedTechnicianName: null })}
+            >
+              <CalendarRange className="h-4 w-4 mr-1.5" />
+              Calendar
+            </Button>
             <Link href="/admin">
               <Button variant="outline" size="sm" className="bg-transparent">
                 Admin
               </Button>
             </Link>
-            <Link href="/">
+            <Link href="/technician">
               <Button variant="outline" size="sm" className="bg-transparent">
                 Работна Карта
+              </Button>
+            </Link>
+            <Link href="/">
+              <Button variant="outline" size="sm" className="bg-transparent">
+                Portal
               </Button>
             </Link>
           </div>
@@ -297,6 +312,13 @@ export default function PlanningBoardPage() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto p-4">
+        {/* Calendar View - Full-stack planning calendar */}
+        {navigation.level === "calendar" && (
+          <div className="h-[calc(100vh-180px)]">
+            <ServicePlanningCalendar userRole="admin" />
+          </div>
+        )}
+
         {/* Level 1: Workshop Diary */}
         {navigation.level === "diary" && (
           <WorkshopDiary onSelectDay={handleSelectDay} />
@@ -402,6 +424,14 @@ export default function PlanningBoardPage() {
       {/* Level Indicator */}
       <footer className="border-t border-border bg-card px-4 py-2">
         <div className="flex items-center justify-center gap-6 text-xs text-muted-foreground">
+          <div
+            className={`flex items-center gap-1.5 ${navigation.level === "calendar" ? "text-primary" : ""}`}
+          >
+            <div
+              className={`h-2 w-2 rounded-full ${navigation.level === "calendar" ? "bg-primary" : "bg-muted"}`}
+            />
+            <span>Calendar</span>
+          </div>
           <div
             className={`flex items-center gap-1.5 ${navigation.level === "diary" ? "text-primary" : ""}`}
           >
