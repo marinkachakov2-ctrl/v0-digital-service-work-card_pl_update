@@ -64,7 +64,8 @@ const SIDEBAR_WIDTH = 160;
 const TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> = {
   service: { bg: "bg-[#367C2B]", border: "border-[#367C2B]", text: "text-white" },    // Green for Service
   repair: { bg: "bg-blue-600", border: "border-blue-500", text: "text-white" },       // Blue for Repair
-  urgent: { bg: "bg-red-600", border: "border-red-500", text: "text-white" },         // Red for Urgent
+  inspection: { bg: "bg-orange-500", border: "border-orange-400", text: "text-white" }, // Orange for Inspection
+  urgent: { bg: "bg-red-600", border: "border-red-500", text: "text-white" },         // Red for Urgent/Emergency
   overdue: { bg: "bg-red-600", border: "border-red-500", text: "text-white" },        // Red for Overdue
   default: { bg: "bg-slate-600", border: "border-slate-500", text: "text-white" },
 };
@@ -74,9 +75,13 @@ function getAppointmentColor(appointment: ServiceAppointment) {
   const status = appointment.status?.toLowerCase();
   const notes = appointment.notes?.toLowerCase() || "";
   
-  // Emergency/Urgent/Overdue - Red
-  if (priority === "emergency" || priority === "urgent" || priority === "high" || status === "overdue" || notes.includes("спешно")) {
+  // Emergency/Urgent/Overdue - Red (highest priority check first)
+  if (priority === "emergency" || priority === "urgent" || priority === "high" || status === "overdue" || notes.includes("спешно") || notes.includes("emergency")) {
     return TYPE_COLORS.urgent;
+  }
+  // Inspection - Orange (check Bulgarian "проверка" and English "inspection")
+  if (notes.includes("проверка") || notes.includes("inspection") || status === "inspection") {
+    return TYPE_COLORS.inspection;
   }
   // Repair - Blue (check Bulgarian "ремонт" and English "repair")
   if (notes.includes("ремонт") || notes.includes("repair") || status === "repair") {
@@ -348,6 +353,57 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
   }, [fetchData]);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // REALTIME SUBSCRIPTION - Live updates from other users
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const dateStr = formatDate(selectedDate);
+    
+    const channel = supabase
+      .channel(`appointments-${dateStr}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "service_appointments",
+          filter: `work_date=eq.${dateStr}`,
+        },
+        (payload) => {
+          console.log("[v0] Realtime update received:", payload.eventType);
+          
+          if (payload.eventType === "INSERT") {
+            const newAppointment = payload.new as ServiceAppointment;
+            setAppointments((prev) => {
+              // Avoid duplicates
+              if (prev.some((a) => a.id === newAppointment.id)) return prev;
+              return [...prev, newAppointment].sort((a, b) => 
+                (a.start_time || "").localeCompare(b.start_time || "")
+              );
+            });
+          } else if (payload.eventType === "UPDATE") {
+            const updatedAppointment = payload.new as ServiceAppointment;
+            setAppointments((prev) =>
+              prev.map((a) => (a.id === updatedAppointment.id ? updatedAppointment : a))
+            );
+          } else if (payload.eventType === "DELETE") {
+            const deletedId = payload.old?.id;
+            if (deletedId) {
+              setAppointments((prev) => prev.filter((a) => a.id !== deletedId));
+            }
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log("[v0] Realtime subscription status:", status);
+      });
+
+    return () => {
+      console.log("[v0] Cleaning up realtime subscription");
+      supabase.removeChannel(channel);
+    };
+  }, [selectedDate, supabase]);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // DRAG HANDLERS
   // ─────────────────────────────────────────────────────────────────────────
   const handleDragStart = (event: DragStartEvent) => {
@@ -405,7 +461,7 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
       return;
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+    // ─��───────────────────────────────────────────────────────────────────
     // DATABASE UPDATE
     // ─────────────────────────────────────────────────────────────────────
     setSaving(true);
@@ -613,8 +669,12 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
                 <span className="text-muted-foreground">Repair</span>
               </div>
               <div className="flex items-center gap-1.5">
+                <div className="h-3 w-6 rounded bg-orange-500" />
+                <span className="text-muted-foreground">Inspection</span>
+              </div>
+              <div className="flex items-center gap-1.5">
                 <div className="h-3 w-6 rounded bg-red-600" />
-                <span className="text-muted-foreground">Urgent</span>
+                <span className="text-muted-foreground">Emergency</span>
               </div>
             </div>
           </div>
