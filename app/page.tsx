@@ -16,7 +16,7 @@ import { CreditWarningBanner } from "@/components/work-card/credit-warning-banne
 import { HistoricalIssuesBanner } from "@/components/work-card/historical-issues-banner";
 import { RecommendationsSection, type RecommendationsData } from "@/components/work-card/recommendations-section";
 import type { ServiceHistoryIssue } from "@/lib/actions";
-import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours } from "@/lib/actions";
+import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours, uploadEngineHoursPhoto } from "@/lib/actions";
 import { Footer } from "@/components/work-card/footer";
 import { useClocking } from "@/lib/clocking-context";
 import type { PayerStatus } from "@/lib/types";
@@ -96,6 +96,12 @@ export default function WorkCardPage() {
   // Engine hours validation
   const [currentEngineHours, setCurrentEngineHours] = useState<number | null>(null);
   const [isHoursWarningConfirmed, setIsHoursWarningConfirmed] = useState(false);
+
+  // Engine hours photo
+  const [hoursPhotoUrl, setHoursPhotoUrl] = useState<string | null>(null);
+  const [skipPhoto, setSkipPhoto] = useState(false);
+  const [missingPhotoReason, setMissingPhotoReason] = useState("");
+  const [isCapturingPhoto, setIsCapturingPhoto] = useState(false);
 
   // Historical issues from previous job cards
   const [historicalIssues, setHistoricalIssues] = useState<ServiceHistoryIssue[]>([]);
@@ -318,6 +324,8 @@ export default function WorkCardPage() {
         ),
         complaintDescription: description,
         totalSeconds: elapsedSeconds,
+        hoursPhotoUrl: hoursPhotoUrl,
+        missingPhotoReason: skipPhoto ? missingPhotoReason : undefined,
       });
       
       if (!result.success) {
@@ -340,9 +348,7 @@ export default function WorkCardPage() {
   // Fault photos (not persisted to localStorage)
   const [faultPhotos, setFaultPhotos] = useState<FaultPhoto[]>([]);
 
-  // Engine hours photo validation
-  const [engineHoursPhoto, setEngineHoursPhoto] = useState<FaultPhoto | null>(null);
-  const [engineHoursPhotoMissingReason, setEngineHoursPhotoMissingReason] = useState("");
+
 
   // Checklist
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>(getDefaultChecklist());
@@ -698,9 +704,12 @@ export default function WorkCardPage() {
               // Reset payer change state when selecting new order
               setIsPayerChanged(false);
               setPayerChangeReason("");
-              // Reset engine hours inputs
+              // Reset engine hours inputs and photo
               setCurrentEngineHours(null);
               setIsHoursWarningConfirmed(false);
+              setHoursPhotoUrl(null);
+              setSkipPhoto(false);
+              setMissingPhotoReason("");
               // Pre-populate description from Navision (editable by technician)
               if (order.navisionDescription) {
                 setDescription(order.navisionDescription);
@@ -716,6 +725,9 @@ export default function WorkCardPage() {
   setPayerChangeReason("");
   setCurrentEngineHours(null);
   setIsHoursWarningConfirmed(false);
+  setHoursPhotoUrl(null);
+  setSkipPhoto(false);
+  setMissingPhotoReason("");
   setDescription("");
   }
   }}
@@ -755,6 +767,10 @@ export default function WorkCardPage() {
             )
           }
           currentOrderType={jobType}
+          isPhotoValid={
+            // Photo is valid if: photo uploaded OR (skip checked AND reason provided)
+            hoursPhotoUrl !== null || (skipPhoto && missingPhotoReason.trim().length > 0)
+          }
         />
 
         <div className="mt-6 space-y-6">
@@ -788,6 +804,55 @@ export default function WorkCardPage() {
   onEngineHoursChange={setCurrentEngineHours}
   isHoursWarningConfirmed={isHoursWarningConfirmed}
   onHoursWarningConfirm={setIsHoursWarningConfirmed}
+  hoursPhotoUrl={hoursPhotoUrl}
+  onHoursPhotoChange={setHoursPhotoUrl}
+  skipPhoto={skipPhoto}
+  onSkipPhotoChange={setSkipPhoto}
+  missingPhotoReason={missingPhotoReason}
+  onMissingPhotoReasonChange={setMissingPhotoReason}
+  onCapturePhoto={async () => {
+    if (!savedJobCardId) return null;
+    setIsCapturingPhoto(true);
+    try {
+      // Open camera and capture photo
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.capture = "environment";
+      
+      return new Promise<string | null>((resolve) => {
+        input.onchange = async (e) => {
+          const file = (e.target as HTMLInputElement).files?.[0];
+          if (!file) {
+            setIsCapturingPhoto(false);
+            resolve(null);
+            return;
+          }
+          
+          // Convert to base64
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const base64 = reader.result as string;
+            const result = await uploadEngineHoursPhoto(savedJobCardId, base64);
+            setIsCapturingPhoto(false);
+            if (result.success && result.url) {
+              resolve(result.url);
+            } else {
+              console.error("Photo upload failed:", result.error);
+              resolve(null);
+            }
+          };
+          reader.readAsDataURL(file);
+        };
+        input.click();
+      });
+    } catch (err) {
+      console.error("Photo capture error:", err);
+      setIsCapturingPhoto(false);
+      return null;
+    }
+  }}
+  isCapturingPhoto={isCapturingPhoto}
   />
 
           {/* Mandatory Checklist — between Client and Diagnostics */}

@@ -7,7 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, MapPin, Tractor, Hash, Cpu, Clock, Loader2, CheckCircle2, AlertTriangle, Pencil, X } from "lucide-react";
+import { Building2, MapPin, Tractor, Hash, Cpu, Clock, Loader2, CheckCircle2, AlertTriangle, Pencil, X, Camera, ImageIcon, Trash2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { searchClients } from "@/lib/actions";
 import type { PayerStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -37,6 +39,15 @@ interface ClientSectionProps {
   onEngineHoursChange: (hours: number | null) => void;
   isHoursWarningConfirmed: boolean;
   onHoursWarningConfirm: (confirmed: boolean) => void;
+  // Engine hours photo handling
+  hoursPhotoUrl: string | null;
+  onHoursPhotoChange: (url: string | null) => void;
+  skipPhoto: boolean;
+  onSkipPhotoChange: (skip: boolean) => void;
+  missingPhotoReason: string;
+  onMissingPhotoReasonChange: (reason: string) => void;
+  onCapturePhoto: () => Promise<string | null>;
+  isCapturingPhoto?: boolean;
 }
 
 export function ClientSection({
@@ -53,6 +64,14 @@ export function ClientSection({
   onEngineHoursChange,
   isHoursWarningConfirmed,
   onHoursWarningConfirm,
+  hoursPhotoUrl,
+  onHoursPhotoChange,
+  skipPhoto,
+  onSkipPhotoChange,
+  missingPhotoReason,
+  onMissingPhotoReasonChange,
+  onCapturePhoto,
+  isCapturingPhoto = false,
 }: ClientSectionProps) {
   // Payer editing state
   const [isEditingPayer, setIsEditingPayer] = useState(false);
@@ -474,6 +493,108 @@ export function ClientSection({
               </div>
             </div>
           )}
+
+          {/* Engine Hours Photo Capture */}
+          <div className="sm:col-span-2 space-y-3 border-t border-border pt-4">
+            <Label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Camera className="h-3 w-3" />
+              Снимка на моточасовете *
+            </Label>
+
+            {/* Photo preview or capture button */}
+            {hoursPhotoUrl ? (
+              <div className="relative">
+                <div className="relative aspect-video w-full max-w-sm overflow-hidden rounded-lg border border-border bg-secondary">
+                  <img
+                    src={hoursPhotoUrl}
+                    alt="Моточасове"
+                    className="h-full w-full object-cover"
+                  />
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="absolute right-2 top-2 h-8 w-8"
+                    onClick={() => onHoursPhotoChange(null)}
+                    disabled={!isScanned}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="mt-1 text-xs text-emerald-500 flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Снимката е качена успешно
+                </p>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                className="h-24 w-full max-w-sm flex-col gap-2 border-dashed"
+                onClick={async () => {
+                  const url = await onCapturePhoto();
+                  if (url) {
+                    onHoursPhotoChange(url);
+                  }
+                }}
+                disabled={!isScanned || skipPhoto || isCapturingPhoto}
+              >
+                {isCapturingPhoto ? (
+                  <>
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Качване...</span>
+                  </>
+                ) : (
+                  <>
+                    <Camera className="h-6 w-6 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Снимай моточасовете</span>
+                  </>
+                )}
+              </Button>
+            )}
+
+            {/* Skip photo toggle */}
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="skip-photo"
+                checked={skipPhoto}
+                onCheckedChange={(checked) => {
+                  onSkipPhotoChange(checked === true);
+                  if (checked) {
+                    onHoursPhotoChange(null);
+                  } else {
+                    onMissingPhotoReasonChange("");
+                  }
+                }}
+                disabled={!isScanned}
+              />
+              <Label
+                htmlFor="skip-photo"
+                className="text-sm text-muted-foreground cursor-pointer"
+              >
+                Прескочи снимка
+              </Label>
+            </div>
+
+            {/* Missing photo reason - shown when skip is checked */}
+            {skipPhoto && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">
+                  Причина за липса на снимка *
+                </Label>
+                <Textarea
+                  value={missingPhotoReason}
+                  onChange={(e) => onMissingPhotoReasonChange(e.target.value)}
+                  placeholder="Въведете причината за липсата на снимка..."
+                  className="min-h-[80px] bg-background"
+                  disabled={!isScanned}
+                />
+                {skipPhoto && !missingPhotoReason.trim() && (
+                  <p className="text-xs text-destructive">
+                    Моля въведете причина за липсата на снимка
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

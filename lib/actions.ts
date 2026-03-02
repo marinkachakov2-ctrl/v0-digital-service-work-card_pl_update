@@ -860,6 +860,9 @@ export interface StopClockingParams {
   hoursConfirmedByTech: boolean;
   complaintDescription?: string;
   totalSeconds: number;
+  // Photo validation
+  hoursPhotoUrl?: string | null;
+  missingPhotoReason?: string;
 }
 
 export interface StopClockingResult {
@@ -880,7 +883,7 @@ export async function stopClocking(params: StopClockingParams): Promise<StopCloc
   let machineHistoryId: string | undefined;
 
   try {
-    // Update job_cards with final machine hours and description
+    // Update job_cards with final machine hours, description, and photo info
     const { error: jobCardError } = await supabase
       .from("job_cards")
       .update({
@@ -890,6 +893,8 @@ export async function stopClocking(params: StopClockingParams): Promise<StopCloc
         end_time: endTime,
         total_seconds: params.totalSeconds,
         status: "completed",
+        hours_photo_url: params.hoursPhotoUrl || null,
+        missing_photo_reason: params.missingPhotoReason || null,
       })
       .eq("id", params.jobCardId);
 
@@ -1001,5 +1006,89 @@ export async function getPreviousMachineHours(
   } catch (err) {
     console.error("getPreviousMachineHours error:", err);
     return { hours: null, date: null };
+  }
+}
+
+/**
+ * Upload engine hours photo to Supabase storage
+ */
+export async function uploadEngineHoursPhoto(
+  jobCardId: string,
+  base64Image: string
+): Promise<{ success: boolean; url?: string; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    // Convert base64 to blob
+    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, "base64");
+    
+    // Generate unique filename
+    const filename = `${jobCardId}/engine-hours-${Date.now()}.jpg`;
+    
+    // Upload to Supabase storage
+    const { data, error } = await supabase.storage
+      .from("job-card-photos")
+      .upload(filename, buffer, {
+        contentType: "image/jpeg",
+        upsert: true,
+      });
+
+    if (error) {
+      console.error("uploadEngineHoursPhoto storage error:", error);
+      return { success: false, error: error.message };
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from("job-card-photos")
+      .getPublicUrl(filename);
+
+    const publicUrl = urlData.publicUrl;
+
+    // Update job_cards with the photo URL
+    const { error: updateError } = await supabase
+      .from("job_cards")
+      .update({ hours_photo_url: publicUrl })
+      .eq("id", jobCardId);
+
+    if (updateError) {
+      console.error("uploadEngineHoursPhoto update error:", updateError);
+    }
+
+    return { success: true, url: publicUrl };
+  } catch (err) {
+    console.error("uploadEngineHoursPhoto catch error:", err);
+    return { success: false, error: String(err) };
+  }
+}
+
+/**
+ * Update job card with missing photo reason
+ */
+export async function updateMissingPhotoReason(
+  jobCardId: string,
+  reason: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    const { error } = await supabase
+      .from("job_cards")
+      .update({ 
+        missing_photo_reason: reason,
+        hours_photo_url: null 
+      })
+      .eq("id", jobCardId);
+
+    if (error) {
+      console.error("updateMissingPhotoReason error:", error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error("updateMissingPhotoReason catch error:", err);
+    return { success: false, error: String(err) };
   }
 }
