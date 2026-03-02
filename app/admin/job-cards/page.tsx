@@ -411,7 +411,7 @@ export default function JobCardsAdminPage() {
               <Link href="/">
                 <Button variant="outline" size="sm" className="gap-1.5 bg-transparent border-primary/30 text-primary hover:bg-primary/10">
                   <ArrowLeft className="h-4 w-4" />
-                  Back to Form
+                  Back to Portal
                 </Button>
               </Link>
               <div>
@@ -783,7 +783,7 @@ export default function JobCardsAdminPage() {
 
                               {/* Edit button - only for draft cards */}
                               {card.status === "draft" && (
-                                <Link href={`/?editId=${card.id}`}>
+                                <Link href={`/technician?editId=${card.id}`}>
                                   <Button
                                     size="icon"
                                     variant="ghost"
