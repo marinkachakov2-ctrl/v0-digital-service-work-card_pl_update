@@ -39,7 +39,10 @@ import {
   Search,
   ArrowLeft,
   Download,
+  FileDown,
 } from "lucide-react";
+import { fetchJobCardForPDF } from "@/lib/actions";
+import { generateJobCardPDF, type PDFJobCardData } from "@/lib/pdf-export";
 
 // Types
 interface JobCard {
@@ -100,6 +103,9 @@ export default function JobCardsAdminPage() {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
+
+  // PDF generation state
+  const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -164,6 +170,59 @@ export default function JobCardsAdminPage() {
       fetchData();
     }
   }, [isAuthorized, fetchData]);
+
+  // Real-time subscription for job_cards updates (for stat card updates)
+  useEffect(() => {
+    if (!isAuthorized) return;
+
+    const supabase = createClient();
+    
+    const channel = supabase
+      .channel("job_cards_changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "job_cards" },
+        () => {
+          // Refetch data when any change happens to job_cards
+          fetchData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isAuthorized, fetchData]);
+
+  // Handle PDF generation for a specific job card
+  const handleGeneratePDF = async (cardId: string) => {
+    setGeneratingPdfId(cardId);
+    
+    try {
+      const result = await fetchJobCardForPDF(cardId);
+      
+      if (!result.success || !result.data) {
+        toast.error("Failed to fetch job card data", {
+          description: result.error || "Unknown error occurred",
+        });
+        return;
+      }
+
+      // Generate PDF
+      await generateJobCardPDF(result.data as PDFJobCardData);
+      
+      toast.success("PDF generated", {
+        description: "The job card PDF has been downloaded.",
+      });
+    } catch (error) {
+      console.error("PDF generation error:", error);
+      toast.error("Failed to generate PDF", {
+        description: "An unexpected error occurred.",
+      });
+    } finally {
+      setGeneratingPdfId(null);
+    }
+  };
 
   // Handle PIN verification
   const handlePinSubmit = () => {
@@ -705,6 +764,22 @@ export default function JobCardsAdminPage() {
                                   )}
                                 </DialogContent>
                               </Dialog>
+
+                              {/* Download PDF */}
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
+                                onClick={() => handleGeneratePDF(card.id)}
+                                disabled={generatingPdfId === card.id}
+                                title="Download PDF Report"
+                              >
+                                {generatingPdfId === card.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <FileDown className="h-4 w-4" />
+                                )}
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>

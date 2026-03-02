@@ -2050,3 +2050,205 @@ export async function fetchSignatureUrl(
     return { url: null, signerName: null, error: String(err) };
   }
 }
+
+// ────────────────────────────── Fetch Job Card For PDF ──────────────────────────────
+
+/**
+ * Fetch complete job card data for PDF generation from Admin view
+ */
+export async function fetchJobCardForPDF(jobCardId: string): Promise<{
+  success: boolean;
+  data?: {
+    // Header info
+    orderNumber: string;
+    jobCardNumber: string;
+    jobType: "warranty" | "repair" | "internal";
+    date: string;
+    // Technicians
+    technicians: string[];
+    leadTechnician: string;
+    // Machine/Client
+    machineOwner: string;
+    billingEntity: string;
+    location: string;
+    machineModel: string;
+    serialNo: string;
+    engineSN: string;
+    engineHours: string;
+    previousEngineHours: number | null;
+    // Diagnostics
+    reasonCode: string;
+    defectCode: string;
+    description: string;
+    faultDate: string;
+    repairStart: string;
+    repairEnd: string;
+    // Parts
+    parts: Array<{
+      partNo: string;
+      description: string;
+      qty: number;
+      price: number;
+    }>;
+    // Costs
+    partsTotal: number;
+    laborTotal: number;
+    vat: number;
+    grandTotal: number;
+    // Other
+    pendingIssues: string;
+    recommendations: string;
+    notes: string;
+    photoUrls: string[];
+    engineHoursPhotoUrl: string | null;
+    totalWorkTime: number;
+    customerSignature: string | null;
+    customerName: string | null;
+    technicianSignature: string | null;
+    technicianName: string | null;
+  };
+  error?: string;
+}> {
+  const supabase = await createClient();
+
+  try {
+    // Fetch job card with machine and technician info
+    const { data: jobCard, error: jobCardError } = await supabase
+      .from("job_cards")
+      .select(`
+        *,
+        machines (
+          id,
+          brand,
+          model,
+          serial_number,
+          engine_sn,
+          client_name,
+          clients (
+            name,
+            payer_id
+          )
+        ),
+        technicians (
+          id,
+          name
+        )
+      `)
+      .eq("id", jobCardId)
+      .single();
+
+    if (jobCardError || !jobCard) {
+      console.error("fetchJobCardForPDF job card error:", jobCardError);
+      return { success: false, error: jobCardError?.message || "Job card not found" };
+    }
+
+    // Fetch parts for this job card
+    const { data: partsData, error: partsError } = await supabase
+      .from("job_card_parts")
+      .select(`
+        quantity,
+        price_at_submission,
+        parts (
+          part_number,
+          description
+        )
+      `)
+      .eq("job_card_id", jobCardId);
+
+    if (partsError) {
+      console.error("fetchJobCardForPDF parts error:", partsError);
+    }
+
+    // Fetch free check results with photos
+    const { data: freeCheckData, error: freeCheckError } = await supabase
+      .from("free_check_results")
+      .select("photo_url")
+      .eq("job_card_id", jobCardId)
+      .not("photo_url", "is", null);
+
+    if (freeCheckError) {
+      console.error("fetchJobCardForPDF free check error:", freeCheckError);
+    }
+
+    // Build parts array
+    const parts = (partsData || []).map((p: { quantity: number; price_at_submission: number; parts: { part_number: string; description: string } | null }) => ({
+      partNo: p.parts?.part_number || "",
+      description: p.parts?.description || "",
+      qty: p.quantity || 0,
+      price: p.price_at_submission || 0,
+    }));
+
+    // Calculate totals
+    const partsTotal = parts.reduce((sum, p) => sum + (p.qty * p.price), 0);
+    const laborTotal = (jobCard.total_seconds || 0) / 3600 * 50; // Assuming 50 per hour
+    const vat = (partsTotal + laborTotal) * 0.2;
+    const grandTotal = partsTotal + laborTotal + vat;
+
+    // Collect all photo URLs
+    const photoUrls = [
+      ...(jobCard.photo_urls || []),
+      ...(freeCheckData || []).map((fc: { photo_url: string }) => fc.photo_url).filter(Boolean),
+    ];
+
+    // Determine job type based on status/order
+    let jobType: "warranty" | "repair" | "internal" = "repair";
+    if (jobCard.order_no?.toLowerCase().includes("warranty")) {
+      jobType = "warranty";
+    } else if (jobCard.order_no?.toLowerCase().includes("internal")) {
+      jobType = "internal";
+    }
+
+    // Get machine data with proper typing
+    const machineData = jobCard.machines as { brand?: string; model?: string; serial_number?: string; engine_sn?: string; client_name?: string; clients?: { name?: string } } | null;
+
+    const data = {
+      // Header
+      orderNumber: jobCard.order_no || "N/A",
+      jobCardNumber: jobCard.id?.slice(0, 8).toUpperCase() || "N/A",
+      jobType,
+      date: jobCard.created_at ? new Date(jobCard.created_at).toLocaleDateString("bg-BG") : "N/A",
+      // Technicians
+      technicians: [(jobCard.technicians as { name?: string } | null)?.name || "Unknown"],
+      leadTechnician: (jobCard.technicians as { name?: string } | null)?.name || "Unknown",
+      // Machine/Client
+      machineOwner: machineData?.client_name || machineData?.clients?.name || "N/A",
+      billingEntity: machineData?.clients?.name || machineData?.client_name || "N/A",
+      location: "N/A",
+      machineModel: `${machineData?.brand || ""} ${machineData?.model || ""}`.trim() || "N/A",
+      serialNo: machineData?.serial_number || "N/A",
+      engineSN: machineData?.engine_sn || "N/A",
+      engineHours: String(jobCard.current_machine_hours || 0),
+      previousEngineHours: jobCard.previous_machine_hours || null,
+      // Diagnostics
+      reasonCode: jobCard.reason_code || "N/A",
+      defectCode: jobCard.defect_type_code || "N/A",
+      description: jobCard.complaint_description || jobCard.notes || "N/A",
+      faultDate: jobCard.fault_date || "N/A",
+      repairStart: jobCard.start_time ? new Date(jobCard.start_time).toLocaleString("bg-BG") : "N/A",
+      repairEnd: jobCard.end_time ? new Date(jobCard.end_time).toLocaleString("bg-BG") : "N/A",
+      // Parts
+      parts,
+      // Costs
+      partsTotal,
+      laborTotal,
+      vat,
+      grandTotal,
+      // Other
+      pendingIssues: jobCard.pending_issues || "",
+      recommendations: jobCard.recommendations || "",
+      notes: jobCard.notes || "",
+      photoUrls,
+      engineHoursPhotoUrl: jobCard.hours_photo_url || null,
+      totalWorkTime: jobCard.total_seconds || 0,
+      customerSignature: jobCard.signature_url || jobCard.signature_data || null,
+      customerName: jobCard.client_name_signed || null,
+      technicianSignature: null,
+      technicianName: (jobCard.technicians as { name?: string } | null)?.name || null,
+    };
+
+    return { success: true, data };
+  } catch (err) {
+    console.error("fetchJobCardForPDF catch error:", err);
+    return { success: false, error: String(err) };
+  }
+}
