@@ -16,6 +16,7 @@ import { CreditWarningBanner } from "@/components/work-card/credit-warning-banne
 import { HistoricalIssuesBanner } from "@/components/work-card/historical-issues-banner";
 import { RecommendationsSection, type RecommendationsData } from "@/components/work-card/recommendations-section";
 import type { ServiceHistoryIssue } from "@/lib/actions";
+import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours } from "@/lib/actions";
 import { Footer } from "@/components/work-card/footer";
 import { useClocking } from "@/lib/clocking-context";
 import type { PayerStatus } from "@/lib/types";
@@ -266,16 +267,65 @@ export default function WorkCardPage() {
     };
   }, [timerStatus]);
 
- const handleTimerStart = () => {
+ const handleTimerStart = async () => {
   // Prevent starting work if payer is blocked
   if (isPayerBlocked) {
     return;
   }
-  setTimerJobCardId(jobCardNumber);
+  
+  // Set timer state first for immediate UI feedback
+  setTimerJobCardId(savedJobCardId || jobCardNumber);
   setTimerStatus("running");
+  
+  // Call server action to create time_logs entries
+  if (savedJobCardId) {
+    const result = await startClocking({
+      jobCardId: savedJobCardId,
+      technicianIds: assignedTechnicians.filter(Boolean),
+      orderType: jobType,
+      machineId: selectedMachineId,
+      currentMachineHours: currentEngineHours,
+      hoursConfirmedByTech: isHoursWarningConfirmed || (
+        currentEngineHours !== null && 
+        (clientData?.previousEngineHours === null || 
+         clientData?.previousEngineHours === undefined ||
+         currentEngineHours >= clientData.previousEngineHours)
+      ),
+      complaintDescription: description,
+    });
+    
+    if (!result.success) {
+      console.error("Failed to start clocking:", result.error);
+    }
+  }
   };
+  
   const handleTimerPause = () => setTimerStatus("paused");
-  const handleTimerStop = () => {
+  
+  const handleTimerStop = async () => {
+    // Call server action to stop time_logs entries
+    if (savedJobCardId) {
+      const result = await stopClocking({
+        jobCardId: savedJobCardId,
+        technicianIds: assignedTechnicians.filter(Boolean),
+        machineId: selectedMachineId,
+        currentMachineHours: currentEngineHours,
+        hoursConfirmedByTech: isHoursWarningConfirmed || (
+          currentEngineHours !== null && 
+          (clientData?.previousEngineHours === null || 
+           clientData?.previousEngineHours === undefined ||
+           currentEngineHours >= clientData.previousEngineHours)
+        ),
+        complaintDescription: description,
+        totalSeconds: elapsedSeconds,
+      });
+      
+      if (!result.success) {
+        console.error("Failed to stop clocking:", result.error);
+      }
+    }
+    
+    // Reset timer state
     setTimerStatus("idle");
     setElapsedSeconds(0);
     setTimerJobCardId(null);
@@ -326,6 +376,27 @@ export default function WorkCardPage() {
       setClientData({ ...clientData, billingEntity: value });
     }
   };
+
+  // Debounced description save to database
+  const descriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const handleDescriptionChange = useCallback((value: string) => {
+    setDescription(value);
+    
+    // Clear existing timeout
+    if (descriptionTimeoutRef.current) {
+      clearTimeout(descriptionTimeoutRef.current);
+    }
+    
+    // Debounce save to database (1 second after typing stops)
+    if (savedJobCardId) {
+      descriptionTimeoutRef.current = setTimeout(async () => {
+        const result = await updateJobCardDescription(savedJobCardId, value);
+        if (!result.success) {
+          console.error("Failed to save description:", result.error);
+        }
+      }, 1000);
+    }
+  }, [savedJobCardId]);
 
   // Reset form and clear ALL localStorage (called ONLY after successful save)
   const handleFormReset = useCallback(() => {
@@ -591,7 +662,7 @@ export default function WorkCardPage() {
 
         {/* Order Type Selector & Unified Search - Right below header */}
         <OrderSelector
-          onOrderSelect={(order) => {
+          onOrderSelect={async (order) => {
             setSelectedOrder(order);
             if (order) {
               setOrderNumber(order.orderNumber);
@@ -606,7 +677,15 @@ export default function WorkCardPage() {
                 service_contract: "repair",
               };
               setJobType(typeMap[order.serviceType] || "repair");
-              // Set client data from order
+              
+              // Fetch previous machine hours from database
+              let previousHours: number | null = null;
+              if (order.machineId) {
+                const hoursData = await getPreviousMachineHours(order.machineId);
+                previousHours = hoursData.hours;
+              }
+              
+              // Set client data from order with previous hours
               setClientData({
                 machineOwner: order.clientName,
                 billingEntity: order.clientName,
@@ -614,11 +693,14 @@ export default function WorkCardPage() {
                 machineModel: order.machineModel,
                 serialNo: order.machineSerial,
                 engineSN: "",
-                previousEngineHours: null,
+                previousEngineHours: previousHours,
               });
               // Reset payer change state when selecting new order
               setIsPayerChanged(false);
               setPayerChangeReason("");
+              // Reset engine hours inputs
+              setCurrentEngineHours(null);
+              setIsHoursWarningConfirmed(false);
               // Pre-populate description from Navision (editable by technician)
               if (order.navisionDescription) {
                 setDescription(order.navisionDescription);
@@ -738,7 +820,7 @@ export default function WorkCardPage() {
             photos={faultPhotos}
             onReasonChange={setReasonCode}
             onDefectChange={setDefectCode}
-            onDescriptionChange={setDescription}
+            onDescriptionChange={handleDescriptionChange}
             onFaultDateChange={setFaultDate}
             onRepairStartChange={setRepairStart}
             onRepairEndChange={setRepairEnd}

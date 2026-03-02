@@ -776,3 +776,230 @@ export async function getInitialData(): Promise<{
 
   return { technicians, machines };
 }
+
+// ────────────────────────────── Time Logging ──────────────────────────────
+
+export interface StartClockingParams {
+  jobCardId: string;
+  technicianIds: string[];
+  orderType: string;
+  machineId: string | null;
+  currentMachineHours: number | null;
+  hoursConfirmedByTech: boolean;
+  complaintDescription?: string;
+}
+
+export interface StartClockingResult {
+  success: boolean;
+  timeLogIds: string[];
+  error?: string;
+}
+
+/**
+ * Start clocking - creates time_logs entries for each technician
+ * Also updates job_cards with machine hours and description
+ */
+export async function startClocking(params: StartClockingParams): Promise<StartClockingResult> {
+  const supabase = await createClient();
+  const startTime = new Date().toISOString();
+  const timeLogIds: string[] = [];
+
+  try {
+    // Update job_cards with machine hours and description
+    const { error: jobCardError } = await supabase
+      .from("job_cards")
+      .update({
+        current_machine_hours: params.currentMachineHours,
+        hours_confirmed_by_tech: params.hoursConfirmedByTech,
+        complaint_description: params.complaintDescription || null,
+        start_time: startTime,
+        status: "in_progress",
+      })
+      .eq("id", params.jobCardId);
+
+    if (jobCardError) {
+      console.error("startClocking job_cards update error:", jobCardError);
+      // Continue anyway - job card might not exist yet
+    }
+
+    // Create time_log entries for each technician
+    for (const techId of params.technicianIds) {
+      if (!techId) continue;
+      
+      const { data, error } = await supabase
+        .from("time_logs")
+        .insert({
+          job_card_id: params.jobCardId,
+          technician_id: techId,
+          order_type: params.orderType,
+          start_time: startTime,
+          status: "running",
+        })
+        .select("id")
+        .single();
+
+      if (error) {
+        console.error("startClocking time_logs insert error:", error);
+      } else if (data) {
+        timeLogIds.push(data.id);
+      }
+    }
+
+    return { success: true, timeLogIds };
+  } catch (err) {
+    console.error("startClocking catch error:", err);
+    return { success: false, timeLogIds: [], error: String(err) };
+  }
+}
+
+export interface StopClockingParams {
+  jobCardId: string;
+  technicianIds: string[];
+  machineId: string | null;
+  currentMachineHours: number | null;
+  hoursConfirmedByTech: boolean;
+  complaintDescription?: string;
+  totalSeconds: number;
+}
+
+export interface StopClockingResult {
+  success: boolean;
+  updatedCount: number;
+  machineHistoryId?: string;
+  error?: string;
+}
+
+/**
+ * Stop clocking - updates time_logs with end_time and status='completed'
+ * Also saves machine hours to job_cards and creates machine_history record
+ */
+export async function stopClocking(params: StopClockingParams): Promise<StopClockingResult> {
+  const supabase = await createClient();
+  const endTime = new Date().toISOString();
+  let updatedCount = 0;
+  let machineHistoryId: string | undefined;
+
+  try {
+    // Update job_cards with final machine hours and description
+    const { error: jobCardError } = await supabase
+      .from("job_cards")
+      .update({
+        current_machine_hours: params.currentMachineHours,
+        hours_confirmed_by_tech: params.hoursConfirmedByTech,
+        complaint_description: params.complaintDescription || null,
+        end_time: endTime,
+        total_seconds: params.totalSeconds,
+        status: "completed",
+      })
+      .eq("id", params.jobCardId);
+
+    if (jobCardError) {
+      console.error("stopClocking job_cards update error:", jobCardError);
+    }
+
+    // Update time_log entries for each technician
+    for (const techId of params.technicianIds) {
+      if (!techId) continue;
+      
+      const { error, count } = await supabase
+        .from("time_logs")
+        .update({
+          end_time: endTime,
+          status: "completed",
+        })
+        .eq("job_card_id", params.jobCardId)
+        .eq("technician_id", techId)
+        .eq("status", "running");
+
+      if (error) {
+        console.error("stopClocking time_logs update error:", error);
+      } else {
+        updatedCount += count || 1;
+      }
+    }
+
+    // Create machine_history record if machine and hours provided
+    if (params.machineId && params.currentMachineHours !== null) {
+      const { data, error } = await supabase
+        .from("machine_history")
+        .insert({
+          machine_id: params.machineId,
+          job_card_id: params.jobCardId,
+          recorded_hours: params.currentMachineHours,
+          service_date: new Date().toISOString().split("T")[0],
+          technician_note: params.hoursConfirmedByTech ? "Confirmed by technician" : null,
+        })
+        .select("id")
+        .single();
+
+      if (error) {
+        console.error("stopClocking machine_history insert error:", error);
+      } else if (data) {
+        machineHistoryId = data.id;
+      }
+    }
+
+    return { success: true, updatedCount, machineHistoryId };
+  } catch (err) {
+    console.error("stopClocking catch error:", err);
+    return { success: false, updatedCount: 0, error: String(err) };
+  }
+}
+
+/**
+ * Update job card description (called when description field changes)
+ */
+export async function updateJobCardDescription(
+  jobCardId: string,
+  description: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    const { error } = await supabase
+      .from("job_cards")
+      .update({ complaint_description: description })
+      .eq("id", jobCardId);
+
+    if (error) {
+      console.error("updateJobCardDescription error:", error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error("updateJobCardDescription catch error:", err);
+    return { success: false, error: String(err) };
+  }
+}
+
+/**
+ * Get previous machine hours from machine_history
+ */
+export async function getPreviousMachineHours(
+  machineId: string
+): Promise<{ hours: number | null; date: string | null }> {
+  const supabase = await createClient();
+
+  try {
+    const { data, error } = await supabase
+      .from("machine_history")
+      .select("recorded_hours, service_date")
+      .eq("machine_id", machineId)
+      .order("service_date", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error || !data) {
+      return { hours: null, date: null };
+    }
+
+    return {
+      hours: data.recorded_hours as number,
+      date: data.service_date as string,
+    };
+  } catch (err) {
+    console.error("getPreviousMachineHours error:", err);
+    return { hours: null, date: null };
+  }
+}
