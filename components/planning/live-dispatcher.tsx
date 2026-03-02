@@ -72,14 +72,18 @@ const TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> 
 function getAppointmentColor(appointment: ServiceAppointment) {
   const priority = appointment.priority?.toLowerCase();
   const status = appointment.status?.toLowerCase();
+  const notes = appointment.notes?.toLowerCase() || "";
   
-  if (priority === "urgent" || status === "overdue") {
+  // Emergency/Urgent/Overdue - Red
+  if (priority === "emergency" || priority === "urgent" || priority === "high" || status === "overdue" || notes.includes("спешно")) {
     return TYPE_COLORS.urgent;
   }
-  if (status === "repair" || appointment.notes?.toLowerCase().includes("repair")) {
+  // Repair - Blue (check Bulgarian "ремонт" and English "repair")
+  if (notes.includes("ремонт") || notes.includes("repair") || status === "repair") {
     return TYPE_COLORS.repair;
   }
-  if (status === "service" || !status) {
+  // Service - Green (default for scheduled work, check "сервиз" and "service")
+  if (notes.includes("сервиз") || notes.includes("service") || status === "service" || status === "scheduled") {
     return TYPE_COLORS.service;
   }
   return TYPE_COLORS.default;
@@ -492,18 +496,19 @@ export function LiveDispatcher({ selectedDate }: LiveDispatcherProps) {
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex h-full gap-4">
+      <div className="relative flex h-full gap-4">
+        {/* Saving overlay - positioned over entire dispatcher */}
+        {saving && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-lg">
+            <div className="flex items-center gap-3 rounded-lg bg-card px-6 py-4 shadow-lg border">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <span className="font-medium">Запазване...</span>
+            </div>
+          </div>
+        )}
+
         {/* Main Timeline Area */}
         <div className="flex-1 rounded-lg border border-border bg-card overflow-hidden">
-          {/* Saving overlay */}
-          {saving && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-              <div className="flex items-center gap-3 rounded-lg bg-card px-6 py-4 shadow-lg border">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <span className="font-medium">Запазване...</span>
-              </div>
-            </div>
-          )}
 
           <ScrollArea className="h-full">
             <div style={{ minWidth: SIDEBAR_WIDTH + HOURS.length * CELL_WIDTH }}>
