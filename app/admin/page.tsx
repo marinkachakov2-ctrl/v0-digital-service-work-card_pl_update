@@ -16,6 +16,7 @@ import {
   PenLine,
   X,
   CreditCard,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -169,6 +170,12 @@ export default function AdminDashboardPage() {
           <h1 className="text-lg font-semibold">Admin Dashboard</h1>
           <span className="text-sm text-muted-foreground">{dateStr}</span>
           <div className="ml-auto flex items-center gap-2">
+            <Link href="/admin/repairs">
+              <Button variant="default" size="sm" className="gap-1.5 bg-red-600 text-white hover:bg-red-700">
+                <Wrench className="h-3.5 w-3.5" />
+                Deferred Repairs
+              </Button>
+            </Link>
             <Link href="/admin/approval">
               <Button variant="default" size="sm" className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700">
                 <CreditCard className="h-3.5 w-3.5" />
