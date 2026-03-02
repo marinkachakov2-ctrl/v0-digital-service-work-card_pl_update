@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { NotificationCenter } from "@/components/notifications/notification-center";
 import Link from "next/link";
 
 interface WorkCardHeaderProps {
@@ -65,7 +66,7 @@ export function WorkCardHeader({
           </div>
         )}
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {/* Admin Override Indicator */}
           {isAdmin && (
             <Badge variant="outline" className="gap-1 text-xs border-amber-500/30 text-amber-500">
@@ -86,13 +87,16 @@ export function WorkCardHeader({
             </Label>
           </div>
 
+          {/* Notification Center */}
+          <NotificationCenter />
+
           <Link href="/planning">
             <Button variant="outline" size="sm" className="gap-1.5 bg-transparent">
               <CalendarDays className="h-4 w-4" />
               <span className="hidden sm:inline">Планиране</span>
             </Button>
           </Link>
-          <div className="text-right">
+          <div className="text-right hidden sm:block">
             <p className="text-sm font-medium text-foreground">{currentDate}</p>
             <p className="text-xs text-muted-foreground">Дата</p>
           </div>

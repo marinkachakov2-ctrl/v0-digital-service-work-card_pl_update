@@ -2527,3 +2527,38 @@ export async function markJobCardAsShared(
     return { success: false, error: String(err) };
   }
 }
+
+// ────────────────────────────── Create Notification ──────────────────────────────
+
+/**
+ * Create a notification for technicians/admins
+ */
+export async function createNotification(
+  title: string,
+  message: string,
+  jobCardId?: string,
+  userId?: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    const { error } = await supabase.from("notifications").insert({
+      title,
+      message,
+      job_card_id: jobCardId || null,
+      user_id: userId || null,
+      is_read: false,
+    });
+
+    if (error) {
+      console.error("createNotification error:", error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`[Server Action] Notification created: ${title}`);
+    return { success: true };
+  } catch (err) {
+    console.error("createNotification catch error:", err);
+    return { success: false, error: String(err) };
+  }
+}

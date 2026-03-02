@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+import { createNotification } from "@/lib/actions";
 import {
   Loader2,
   RotateCw,
@@ -332,6 +333,14 @@ export function ReopenJobModal({
 
       // Success!
       const newJobId = newCard?.id?.slice(0, 8).toUpperCase() || "NEW";
+      
+      // Create notification for technicians
+      await createNotification(
+        "Old Defect Approved",
+        `Machine ${record.machine_model || "Unknown"} SN:${record.serial_number || "N/A"} is back for repair based on your previous check. Navision: ${newNavisionNumber}`,
+        newCard?.id,
+        selectedTech?.id // Send to assigned technician
+      );
       
       toast.success(`New Job Card #${newJobId} has been initialized successfully.`, {
         description: "All historical data has been copied to the new job card.",
