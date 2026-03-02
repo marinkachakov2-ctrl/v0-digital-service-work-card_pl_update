@@ -18,9 +18,11 @@ import {
 } from "@/components/ui/dialog";
 import { SignaturePad } from "@/components/ui/signature-pad";
 import { TechnicianSignaturePad } from "@/components/ui/technician-signature-pad";
-import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, Lock, Download, AlertCircle, ShieldCheck } from "lucide-react";
+import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, Lock, Download, AlertCircle, ShieldCheck, MessageCircle, Mail, Share2, Phone } from "lucide-react";
 import { generateJobCardPDF, type PDFJobCardData } from "@/lib/pdf-export";
+import { uploadSignature, markJobCardAsShared } from "@/lib/actions";
 import { toast } from "sonner";
+import Image from "next/image";
 
 const ADMIN_PIN = "1234";
 
@@ -47,6 +49,11 @@ interface FooterProps {
   onStatusChange?: (status: "new" | "draft" | "completed") => void;
   // PDF Export data
   pdfData?: Omit<PDFJobCardData, "partsTotal" | "laborTotal" | "vat" | "grandTotal" | "customerSignature" | "customerName">;
+  // Client data for sharing
+  clientPhone?: string;
+  clientName?: string;
+  machineModel?: string;
+  jobCardId?: string;
 }
 
 export function Footer({
@@ -63,6 +70,10 @@ export function Footer({
   isReadOnly = false,
   onStatusChange,
   pdfData,
+  clientPhone,
+  clientName,
+  machineModel,
+  jobCardId,
 }: FooterProps) {
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
@@ -73,12 +84,20 @@ export function Footer({
   // Technician signature state
   const [techSignatureData, setTechSignatureData] = useState<string | null>(null);
   const [technicianName, setTechnicianName] = useState<string>("");
+  // Saved signature URL (from Supabase Storage)
+  const [savedSignatureUrl, setSavedSignatureUrl] = useState<string | null>(null);
   // Admin PIN dialog state
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState(false);
   const hasActiveTimer = timerStatus === "running" || timerStatus === "paused";
   const hasPendingOrder = !orderNumber || orderNumber.trim() === "";
+  
+  // Share dialog state
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [sharePhoneInput, setSharePhoneInput] = useState(clientPhone || "");
+  const [isSharing, setIsSharing] = useState(false);
+  const [hasShared, setHasShared] = useState(false);
 
   // Handle admin PIN verification
   const handlePinSubmit = () => {
@@ -103,6 +122,87 @@ export function Footer({
       router.push("/admin/job-cards");
     } else {
       setShowPinDialog(true);
+    }
+  };
+
+  // Generate share message for WhatsApp/Email
+  const generateShareMessage = () => {
+    const machine = machineModel || pdfData?.machineModel || "вашата машина";
+    const order = orderNumber || savedResult?.jobCardId?.slice(0, 8) || "N/A";
+    return `Здравейте! Вашият сервизен отчет за ${machine} (Поръчка: ${order}) е готов. Моля, свържете се с нас за PDF копие на документа.`;
+  };
+
+  // Handle WhatsApp share
+  const handleWhatsAppShare = async () => {
+    const phone = sharePhoneInput.replace(/\D/g, ""); // Remove non-digits
+    if (!phone || phone.length < 9) {
+      toast.error("Невалиден телефонен номер", {
+        description: "Моля, въведете валиден телефонен номер.",
+      });
+      return;
+    }
+
+    setIsSharing(true);
+    try {
+      // Mark job card as shared if we have a job card ID
+      const cardId = jobCardId || savedResult?.jobCardId;
+      if (cardId) {
+        await markJobCardAsShared(cardId, "whatsapp");
+        onStatusChange?.("completed");
+      }
+
+      // Generate WhatsApp link
+      const message = encodeURIComponent(generateShareMessage());
+      const formattedPhone = phone.startsWith("359") ? phone : `359${phone.replace(/^0/, "")}`;
+      const whatsappUrl = `https://wa.me/${formattedPhone}?text=${message}`;
+      
+      window.open(whatsappUrl, "_blank");
+      setHasShared(true);
+      setShowShareDialog(false);
+      
+      toast.success("Отчетът е споделен", {
+        description: "WhatsApp се отвори с вашето съобщение.",
+      });
+    } catch (error) {
+      console.error("WhatsApp share error:", error);
+      toast.error("Грешка при споделяне", {
+        description: "Възникна грешка. Моля, опитайте отново.",
+      });
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  // Handle Email share
+  const handleEmailShare = async () => {
+    setIsSharing(true);
+    try {
+      // Mark job card as shared if we have a job card ID
+      const cardId = jobCardId || savedResult?.jobCardId;
+      if (cardId) {
+        await markJobCardAsShared(cardId, "email");
+        onStatusChange?.("completed");
+      }
+
+      // Generate email link
+      const subject = encodeURIComponent(`Сервизен отчет - ${machineModel || pdfData?.machineModel || "Машина"} - ${orderNumber || savedResult?.jobCardId?.slice(0, 8) || "N/A"}`);
+      const body = encodeURIComponent(generateShareMessage());
+      const mailtoUrl = `mailto:?subject=${subject}&body=${body}`;
+      
+      window.location.href = mailtoUrl;
+      setHasShared(true);
+      setShowShareDialog(false);
+      
+      toast.success("Отчетът е споделен", {
+        description: "Email приложението се отвори.",
+      });
+    } catch (error) {
+      console.error("Email share error:", error);
+      toast.error("Грешка при споделяне", {
+        description: "Възникна грешка. Моля, опитайте отново.",
+      });
+    } finally {
+      setIsSharing(false);
     }
   };
 
@@ -131,7 +231,8 @@ export function Footer({
         laborTotal,
         vat,
         grandTotal,
-        customerSignature: signatureData,
+        // Use saved signature URL from storage if available, fallback to base64 data
+        customerSignature: savedSignatureUrl || signatureData,
         customerName: signerName,
         technicianSignature: techSignatureData,
         technicianName: technicianName,
@@ -204,13 +305,32 @@ export function Footer({
 
     setIsSaving(true);
     try {
-      const result = await onSaveCard(signatureData, signerName); // With signature = completed
-      if (result.success) {
-        setSavedResult({ ...result, status: "completed" });
-        onStatusChange?.("completed");
-        toast.success("Картата е финализирана!", {
-          description: "Клиентът е подписал и картата е заключена.",
-        });
+      // First save the job card to get/confirm the ID
+      const result = await onSaveCard(signatureData, signerName);
+      
+      if (result.success && result.jobCardId) {
+        // Upload signature to Supabase Storage and update job_cards with URL
+        const uploadResult = await uploadSignature(
+          result.jobCardId,
+          signatureData,
+          signerName || null
+        );
+
+        if (uploadResult.success && uploadResult.url) {
+          setSavedSignatureUrl(uploadResult.url);
+          setSavedResult({ ...result, status: "completed" });
+          onStatusChange?.("completed");
+          toast.success("Картата е финализирана!", {
+            description: "Подписът е качен успешно и картата е заключена.",
+          });
+        } else {
+          // Signature upload failed, but job card was saved
+          setSavedResult({ ...result, status: "completed" });
+          onStatusChange?.("completed");
+          toast.warning("Картата е записана", {
+            description: `Подписът не можа да бъде качен: ${uploadResult.error}`,
+          });
+        }
       } else {
         toast.error("Грешка при финализиране", {
           description: result.message || "Моля, опитайте отново.",
@@ -225,17 +345,9 @@ export function Footer({
     }
   };
 
-  // Auto-reset ONLY for completed cards (not drafts - keep form data for drafts)
+  // For drafts, just clear the savedResult after showing confirmation briefly (keep form data)
+  // For completed cards, do NOT auto-reset - user must manually click "Start New Job"
   useEffect(() => {
-    if (savedResult?.success && savedResult.status === "completed") {
-      // Longer timeout (10s) to allow user to download PDF
-      const timer = setTimeout(() => {
-        setSavedResult(null);
-        onFormReset();
-      }, 10000);
-      return () => clearTimeout(timer);
-    }
-    // For drafts, just clear the savedResult after showing confirmation briefly
     if (savedResult?.success && savedResult.status === "draft") {
       const timer = setTimeout(() => {
         setSavedResult(null);
@@ -243,7 +355,7 @@ export function Footer({
       }, 2000);
       return () => clearTimeout(timer);
     }
-  }, [savedResult, onFormReset]);
+  }, [savedResult]);
 
   // Show success screen ONLY for completed cards - drafts stay on the form
   if (savedResult?.success && savedResult.status === "completed") {
@@ -274,6 +386,28 @@ export function Footer({
             </div>
           </div>
 
+          {/* Saved Signature Preview */}
+          {savedSignatureUrl && (
+            <div className="flex flex-col items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <PenLine className="h-3 w-3" />
+                Запазен подпис
+              </p>
+              <div className="relative h-16 w-48 rounded border border-emerald-500/20 bg-card overflow-hidden">
+                <Image
+                  src={savedSignatureUrl}
+                  alt="Запазен подпис"
+                  fill
+                  className="object-contain p-1"
+                  unoptimized
+                />
+              </div>
+              {signerName && (
+                <p className="text-xs text-emerald-400 font-medium">{signerName}</p>
+              )}
+            </div>
+          )}
+
           {/* Status Badges */}
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Badge 
@@ -286,44 +420,88 @@ export function Footer({
             {savedResult.pendingOrder && (
               <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-500 px-4 py-2">
                 <Clock className="mr-2 h-4 w-4" />
-                Чака Order No.
+                pending_order (TEMP номер)
               </Badge>
             )}
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-center gap-3 pt-4">
-            {/* Download PDF Button */}
-            <Button
-              onClick={handleExportPDF}
-              disabled={isExportingPDF}
-              className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-5"
-            >
-              {isExportingPDF ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Download className="h-5 w-5" />
-              )}
-              Download PDF Report
-            </Button>
-            
-            {/* New Card Button */}
-            <Button
-              onClick={() => {
-                setSavedResult(null);
-                onFormReset();
-              }}
-              variant="outline"
-              className="gap-2 px-6 py-5"
-            >
-              <FileText className="h-5 w-5" />
-              Нова Карта
-            </Button>
-          </div>
+          <div className="flex flex-col gap-4 pt-4">
+            {/* Primary Row - Download PDF */}
+            <div className="flex justify-center">
+              <Button
+                onClick={handleExportPDF}
+                disabled={isExportingPDF}
+                size="lg"
+                className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-base font-semibold shadow-lg"
+              >
+                {isExportingPDF ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Download className="h-5 w-5" />
+                )}
+                Download PDF Report
+              </Button>
+            </div>
 
-          <p className="text-xs text-muted-foreground pt-2">
-            Формулярът ще се нулира автоматично след 10 секунди...
-          </p>
+            {/* Share Buttons Row */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <p className="text-sm text-muted-foreground">Сподели отчет:</p>
+              <div className="flex gap-2">
+                {/* WhatsApp Button */}
+                <Button
+                  onClick={() => setShowShareDialog(true)}
+                  variant="outline"
+                  size="lg"
+                  className="gap-2 border-green-500/50 text-green-600 hover:bg-green-500/10 hover:text-green-500 px-6"
+                  disabled={hasShared}
+                >
+                  <MessageCircle className="h-5 w-5" />
+                  WhatsApp
+                </Button>
+                
+                {/* Email Button */}
+                <Button
+                  onClick={handleEmailShare}
+                  variant="outline"
+                  size="lg"
+                  className="gap-2 border-blue-500/50 text-blue-600 hover:bg-blue-500/10 hover:text-blue-500 px-6"
+                  disabled={isSharing || hasShared}
+                >
+                  {isSharing ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Mail className="h-5 w-5" />
+                  )}
+                  Email
+                </Button>
+              </div>
+              {hasShared && (
+                <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-500">
+                  <CheckCircle2 className="mr-1 h-3 w-3" />
+                  Споделено
+                </Badge>
+              )}
+            </div>
+            
+            {/* New Job Button - Secondary action */}
+            <div className="flex justify-center pt-2">
+              <Button
+                onClick={() => {
+                  setSavedResult(null);
+                  setSavedSignatureUrl(null);
+                  setHasShared(false);
+                  onFormReset();
+                }}
+                variant="outline"
+                size="lg"
+                className="gap-2 px-8 py-6 text-base border-2"
+              >
+                <FileText className="h-5 w-5" />
+                Start New Job
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     );
@@ -454,7 +632,8 @@ export function Footer({
         <div className="flex items-center justify-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3">
           <Clock className="h-4 w-4 shrink-0 text-amber-500" />
           <p className="text-sm text-amber-500">
-            Няма номер на поръчка. Картата ще бъде записана като &quot;Чака присвояване&quot;.
+            Няма номер на поръчка (Navision). Ще бъде генериран временен вътрешен номер (TEMP-2026-XXXX).
+            Картата ще има статус &quot;pending_order&quot; докато се присвои реален номер.
           </p>
         </div>
       )}
@@ -591,6 +770,61 @@ export function Footer({
             >
               <Lock className="h-4 w-4 mr-2" />
               Вход
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* WhatsApp Phone Dialog */}
+      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+        <DialogContent className="sm:max-w-[400px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageCircle className="h-5 w-5 text-green-500" />
+              Сподели чрез WhatsApp
+            </DialogTitle>
+            <DialogDescription>
+              Въведете телефонен номер на клиента за изпращане на отчета.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="phone">Телефонен номер</Label>
+              <div className="flex gap-2">
+                <span className="flex items-center px-3 bg-muted rounded-l-md border border-r-0 text-sm text-muted-foreground">
+                  +359
+                </span>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="888 123 456"
+                  value={sharePhoneInput}
+                  onChange={(e) => setSharePhoneInput(e.target.value.replace(/[^\d\s]/g, ""))}
+                  className="rounded-l-none"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Примерен формат: 888 123 456 (без +359)
+              </p>
+            </div>
+            
+            {/* Preview message */}
+            <div className="rounded-lg border bg-muted/50 p-3">
+              <p className="text-xs text-muted-foreground mb-1">Предварителен преглед:</p>
+              <p className="text-sm">{generateShareMessage()}</p>
+            </div>
+            
+            <Button
+              onClick={handleWhatsAppShare}
+              disabled={isSharing || !sharePhoneInput || sharePhoneInput.replace(/\D/g, "").length < 9}
+              className="w-full gap-2 bg-green-600 hover:bg-green-700"
+            >
+              {isSharing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <MessageCircle className="h-4 w-4" />
+              )}
+              Изпрати чрез WhatsApp
             </Button>
           </div>
         </DialogContent>

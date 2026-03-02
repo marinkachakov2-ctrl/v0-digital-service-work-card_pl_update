@@ -9,14 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Lightbulb, Plus, Loader2, CheckCircle2, AlertTriangle, Wrench, FileText, Camera
 } from "lucide-react";
 import { createMachineIssue } from "@/lib/actions";
-import type { FreeCheckStatus } from "./checklist-modal";
 
 // Detected issue from FREE CHECK
 export interface DetectedIssue {
   id: string;
   name: string;
   desc: string;
-  status: FreeCheckStatus;
+  status: "+" | "0" | "repair" | null;
   comment?: string;
   photoUrl?: string | null;
 }

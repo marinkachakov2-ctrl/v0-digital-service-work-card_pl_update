@@ -595,6 +595,24 @@ export async function generateJobCardPDF(data: PDFJobCardData): Promise<void> {
 
   const sigWidth = (contentWidth - 20) / 2;
 
+  // Helper to get signature image data (handles both base64 and URL)
+  const getSignatureData = async (signature: string): Promise<string | null> => {
+    if (signature.startsWith("data:")) {
+      // Already base64 data URI
+      return signature;
+    } else if (signature.startsWith("http")) {
+      // URL - need to load and convert to base64
+      return await loadImageAsBase64(signature);
+    }
+    return signature;
+  };
+
+  // Load signatures in parallel if they are URLs
+  const [customerSigData, techSigData] = await Promise.all([
+    data.customerSignature ? getSignatureData(data.customerSignature) : Promise.resolve(null),
+    data.technicianSignature ? getSignatureData(data.technicianSignature) : Promise.resolve(null),
+  ]);
+
   // Customer signature box
   doc.setDrawColor(...COLORS.border);
   doc.roundedRect(margin, y, sigWidth, 35, 2, 2, "S");
@@ -604,9 +622,9 @@ export async function generateJobCardPDF(data: PDFJobCardData): Promise<void> {
   doc.setFontSize(8);
   doc.text("Customer Signature", margin + 3, y + 5);
   
-  if (data.customerSignature) {
+  if (customerSigData) {
     try {
-      doc.addImage(data.customerSignature, "PNG", margin + 5, y + 8, sigWidth - 10, 18);
+      doc.addImage(customerSigData, "PNG", margin + 5, y + 8, sigWidth - 10, 18);
     } catch {
       // Signature couldn't be added
     }
@@ -626,9 +644,9 @@ export async function generateJobCardPDF(data: PDFJobCardData): Promise<void> {
   doc.setFont("helvetica", "normal");
   doc.text("Technician Signature", margin + sigWidth + 23, y + 5);
   
-  if (data.technicianSignature) {
+  if (techSigData) {
     try {
-      doc.addImage(data.technicianSignature, "PNG", margin + sigWidth + 25, y + 8, sigWidth - 10, 18);
+      doc.addImage(techSigData, "PNG", margin + sigWidth + 25, y + 8, sigWidth - 10, 18);
     } catch {
       // Signature couldn't be added
     }

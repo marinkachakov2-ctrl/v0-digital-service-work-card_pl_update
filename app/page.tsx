@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { Lock, FileEdit } from "lucide-react";
+import { Lock, FileEdit, Loader2 } from "lucide-react";
 import { WorkCardHeader } from "@/components/work-card/header";
 import { OrderSelector, type SelectedOrder } from "@/components/work-card/order-selector";
 import { TechniciansSection } from "@/components/work-card/technicians-section";
 import { ClientSection } from "@/components/work-card/client-section";
-import { ChecklistModal, ChecklistButton, getDefaultChecklist, FREE_CHECK_POINTS, type ChecklistItem, type FreeCheckStatus } from "@/components/work-card/checklist-modal";
+import { FreeCheckSection, FREE_CHECK_POINTS, type FreeCheckItem } from "@/components/work-card/free-check-section";
 import type { DetectedIssue } from "@/components/work-card/future-issues-section";
 import { DiagnosticsSection, type FaultPhoto } from "@/components/work-card/diagnostics-section";
 import { PartsTable } from "@/components/work-card/parts-table";
@@ -17,17 +18,21 @@ import { CreditWarningBanner } from "@/components/work-card/credit-warning-banne
 import { HistoricalIssuesBanner } from "@/components/work-card/historical-issues-banner";
 import { RecommendationsSection, type RecommendationsData } from "@/components/work-card/recommendations-section";
 import { FutureIssuesSection } from "@/components/work-card/future-issues-section";
-import type { ServiceHistoryIssue } from "@/lib/actions";
-import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours, uploadEngineHoursPhoto, fetchUnresolvedMachineIssues, type MachineIssue } from "@/lib/actions";
+import { PendingRepairsBanner } from "@/components/work-card/pending-repairs-banner";
+import { TechnicianHeader } from "@/components/work-card/technician-header";
+import type { ServiceHistoryIssue, PendingRepairItem } from "@/lib/actions";
+import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours, uploadEngineHoursPhoto, fetchUnresolvedMachineIssues, savePendingRepairs, fetchJobCardForEdit, type MachineIssue } from "@/lib/actions";
 import { Footer } from "@/components/work-card/footer";
 import { useClocking } from "@/lib/clocking-context";
 import type { PayerStatus } from "@/lib/types";
+import { toast } from "sonner";
 
 export interface PartItem {
   id: string;
   partId?: string; // UUID from parts table (for linking to job_card_parts)
   partNo: string;
   description: string;
+  status?: "pending" | "completed" | "deferred" | "next_visit"; // For tracking repair status
   qty: number;
   price: number;
   stockQuantity?: number; // Current stock level from database
@@ -35,9 +40,12 @@ export interface PartItem {
 
 export interface LaborItem {
   id: string;
+  operationId?: string; // UUID from labor_catalog
+  operationCode?: string; // Code from labor_catalog
   operationName: string;
   techCount: number;
   price: number;
+  standardHours?: number; // From labor_catalog
   notes: string;
 }
 
@@ -55,11 +63,18 @@ export interface ClientData {
 const STORAGE_KEY_FORM = "workcard_form";
 const STORAGE_KEY_TIMER = "workcard_timer";
 
-export default function WorkCardPage() {
+// Main page component (wrapped with Suspense for useSearchParams)
+function WorkCardPageContent() {
   const { isAdmin, setIsAdmin, signJobCard } = useClocking();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const editId = searchParams.get("editId");
 
   // Hydration flag to prevent UI flickering
   const [isHydrated, setIsHydrated] = useState(false);
+  
+  // Loading state for edit mode
+  const [isLoadingEditCard, setIsLoadingEditCard] = useState(false);
 
   const [clientData, setClientData] = useState<ClientData | null>(null);
   const [isScanned, setIsScanned] = useState(false);
@@ -209,10 +224,142 @@ export default function WorkCardPage() {
       }
     }
 
-    // Mark hydration complete
+// Mark hydration complete
     setIsHydrated(true);
   }, []);
 
+  // Load draft card for editing when editId is present
+  useEffect(() => {
+    if (!editId || !isHydrated) return;
+    
+    const loadDraftCard = async () => {
+      setIsLoadingEditCard(true);
+      try {
+        const result = await fetchJobCardForEdit(editId);
+        
+        if (!result.success || !result.data) {
+          toast.error("Failed to load job card", {
+            description: result.error || "Job card not found",
+          });
+          router.push("/");
+          return;
+        }
+
+        const data = result.data;
+        
+        // Populate all form fields with loaded data
+        setSavedJobCardId(data.id);
+        setOrderNumber(data.orderNumber);
+        setCardStatus(data.status === "completed" ? "completed" : "draft");
+        
+        // Machine/Client data
+        if (data.machineId) {
+          setSelectedMachineId(data.machineId);
+        }
+        setClientData({
+          machineOwner: data.machineOwner,
+          billingEntity: data.billingEntity,
+          location: data.location,
+          machineModel: data.machineModel,
+          serialNo: data.serialNo,
+          engineSN: data.engineSN,
+          previousEngineHours: data.previousEngineHours,
+        });
+        setIsScanned(true);
+        
+        // Technician
+        if (data.technicianId) {
+          setAssignedTechnicians([data.technicianId]);
+          setLeadTechnicianId(data.technicianId);
+        }
+        
+        // Diagnostics
+        setReasonCode(data.reasonCode);
+        setDefectCode(data.defectCode);
+        setDescription(data.description);
+        setFaultDate(data.faultDate);
+        setRepairStart(data.repairStart);
+        setRepairEnd(data.repairEnd);
+        setCausalPartNo(data.causalPartNo);
+        setAssemblyGroup(data.assemblyGroup);
+        
+        // Engine hours
+        if (data.currentEngineHours) {
+          setCurrentEngineHours(data.currentEngineHours);
+          setEngineHours(String(data.currentEngineHours));
+        }
+        
+        // Photos
+        if (data.hoursPhotoUrl) {
+          setHoursPhotoUrl(data.hoursPhotoUrl);
+        }
+        if (data.missingPhotoReason) {
+          setSkipPhoto(true);
+          setMissingPhotoReason(data.missingPhotoReason);
+        }
+        if (data.photoUrls?.length > 0) {
+          setFaultPhotos(data.photoUrls.map((url, idx) => ({
+            id: `loaded-${idx}`,
+            url,
+            caption: "",
+          })));
+        }
+        
+        // Timer
+        if (data.totalSeconds > 0) {
+          setElapsedSeconds(data.totalSeconds);
+          setTimerStatus("paused");
+        }
+        
+        // Recommendations
+        setRecommendationsData({
+          pendingIssues: data.pendingIssues,
+          pendingReason: data.pendingReason,
+          recommendations: data.recommendations,
+        });
+        
+        // Parts and labor
+        if (data.parts?.length > 0) {
+          setParts(data.parts.map(p => ({
+            id: p.id,
+            partId: p.partId,
+            partNo: p.partNo,
+            description: p.description,
+            qty: p.qty,
+            price: p.price,
+          })));
+        }
+        if (data.laborItems?.length > 0) {
+          setLaborItems(data.laborItems.map(l => ({
+            id: l.id,
+            operationId: l.operationId,
+            operationCode: l.operationCode,
+            operationName: l.operationName,
+            techCount: l.techCount,
+            price: l.price,
+            notes: "",
+          })));
+        }
+        
+        toast.success("Draft loaded", {
+          description: `Editing job card: ${data.orderNumber || data.id.slice(0, 8)}`,
+        });
+        
+        // Clear the URL param to prevent reload issues
+        router.replace("/", { scroll: false });
+      } catch (error) {
+        console.error("Error loading draft card:", error);
+        toast.error("Failed to load draft", {
+          description: "An unexpected error occurred",
+        });
+      } finally {
+        setIsLoadingEditCard(false);
+      }
+    };
+    
+    loadDraftCard();
+  }, [editId, isHydrated, router]);
+  
   // Save form state to localStorage whenever it changes (after hydration)
   useEffect(() => {
     if (!isHydrated) return; // Don't save during initial hydration
@@ -360,12 +507,8 @@ export default function WorkCardPage() {
 
 
 
-  // Checklist
-  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>(getDefaultChecklist());
-  const [checklistOpen, setChecklistOpen] = useState(false);
-  const [checklistCompleted, setChecklistCompleted] = useState(false);
-  const [checklistSkipped, setChecklistSkipped] = useState(false);
-  const [checklistSkipReason, setChecklistSkipReason] = useState("");
+  // FREE CHECK items state (managed by FreeCheckSection, mirrored here for FutureIssuesSection)
+  const [freeCheckItems, setFreeCheckItems] = useState<Record<string, FreeCheckItem>>({});
 
   // Unresolved issues
   const [unresolvedIssues, setUnresolvedIssues] = useState<UnresolvedIssue[]>([]);
@@ -380,7 +523,7 @@ export default function WorkCardPage() {
     },
     {
       id: "prev-2",
-      description: "Лек теч на масло при предната ос",
+      description: "Лек теч на масл���� при предната ос",
       severity: "medium",
       fromPreviousCard: true,
       previousCardId: "JC-0012",
@@ -520,12 +663,18 @@ export default function WorkCardPage() {
       };
     }
 
-    // Only jobCardNumber is required - orderNumber is optional ("Work First, Order Later")
-    if (!jobCardNumber) {
-      return { 
-        success: false, 
-        message: "Job Card номерът е задължителен." 
-      };
+    // Auto-generate jobCardNumber if not provided
+    // Format: JC-YYYY-MMDD-XXXX (e.g., JC-2026-0302-1234)
+    let finalJobCardNumber = jobCardNumber;
+    if (!finalJobCardNumber || finalJobCardNumber.trim() === "") {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      finalJobCardNumber = `JC-${year}-${month}${day}-${randomSuffix}`;
+      // Update state with generated number
+      setJobCardNumber(finalJobCardNumber);
     }
 
     try {
@@ -533,7 +682,7 @@ export default function WorkCardPage() {
         // Include existing job card ID for UPDATE instead of INSERT
         existingJobCardId: savedJobCardId,
         orderNumber,
-        jobCardNumber,
+        jobCardNumber: finalJobCardNumber,
         jobType,
         assignedTechnicians: validTechnicians,
         leadTechnicianId,
@@ -598,6 +747,25 @@ export default function WorkCardPage() {
       // Store the job card ID for subsequent UPDATE operations
       if (result.success && result.jobCardId) {
         setSavedJobCardId(result.jobCardId);
+
+        // If card is being finalized (signed), save deferred repairs to machine history
+        if (isSigned && clientData?.serialNo) {
+          const deferredParts = parts.filter(
+            (p) => p.status === "deferred" || p.status === "next_visit"
+          );
+          if (deferredParts.length > 0) {
+            await savePendingRepairs(
+              clientData.serialNo,
+              result.jobCardId,
+              deferredParts.map((p) => ({
+                description: p.description,
+                status: (p.status as "deferred" | "next_visit") || "deferred",
+                estimatedCost: p.unitPrice * p.qty,
+                partId: p.partId || null,
+              }))
+            );
+          }
+        }
       }
       
       return { success: result.success, message: result.message, jobCardId: result.jobCardId, pendingOrder: result.pendingOrder };
@@ -611,7 +779,7 @@ export default function WorkCardPage() {
     description, faultDate, repairStart, repairEnd, engineHours, parts,
     laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned, savedJobCardId,
     faultPhotos, hoursPhotoUrl, skipPhoto, missingPhotoReason, selectedMachineId, payerStatus, recommendationsData,
-    causalPartNo, assemblyGroup, correction, workDone
+    causalPartNo, assemblyGroup, correction, workDone, savePendingRepairs
   ]);
 
   // Show loading skeleton during hydration to prevent flickering
@@ -634,6 +802,43 @@ export default function WorkCardPage() {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
+      {/* Technician Mobile Header - High contrast interface for outdoor use */}
+      {isScanned && clientData?.serialNo && (
+        <TechnicianHeader
+          jobCard={{
+            id: savedJobCardId || jobCardNumber || "NEW",
+            orderNo: orderNumber || "N/A",
+            customerName: clientData?.machineOwner || "Сканирайте машина",
+            location: clientData?.ownerAddress || "",
+            machineModel: clientData?.machineType ? `${clientData.machineBrand || ""} ${clientData.machineType}`.trim() : "N/A",
+            serialNumber: clientData?.serialNo || "",
+          }}
+          isEnabled={isScanned}
+          onImportRepairs={(repairs) => {
+            const newParts: PartItem[] = repairs.map((r) => ({
+              id: crypto.randomUUID(),
+              partId: r.partId || undefined,
+              partNo: "IMPORTED",
+              description: r.description,
+              qty: 1,
+              price: r.estimatedCost,
+              status: "deferred" as const,
+            }));
+            setParts((prev) => [...prev, ...newParts]);
+          }}
+        />
+      )}
+
+      {/* Loading overlay for edit mode */}
+      {isLoadingEditCard && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <p className="text-lg font-medium">Loading draft job card...</p>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 lg:px-8">
         {/* Status Badge - shows DRAFT (yellow) or COMPLETED (green) */}
         {cardStatus !== "new" && (
@@ -797,10 +1002,37 @@ export default function WorkCardPage() {
         />
 
         <div className="mt-6 space-y-6">
-          {/* Historical Issues Banner - Yellow alert for pending issues from previous visits */}
-          {historicalIssues.length > 0 && (
-            <HistoricalIssuesBanner issues={historicalIssues} />
-          )}
+  {/* Historical Issues Banner - Yellow alert for pending issues from previous visits */}
+  {historicalIssues.length > 0 && (
+  <HistoricalIssuesBanner issues={historicalIssues} />
+  )}
+
+  {/* Pending Repairs Banner - Deferred repairs from machine history */}
+  <PendingRepairsBanner
+    machineSerialNumber={clientData?.serialNo || null}
+    isEnabled={isScanned}
+    onImportRepairs={(repairs) => {
+      // Import repairs as parts/recommendations in the current job card
+      const newParts: PartItem[] = repairs.map((r) => ({
+        id: crypto.randomUUID(),
+        partId: r.partId || undefined,
+        partNo: "IMPORTED",
+        description: r.description,
+        qty: 1,
+        unitPrice: r.estimatedCost,
+        status: "deferred" as const,
+      }));
+      setParts((prev) => [...prev, ...newParts]);
+      // Also add to recommendations if there are deferred items
+      const descriptions = repairs.map((r) => r.description).join("; ");
+      setRecommendationsData((prev) => ({
+        ...prev,
+        pendingIssues: prev.pendingIssues
+          ? `${prev.pendingIssues}\n[Импортирано]: ${descriptions}`
+          : `[Импортирано]: ${descriptions}`,
+      }));
+    }}
+  />
 
   {/* Unresolved Issues Alert Banner — prominent at top, fetched from database */}
   {isScanned && machineIssues.length > 0 && (
@@ -884,24 +1116,11 @@ export default function WorkCardPage() {
   isCapturingPhoto={isCapturingPhoto}
   />
 
-          {/* Mandatory Checklist — between Client and Diagnostics */}
-          <ChecklistButton
-            completed={checklistCompleted}
-            skipped={checklistSkipped}
-            onOpen={() => setChecklistOpen(true)}
-          />
-          <ChecklistModal
-            open={checklistOpen}
-            onOpenChange={setChecklistOpen}
-            items={checklistItems}
-            onItemsChange={setChecklistItems}
-            completed={checklistCompleted}
-            onComplete={() => setChecklistCompleted(true)}
-            skipReason={checklistSkipReason}
-            onSkipReasonChange={setChecklistSkipReason}
-            onSkip={() => setChecklistSkipped(true)}
-            skipped={checklistSkipped}
+          {/* FREE CHECK Section - 14 point John Deere inspection */}
+          <FreeCheckSection
             jobCardId={savedJobCardId}
+            isEnabled={isScanned}
+            onItemsChange={setFreeCheckItems}
           />
 
           <DiagnosticsSection
@@ -960,16 +1179,16 @@ export default function WorkCardPage() {
             machineId={selectedMachineId}
             jobCardId={savedJobCardId}
             isReadOnly={isReadOnly}
-            detectedIssues={checklistItems
-              .filter((item) => item.status === "0" || item.status === "repair")
-              .map((item, idx) => {
-                const point = FREE_CHECK_POINTS.find((p) => p.id === item.id) || FREE_CHECK_POINTS[idx];
+            detectedIssues={Object.entries(freeCheckItems)
+              .filter(([, item]) => item.status === "0" || item.status === "repair")
+              .map(([id, item]) => {
+                const point = FREE_CHECK_POINTS.find((p) => p.id === id);
                 return {
-                  id: item.id,
-                  name: point?.name || item.label,
+                  id,
+                  name: point?.name || id,
                   desc: point?.desc || "",
-                  status: item.status as FreeCheckStatus,
-                  comment: item.comment,
+                  status: item.status as "+" | "0" | "repair" | null,
+                  comment: item.comments,
                   photoUrl: item.photoUrl,
                 };
               })}
@@ -993,6 +1212,9 @@ export default function WorkCardPage() {
             onFormReset={handleFormReset}
             isReadOnly={isReadOnly}
             onStatusChange={setCardStatus}
+            clientName={clientData?.machineOwner || ""}
+            machineModel={clientData?.machineModel || ""}
+            jobCardId={savedJobCardId || undefined}
             pdfData={{
               orderNumber,
               jobCardNumber,
@@ -1016,7 +1238,13 @@ export default function WorkCardPage() {
               repairEnd,
               parts,
               laborItems,
-              photoUrls: faultPhotos.map(p => p.url),
+              photoUrls: [
+                ...faultPhotos.map(p => p.url),
+                // Include Free Check inspection photos
+                ...Object.values(freeCheckItems)
+                  .filter(item => item.photoUrl)
+                  .map(item => item.photoUrl as string),
+              ],
               engineHoursPhotoUrl: hoursPhotoUrl,
               totalWorkTime: elapsedTime,
             }}
@@ -1024,5 +1252,18 @@ export default function WorkCardPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+// Default export with Suspense boundary for useSearchParams
+export default function WorkCardPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    }>
+      <WorkCardPageContent />
+    </Suspense>
   );
 }

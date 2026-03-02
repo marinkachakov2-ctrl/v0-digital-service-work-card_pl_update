@@ -93,3 +93,23 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Subtle pulse animation for attention banners */
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+/* High contrast mode for outdoor/sunlight use */
+.high-contrast {
+  --foreground: oklch(1 0 0);
+  --muted-foreground: oklch(0.8 0 0);
+}

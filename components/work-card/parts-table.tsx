@@ -14,9 +14,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Trash2, Package, Search, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { searchParts, type PartSearchResult } from "@/lib/actions";
+import { Plus, Trash2, Package, Search, Loader2, AlertTriangle, CheckCircle2, WifiOff, Database } from "lucide-react";
+import { searchParts, fetchCommonParts, type PartSearchResult } from "@/lib/actions";
 import { cn } from "@/lib/utils";
+
+// Local storage key for cached parts
+const PARTS_CACHE_KEY = "megatron_parts_cache";
+const PARTS_CACHE_TIMESTAMP_KEY = "megatron_parts_cache_timestamp";
+const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 interface PartsTableProps {
   parts: PartItem[];
@@ -31,7 +36,66 @@ export function PartsTable({ parts, onPartsChange }: PartsTableProps) {
   const [showResults, setShowResults] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  // Debounced search
+  // Local cache state
+  const [cachedParts, setCachedParts] = useState<PartSearchResult[]>([]);
+  const [isOffline, setIsOffline] = useState(false);
+  const [cacheLoaded, setCacheLoaded] = useState(false);
+
+  // Load cached parts on mount
+  useEffect(() => {
+    const loadCachedParts = async () => {
+      // Check if we have a valid cache
+      const cachedTimestamp = localStorage.getItem(PARTS_CACHE_TIMESTAMP_KEY);
+      const cachedData = localStorage.getItem(PARTS_CACHE_KEY);
+
+      if (cachedTimestamp && cachedData) {
+        const timestamp = parseInt(cachedTimestamp, 10);
+        const isValid = Date.now() - timestamp < CACHE_DURATION_MS;
+
+        if (isValid) {
+          try {
+            const parsed = JSON.parse(cachedData) as PartSearchResult[];
+            setCachedParts(parsed);
+            setCacheLoaded(true);
+            console.log("[v0] Loaded", parsed.length, "parts from cache");
+          } catch {
+            console.error("[v0] Failed to parse cached parts");
+          }
+        }
+      }
+
+      // Refresh cache from server (in background)
+      try {
+        const freshParts = await fetchCommonParts();
+        if (freshParts.length > 0) {
+          localStorage.setItem(PARTS_CACHE_KEY, JSON.stringify(freshParts));
+          localStorage.setItem(PARTS_CACHE_TIMESTAMP_KEY, Date.now().toString());
+          setCachedParts(freshParts);
+          setCacheLoaded(true);
+          console.log("[v0] Refreshed cache with", freshParts.length, "common parts");
+        }
+      } catch (error) {
+        console.error("[v0] Failed to refresh parts cache:", error);
+        setIsOffline(true);
+      }
+    };
+
+    loadCachedParts();
+
+    // Listen for online/offline events
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    setIsOffline(!navigator.onLine);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // Debounced search - uses server when online, local cache when offline
   useEffect(() => {
     if (searchQuery.length < 2) {
       setSearchResults([]);
@@ -41,20 +105,43 @@ export function PartsTable({ parts, onPartsChange }: PartsTableProps) {
 
     const timer = setTimeout(async () => {
       setIsSearching(true);
+      const query = searchQuery.toLowerCase().trim();
+
       try {
-        const results = await searchParts(searchQuery);
-        setSearchResults(results);
-        setShowResults(true);
+        if (isOffline || !navigator.onLine) {
+          // Offline mode: search in local cache
+          const offlineResults = cachedParts.filter(
+            (p) =>
+              p.partNumber.toLowerCase().includes(query) ||
+              p.description.toLowerCase().includes(query)
+          );
+          setSearchResults(offlineResults.slice(0, 10));
+          setShowResults(true);
+          console.log("[v0] Offline search returned", offlineResults.length, "results from cache");
+        } else {
+          // Online mode: search from server
+          const results = await searchParts(searchQuery);
+          setSearchResults(results);
+          setShowResults(true);
+        }
       } catch (error) {
         console.error("Parts search error:", error);
-        setSearchResults([]);
+        // Fallback to cache on error
+        const fallbackResults = cachedParts.filter(
+          (p) =>
+            p.partNumber.toLowerCase().includes(query) ||
+            p.description.toLowerCase().includes(query)
+        );
+        setSearchResults(fallbackResults.slice(0, 10));
+        setShowResults(fallbackResults.length > 0);
+        setIsOffline(true);
       } finally {
         setIsSearching(false);
       }
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, isOffline, cachedParts]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -128,11 +215,34 @@ export function PartsTable({ parts, onPartsChange }: PartsTableProps) {
           </Button>
         </div>
 
+        {/* Offline/Cache Status */}
+        {(isOffline || cacheLoaded) && (
+          <div className={cn(
+            "flex items-center gap-2 text-xs px-3 py-1.5 rounded-md",
+            isOffline 
+              ? "bg-amber-500/10 text-amber-500 border border-amber-500/30" 
+              : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30"
+          )}>
+            {isOffline ? (
+              <>
+                <WifiOff className="h-3.5 w-3.5" />
+                <span>Офлайн режим - търсене в локален кеш ({cachedParts.length} части)</span>
+              </>
+            ) : (
+              <>
+                <Database className="h-3.5 w-3.5" />
+                <span>Кеширани {cachedParts.length} често използвани части (филтри, масла, ремъци за 6030/7030)</span>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Search Input */}
         <div className="relative" ref={searchRef}>
           <Label className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5">
             <Search className="h-3 w-3" />
             Търсене на части по номер или описание
+            {isOffline && <span className="text-amber-500">(офлайн)</span>}
           </Label>
           <div className="relative">
             <Input

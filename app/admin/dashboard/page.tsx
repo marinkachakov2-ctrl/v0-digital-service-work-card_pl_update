@@ -160,6 +160,29 @@ export default function ServiceManagerDashboard() {
     }
   }, [isAuthorized, fetchData]);
 
+  // Real-time subscription for job_cards updates (for stat card updates)
+  useEffect(() => {
+    if (!isAuthorized) return;
+
+    const supabase = createClient();
+    
+    const channel = supabase
+      .channel("dashboard_job_cards_changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "job_cards" },
+        () => {
+          // Refetch data when any change happens to job_cards
+          fetchData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isAuthorized, fetchData]);
+
   // PIN verification
   const handlePinSubmit = () => {
     if (pinInput === ADMIN_PIN) {
