@@ -407,12 +407,12 @@ export function FreeCheckSection({ jobCardId, isEnabled, onItemsChange }: FreeCh
                             variant="secondary"
                             onClick={() => fileInputRefs.current[point.id]?.click()}
                             disabled={isUploading || !jobCardId}
-                            className="w-full h-14 gap-3 bg-secondary hover:bg-secondary/80 text-foreground text-base"
+                            className="w-full h-14 gap-3 bg-secondary hover:bg-secondary/80 text-foreground text-base disabled:opacity-50"
                           >
                             {isUploading ? (
                               <>
                                 <Loader2 className="h-6 w-6 animate-spin" />
-                                Качване...
+                                Качване в Supabase...
                               </>
                             ) : (
                               <>
@@ -421,6 +421,12 @@ export function FreeCheckSection({ jobCardId, isEnabled, onItemsChange }: FreeCh
                               </>
                             )}
                           </Button>
+                          {!jobCardId && (
+                            <p className="text-xs text-amber-500 flex items-center gap-1 mt-1">
+                              <AlertTriangle className="h-3 w-3" />
+                              Запазете Job Card първо, за да качите снимка
+                            </p>
+                          )}
                         </>
                       )}
 
