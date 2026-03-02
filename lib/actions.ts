@@ -1198,3 +1198,175 @@ export async function createMachineIssue(
     return { success: false, error: String(err) };
   }
 }
+
+// ────────────────────────────── Free Check Results ──────────────────────────────
+
+export interface SaveFreeCheckParams {
+  jobCardId: string;
+  controlPointNo: string;
+  controlPointName: string;
+  status: "+" | "0" | "repair";
+  comments: string | null;
+  photoUrl: string | null;
+}
+
+/**
+ * Save a free check control point result to the database
+ */
+export async function saveFreeCheckResult(
+  params: SaveFreeCheckParams
+): Promise<{ success: boolean; id?: string; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    // Upsert - update if exists, insert if not
+    const { data, error } = await supabase
+      .from("free_check_results")
+      .upsert(
+        {
+          job_card_id: params.jobCardId,
+          control_point_no: params.controlPointNo,
+          control_point_name: params.controlPointName,
+          status: params.status,
+          comments: params.comments,
+          photo_url: params.photoUrl,
+        },
+        {
+          onConflict: "job_card_id,control_point_no",
+        }
+      )
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("saveFreeCheckResult error:", error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, id: data?.id };
+  } catch (err) {
+    console.error("saveFreeCheckResult catch error:", err);
+    return { success: false, error: String(err) };
+  }
+}
+
+/**
+ * Batch save all free check results for a job card
+ */
+export async function saveAllFreeCheckResults(
+  jobCardId: string,
+  results: Array<{
+    controlPointNo: string;
+    controlPointName: string;
+    status: "+" | "0" | "repair";
+    comments: string | null;
+    photoUrl: string | null;
+  }>
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    const dataToSave = results.map((item) => ({
+      job_card_id: jobCardId,
+      control_point_no: item.controlPointNo,
+      control_point_name: item.controlPointName,
+      status: item.status,
+      comments: item.comments,
+      photo_url: item.photoUrl,
+    }));
+
+    const { error } = await supabase
+      .from("free_check_results")
+      .upsert(dataToSave, {
+        onConflict: "job_card_id,control_point_no",
+      });
+
+    if (error) {
+      console.error("saveAllFreeCheckResults error:", error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error("saveAllFreeCheckResults catch error:", err);
+    return { success: false, error: String(err) };
+  }
+}
+
+/**
+ * Upload a free check photo to Supabase storage
+ */
+export async function uploadFreeCheckPhoto(
+  jobCardId: string,
+  controlPointNo: string,
+  base64Image: string
+): Promise<{ success: boolean; url?: string; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    // Convert base64 to blob
+    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, "base64");
+
+    // Generate unique filename
+    const filename = `${jobCardId}/free-check-${controlPointNo}-${Date.now()}.jpg`;
+
+    // Upload to Supabase storage
+    const { data, error } = await supabase.storage
+      .from("job-card-photos")
+      .upload(filename, buffer, {
+        contentType: "image/jpeg",
+        upsert: true,
+      });
+
+    if (error) {
+      console.error("uploadFreeCheckPhoto storage error:", error);
+      return { success: false, error: error.message };
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from("job-card-photos")
+      .getPublicUrl(filename);
+
+    return { success: true, url: urlData.publicUrl };
+  } catch (err) {
+    console.error("uploadFreeCheckPhoto catch error:", err);
+    return { success: false, error: String(err) };
+  }
+}
+
+/**
+ * Fetch all free check results for a job card
+ */
+export async function fetchFreeCheckResults(
+  jobCardId: string
+): Promise<{ results: SaveFreeCheckParams[]; error?: string }> {
+  const supabase = await createClient();
+
+  try {
+    const { data, error } = await supabase
+      .from("free_check_results")
+      .select("*")
+      .eq("job_card_id", jobCardId);
+
+    if (error) {
+      console.error("fetchFreeCheckResults error:", error);
+      return { results: [], error: error.message };
+    }
+
+    const results = (data || []).map((row) => ({
+      jobCardId: row.job_card_id,
+      controlPointNo: row.control_point_no,
+      controlPointName: row.control_point_name,
+      status: row.status as "+" | "0" | "repair",
+      comments: row.comments,
+      photoUrl: row.photo_url,
+    }));
+
+    return { results };
+  } catch (err) {
+    console.error("fetchFreeCheckResults catch error:", err);
+    return { results: [], error: String(err) };
+  }
+}
