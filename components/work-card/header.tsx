@@ -1,45 +1,25 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Wrench, Play, Pause, Square, CalendarDays, ShieldCheck, Users } from "lucide-react";
+import { Wrench, CalendarDays, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 
-type TimerStatus = "idle" | "running" | "paused";
-
 interface WorkCardHeaderProps {
   orderNumber: string;
   jobCardNumber: string;
-  clockAtJobLevel: boolean;
-  hasMultipleTechs?: boolean;
-  timerStatus: TimerStatus;
-  elapsedTime: string;
-  onTimerStart: () => void;
-  onTimerPause: () => void;
-  onTimerStop: () => void;
   isAdmin: boolean;
   onAdminToggle: (val: boolean) => void;
-  isSigned: boolean;
-  isPayerBlocked?: boolean;
 }
 
 export function WorkCardHeader({
   orderNumber,
   jobCardNumber,
-  clockAtJobLevel,
-  hasMultipleTechs = false,
-  timerStatus,
-  elapsedTime,
-  onTimerStart,
-  onTimerPause,
-  onTimerStop,
   isAdmin,
   onAdminToggle,
-  isSigned,
-  isPayerBlocked = false,
 }: WorkCardHeaderProps) {
   const [currentDate, setCurrentDate] = useState("--/--/----");
 
@@ -85,70 +65,14 @@ export function WorkCardHeader({
           </div>
         )}
 
-        {/* Time Tracking Toolbar */}
-        <div className="flex items-center gap-2">
-          {/* Global Clock In/Out for multi-tech */}
-          {hasMultipleTechs && (
-            <Badge variant="outline" className="gap-1 text-xs">
-              <Users className="h-3 w-3" />
-              {clockAtJobLevel ? "Job-level" : "Individual"}
-            </Badge>
-          )}
-
-          <Button
-            onClick={onTimerStart}
-            disabled={timerStatus === "running" || isSigned || isPayerBlocked}
-            className={`h-9 gap-1.5 px-3 text-white shadow-sm disabled:opacity-50 ${
-              isPayerBlocked 
-                ? "bg-red-600 hover:bg-red-600 cursor-not-allowed" 
-                : "bg-emerald-600 hover:bg-emerald-700"
-            }`}
-            title={isPayerBlocked ? "Клиентът е блокиран - работата е забранена" : "Старт на работа"}
-          >
-            <Play className="h-4 w-4" />
-            <span className="hidden sm:inline">{isPayerBlocked ? "Блокиран" : "Старт"}</span>
-          </Button>
-          <Button
-            onClick={onTimerPause}
-            disabled={timerStatus !== "running"}
-            className="h-9 gap-1.5 bg-amber-500 px-3 text-amber-950 shadow-sm hover:bg-amber-600 disabled:opacity-50"
-          >
-            <Pause className="h-4 w-4" />
-            <span className="hidden sm:inline">Пауза</span>
-          </Button>
-
-          {/* Digital Timer Display */}
-          <div
-            className={`flex h-9 min-w-[90px] items-center justify-center rounded-md border px-3 font-mono text-sm font-semibold tabular-nums ${
-              timerStatus === "running"
-                ? "border-emerald-500/50 bg-emerald-950/50 text-emerald-400"
-                : timerStatus === "paused"
-                  ? "border-amber-500/50 bg-amber-950/50 text-amber-400"
-                  : "border-border bg-secondary text-muted-foreground"
-            }`}
-          >
-            {elapsedTime}
-          </div>
-
-          <Button
-            onClick={onTimerStop}
-            disabled={timerStatus === "idle"}
-            className="h-9 gap-1.5 bg-red-600 px-3 text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
-          >
-            <Square className="h-4 w-4" />
-            <span className="hidden sm:inline">Край</span>
-          </Button>
-
+        <div className="flex items-center gap-4">
           {/* Admin Override Indicator */}
           {isAdmin && (
-            <Button variant="outline" size="sm" className="h-9 gap-1 border-amber-500/30 bg-transparent text-amber-500">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline text-xs">Admin Edit</span>
-            </Button>
+            <Badge variant="outline" className="gap-1 text-xs border-amber-500/30 text-amber-500">
+              <ShieldCheck className="h-3 w-3" />
+              Admin Edit
+            </Badge>
           )}
-        </div>
-
-        <div className="flex items-center gap-4">
           {/* Admin Toggle */}
           <div className="flex items-center gap-2">
             <Switch

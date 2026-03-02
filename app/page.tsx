@@ -575,21 +575,12 @@ export default function WorkCardPage() {
           <div className="h-20" />
         )}
 
-        {/* Header with Megatron branding and time tracking */}
+        {/* Header with Megatron branding */}
         <WorkCardHeader
           orderNumber={selectedOrder?.orderNumber || orderNumber}
           jobCardNumber={selectedOrder?.jobCardNumber || jobCardNumber}
-          clockAtJobLevel={clockAtJobLevel}
-          hasMultipleTechs={assignedTechnicians.filter(Boolean).length > 1}
-          timerStatus={timerStatus}
-          elapsedTime={elapsedTime}
-          onTimerStart={handleTimerStart}
-          onTimerPause={handleTimerPause}
-          onTimerStop={handleTimerStop}
           isAdmin={isAdmin}
           onAdminToggle={setIsAdmin}
-          isSigned={isSigned}
-          isPayerBlocked={isPayerBlocked}
         />
 
         {/* Order Type Selector & Unified Search - Right below header */}
@@ -653,6 +644,13 @@ export default function WorkCardPage() {
           onLeadTechnicianIdChange={setLeadTechnicianId}
           clockAtJobLevel={clockAtJobLevel}
           onClockAtJobLevelChange={setClockAtJobLevel}
+          timerStatus={timerStatus}
+          elapsedTime={elapsedTime}
+          onTimerStart={handleTimerStart}
+          onTimerPause={handleTimerPause}
+          onTimerStop={handleTimerStop}
+          isJobSelected={isScanned || selectedOrder !== null}
+          currentOrderType={jobType}
         />
 
         <div className="mt-6 space-y-6">
