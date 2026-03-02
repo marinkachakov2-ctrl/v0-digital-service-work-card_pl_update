@@ -516,12 +516,18 @@ export default function WorkCardPage() {
       };
     }
 
-    // Only jobCardNumber is required - orderNumber is optional ("Work First, Order Later")
-    if (!jobCardNumber) {
-      return { 
-        success: false, 
-        message: "Job Card номерът е задължителен." 
-      };
+    // Auto-generate jobCardNumber if not provided
+    // Format: JC-YYYY-MMDD-XXXX (e.g., JC-2026-0302-1234)
+    let finalJobCardNumber = jobCardNumber;
+    if (!finalJobCardNumber || finalJobCardNumber.trim() === "") {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      finalJobCardNumber = `JC-${year}-${month}${day}-${randomSuffix}`;
+      // Update state with generated number
+      setJobCardNumber(finalJobCardNumber);
     }
 
     try {
@@ -529,7 +535,7 @@ export default function WorkCardPage() {
         // Include existing job card ID for UPDATE instead of INSERT
         existingJobCardId: savedJobCardId,
         orderNumber,
-        jobCardNumber,
+        jobCardNumber: finalJobCardNumber,
         jobType,
         assignedTechnicians: validTechnicians,
         leadTechnicianId,
