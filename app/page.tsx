@@ -15,6 +15,7 @@ import { UnresolvedIssuesAlert, UnresolvedIssuesSection, DynamicUnresolvedIssues
 import { CreditWarningBanner } from "@/components/work-card/credit-warning-banner";
 import { HistoricalIssuesBanner } from "@/components/work-card/historical-issues-banner";
 import { RecommendationsSection, type RecommendationsData } from "@/components/work-card/recommendations-section";
+import { FutureIssuesSection } from "@/components/work-card/future-issues-section";
 import type { ServiceHistoryIssue } from "@/lib/actions";
 import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours, uploadEngineHoursPhoto, fetchUnresolvedMachineIssues, type MachineIssue } from "@/lib/actions";
 import { Footer } from "@/components/work-card/footer";
@@ -950,6 +951,13 @@ export default function WorkCardPage() {
           <RecommendationsSection
             data={recommendationsData}
             onChange={setRecommendationsData}
+          />
+
+          {/* Future Issues - for next technician */}
+          <FutureIssuesSection
+            machineId={selectedMachineId}
+            jobCardId={savedJobCardId}
+            isReadOnly={isReadOnly}
           />
 
           <Footer
