@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -33,6 +33,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import {
   Loader2,
@@ -40,10 +46,12 @@ import {
   RefreshCw,
   FileText,
   Clock,
-  CheckCircle2,
-  PlayCircle,
-  Inbox,
   User,
+  UserPlus,
+  ChevronDown,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,95 +81,60 @@ interface Technician {
   active: boolean;
 }
 
-type KanbanStatus = "backlog" | "scheduled" | "in_progress" | "completed";
-
-interface KanbanColumn {
-  id: KanbanStatus;
-  title: string;
-  icon: React.ReactNode;
-  color: string;
-  dbStatuses: string[]; // Maps to database status values
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
-const KANBAN_COLUMNS: KanbanColumn[] = [
-  {
-    id: "backlog",
-    title: "Backlog",
-    icon: <Inbox className="h-4 w-4" />,
-    color: "bg-slate-500",
-    dbStatuses: ["pending", "scheduled"],
-  },
-  {
-    id: "scheduled",
-    title: "Scheduled",
-    icon: <Clock className="h-4 w-4" />,
-    color: "bg-amber-500",
-    dbStatuses: ["assigned"],
-  },
-  {
-    id: "in_progress",
-    title: "In Progress",
-    icon: <PlayCircle className="h-4 w-4" />,
-    color: "bg-blue-500",
-    dbStatuses: ["in_progress", "active"],
-  },
-  {
-    id: "completed",
-    title: "Completed",
-    icon: <CheckCircle2 className="h-4 w-4" />,
-    color: "bg-green-500",
-    dbStatuses: ["completed", "done"],
-  },
-];
+const DAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"];
 
-// Priority colors
-const PRIORITY_COLORS: Record<string, string> = {
-  emergency: "bg-red-500 text-white",
-  high: "bg-red-400 text-white",
-  normal: "bg-blue-500 text-white",
-  low: "bg-slate-400 text-white",
+// Status badge colors matching the design
+const STATUS_BADGES: Record<string, { label: string; className: string }> = {
+  no_tech: { label: "Без техник", className: "bg-red-500 text-white" },
+  waiting: { label: "Чака", className: "bg-amber-400 text-amber-900" },
+  in_progress: { label: "В процес", className: "bg-green-500 text-white" },
+  completed: { label: "Завършена", className: "bg-blue-500 text-white" },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPER FUNCTIONS
 // ─────────────────────────────────────────────────────────────────────────────
-function getKanbanColumn(appointment: ServiceAppointment): KanbanStatus {
-  // Backlog: No technician assigned
-  if (!appointment.technician_name) {
-    return "backlog";
+function getWeekDates(baseDate: Date): Date[] {
+  const dates: Date[] = [];
+  const dayOfWeek = baseDate.getDay();
+  // Adjust for Monday start (0 = Sunday in JS)
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  
+  const monday = new Date(baseDate);
+  monday.setDate(baseDate.getDate() + mondayOffset);
+  monday.setHours(0, 0, 0, 0);
+
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + i);
+    dates.push(date);
   }
-  
-  // Check status
-  const status = appointment.status?.toLowerCase() || "";
-  
-  if (status === "completed" || status === "done") {
-    return "completed";
-  }
-  
-  if (status === "in_progress" || status === "active") {
-    return "in_progress";
-  }
-  
-  // Has technician but not started = scheduled
-  return "scheduled";
+  return dates;
 }
 
-function getDbStatusForColumn(column: KanbanStatus): string {
-  switch (column) {
-    case "backlog":
-      return "scheduled";
-    case "scheduled":
-      return "assigned";
-    case "in_progress":
-      return "in_progress";
-    case "completed":
-      return "completed";
-    default:
-      return "scheduled";
-  }
+function formatDateStr(date: Date): string {
+  return date.toISOString().split("T")[0];
+}
+
+function formatDateDisplay(date: Date): string {
+  return date.toLocaleDateString("bg-BG", { day: "2-digit", month: "short" });
+}
+
+function getCardStatus(appointment: ServiceAppointment): string {
+  if (!appointment.technician_name) return "no_tech";
+  const status = appointment.status?.toLowerCase() || "";
+  if (status === "completed" || status === "done") return "completed";
+  if (status === "in_progress" || status === "active") return "in_progress";
+  return "waiting";
+}
+
+function formatTime(timeStr: string | null): string {
+  if (!timeStr) return "";
+  const [hours, minutes] = timeStr.split(":");
+  return `${hours}:${minutes}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -169,9 +142,13 @@ function getDbStatusForColumn(column: KanbanStatus): string {
 // ─────────────────────────────────────────────────────────────────────────────
 function KanbanCard({
   appointment,
+  technicians,
+  onAssignTechnician,
   isOverlay = false,
 }: {
   appointment: ServiceAppointment;
+  technicians: Technician[];
+  onAssignTechnician: (appointmentId: string, technicianName: string) => void;
   isOverlay?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -180,11 +157,16 @@ function KanbanCard({
   });
 
   const isNote = appointment.task_type === "note";
-  const priority = appointment.priority?.toLowerCase() || "normal";
+  const cardStatus = getCardStatus(appointment);
+  const statusBadge = STATUS_BADGES[cardStatus];
 
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
+
+  // Generate order IDs from the appointment id
+  const orderId = `ON-${appointment.id.substring(0, 4).toUpperCase()}`;
+  const jcId = `JC-${appointment.id.substring(4, 8).toUpperCase()}`;
 
   return (
     <div
@@ -194,28 +176,35 @@ function KanbanCard({
       className={cn(
         "cursor-grab rounded-lg border bg-card p-3 shadow-sm transition-all hover:shadow-md",
         isDragging && !isOverlay && "opacity-50",
-        isOverlay && "shadow-xl ring-2 ring-primary/50 rotate-2"
+        isOverlay && "shadow-xl ring-2 ring-primary/50 rotate-1"
       )}
     >
-      {/* Header with title and priority */}
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          {isNote && <FileText className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />}
-          <span className="text-sm font-medium truncate">
-            {appointment.client_name || "Без клиент"}
-          </span>
+      {/* Header with IDs and Status Badge */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+          <span className="font-mono">{orderId}</span>
+          <span>/</span>
+          <span className="font-mono">{jcId}</span>
         </div>
-        <Badge className={cn("text-[10px] px-1.5 py-0 shrink-0", PRIORITY_COLORS[priority])}>
-          {priority === "emergency" ? "Спешно" : priority === "high" ? "Висок" : priority === "low" ? "Нисък" : "Норм."}
+        <Badge className={cn("text-[10px] px-1.5 py-0 shrink-0", statusBadge.className)}>
+          {statusBadge.label}
         </Badge>
       </div>
 
-      {/* Machine/Description */}
+      {/* Title */}
+      <div className="flex items-center gap-1.5 mb-1">
+        {isNote && <FileText className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />}
+        <p className="text-sm font-medium truncate">
+          {appointment.client_name || "Без заглавие"}
+        </p>
+      </div>
+
+      {/* Machine Model */}
       <p className="text-xs text-muted-foreground truncate mb-2">
-        {isNote ? (appointment.notes || "Бележка") : (appointment.machine_model || appointment.serial_number || "Машина")}
+        {appointment.machine_model || appointment.notes || "—"}
       </p>
 
-      {/* Footer with technician and hours */}
+      {/* Footer with Technician and Time */}
       <div className="flex items-center justify-between text-xs">
         {appointment.technician_name ? (
           <div className="flex items-center gap-1 text-muted-foreground">
@@ -223,48 +212,96 @@ function KanbanCard({
             <span className="truncate max-w-[100px]">{appointment.technician_name}</span>
           </div>
         ) : (
-          <span className="text-muted-foreground italic">Неназначен</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 text-[10px] gap-1 px-2"
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <UserPlus className="h-3 w-3" />
+                Добави техник
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {technicians.map((tech) => (
+                <DropdownMenuItem
+                  key={tech.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAssignTechnician(appointment.id, tech.name);
+                  }}
+                >
+                  {tech.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
-        <Badge variant="outline" className="text-[10px]">
-          {appointment.planned_hours || 1}ч
-        </Badge>
+        
+        {appointment.start_time && (
+          <div className="flex items-center gap-1 text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            <span>{formatTime(appointment.start_time)}</span>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DROPPABLE COLUMN COMPONENT
+// DROPPABLE DAY COLUMN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
-function KanbanColumnComponent({
-  column,
+function DayColumn({
+  date,
+  dayIndex,
   appointments,
+  technicians,
+  onAssignTechnician,
   isOver,
+  isToday,
 }: {
-  column: KanbanColumn;
+  date: Date;
+  dayIndex: number;
   appointments: ServiceAppointment[];
+  technicians: Technician[];
+  onAssignTechnician: (appointmentId: string, technicianName: string) => void;
   isOver: boolean;
+  isToday: boolean;
 }) {
+  const dateStr = formatDateStr(date);
   const { setNodeRef } = useDroppable({
-    id: column.id,
-    data: { column },
+    id: dateStr,
+    data: { date, dateStr },
   });
 
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "flex flex-col rounded-lg border bg-secondary/30 min-w-[280px] max-w-[320px] flex-1",
-        isOver && "ring-2 ring-primary/50 bg-primary/5"
+        "flex flex-col rounded-lg border bg-secondary/30 min-w-[200px] flex-1",
+        isOver && "ring-2 ring-primary/50 bg-primary/5",
+        isToday && "border-primary/50"
       )}
     >
       {/* Column Header */}
-      <div className="flex items-center justify-between border-b bg-card/50 px-3 py-2.5 rounded-t-lg">
-        <div className="flex items-center gap-2">
-          <div className={cn("rounded-md p-1.5 text-white", column.color)}>
-            {column.icon}
-          </div>
-          <span className="font-semibold text-sm">{column.title}</span>
+      <div className={cn(
+        "flex items-center justify-between border-b px-3 py-2.5 rounded-t-lg",
+        isToday ? "bg-primary/10" : "bg-card/50"
+      )}>
+        <div className="flex flex-col">
+          <span className={cn(
+            "font-semibold text-sm",
+            isToday && "text-primary"
+          )}>
+            {DAY_LABELS[dayIndex]}
+          </span>
+          <span className="text-[10px] text-muted-foreground">
+            {formatDateDisplay(date)}
+          </span>
         </div>
         <Badge variant="secondary" className="text-xs">
           {appointments.length}
@@ -279,7 +316,14 @@ function KanbanColumnComponent({
               <p className="text-xs">Няма задачи</p>
             </div>
           ) : (
-            appointments.map((apt) => <KanbanCard key={apt.id} appointment={apt} />)
+            appointments.map((apt) => (
+              <KanbanCard
+                key={apt.id}
+                appointment={apt}
+                technicians={technicians}
+                onAssignTechnician={onAssignTechnician}
+              />
+            ))
           )}
         </div>
       </ScrollArea>
@@ -297,17 +341,16 @@ export function KanbanBoard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  // Week navigation
+  const [weekBaseDate, setWeekBaseDate] = useState<Date>(new Date());
+  const weekDates = useMemo(() => getWeekDates(weekBaseDate), [weekBaseDate]);
+  
+  // Filter state
+  const [filterTechnician, setFilterTechnician] = useState<string>("all");
+  
   // Drag state
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
-  
-  // Technician selection dialog
-  const [showTechDialog, setShowTechDialog] = useState(false);
-  const [pendingMove, setPendingMove] = useState<{
-    appointmentId: string;
-    targetColumn: KanbanStatus;
-  } | null>(null);
-  const [selectedTechnician, setSelectedTechnician] = useState<string>("");
 
   const supabase = createClient();
 
@@ -317,6 +360,9 @@ export function KanbanBoard() {
     useSensor(KeyboardSensor)
   );
 
+  // Today's date string
+  const todayStr = formatDateStr(new Date());
+
   // ─────────────────────────────────────────────────────────────────────────
   // DATA FETCHING
   // ─────────────────────────────────────────────────────────────────────────
@@ -325,11 +371,16 @@ export function KanbanBoard() {
     setError(null);
 
     try {
-      // Fetch all appointments (not filtered by date for Kanban view)
+      const startDate = formatDateStr(weekDates[0]);
+      const endDate = formatDateStr(weekDates[6]);
+
+      // Fetch appointments for the week
       const { data: appointmentsData, error: appointmentsError } = await supabase
         .from("service_appointments")
         .select("*")
-        .order("created_at", { ascending: false });
+        .gte("work_date", startDate)
+        .lte("work_date", endDate)
+        .order("start_time", { ascending: true });
 
       if (appointmentsError) throw appointmentsError;
 
@@ -349,7 +400,7 @@ export function KanbanBoard() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, weekDates]);
 
   useEffect(() => {
     fetchData();
@@ -360,7 +411,7 @@ export function KanbanBoard() {
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     const channel = supabase
-      .channel("kanban-appointments")
+      .channel("kanban-week-appointments")
       .on(
         "postgres_changes",
         {
@@ -373,7 +424,7 @@ export function KanbanBoard() {
             const newAppointment = payload.new as ServiceAppointment;
             setAppointments((prev) => {
               if (prev.some((a) => a.id === newAppointment.id)) return prev;
-              return [newAppointment, ...prev];
+              return [...prev, newAppointment];
             });
           } else if (payload.eventType === "UPDATE") {
             const updatedAppointment = payload.new as ServiceAppointment;
@@ -396,6 +447,29 @@ export function KanbanBoard() {
   }, [supabase]);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // WEEK NAVIGATION
+  // ─────────────────────────────────────────────────────────────────────────
+  const goToPreviousWeek = () => {
+    setWeekBaseDate((prev) => {
+      const newDate = new Date(prev);
+      newDate.setDate(prev.getDate() - 7);
+      return newDate;
+    });
+  };
+
+  const goToNextWeek = () => {
+    setWeekBaseDate((prev) => {
+      const newDate = new Date(prev);
+      newDate.setDate(prev.getDate() + 7);
+      return newDate;
+    });
+  };
+
+  const goToCurrentWeek = () => {
+    setWeekBaseDate(new Date());
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
   // DRAG HANDLERS
   // ─────────────────────────────────────────────────────────────────────────
   const handleDragStart = (event: DragStartEvent) => {
@@ -415,105 +489,111 @@ export function KanbanBoard() {
     if (!over) return;
 
     const appointmentId = active.id as string;
-    const targetColumn = over.id as KanbanStatus;
+    const targetDateStr = over.id as string;
 
-    // Validate target is a column
-    if (!KANBAN_COLUMNS.some((c) => c.id === targetColumn)) return;
+    // Validate target is a date string
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDateStr)) return;
 
     const appointment = appointments.find((a) => a.id === appointmentId);
     if (!appointment) return;
 
-    const currentColumn = getKanbanColumn(appointment);
-    
     // No change needed
-    if (currentColumn === targetColumn) return;
+    if (appointment.work_date === targetDateStr) return;
 
-    // If moving from backlog to scheduled, need to select technician
-    if (currentColumn === "backlog" && targetColumn === "scheduled") {
-      setPendingMove({ appointmentId, targetColumn });
-      setSelectedTechnician("");
-      setShowTechDialog(true);
-      return;
-    }
-
-    // Otherwise, update directly
-    await updateAppointmentStatus(appointmentId, targetColumn, appointment.technician_name);
+    // Update work_date in database
+    await updateAppointmentDate(appointmentId, targetDateStr);
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // UPDATE APPOINTMENT STATUS
+  // UPDATE FUNCTIONS
   // ─────────────────────────────────────────────────────────────────────────
-  const updateAppointmentStatus = async (
-    appointmentId: string,
-    targetColumn: KanbanStatus,
-    technicianName: string | null
-  ) => {
+  const updateAppointmentDate = async (appointmentId: string, newDate: string) => {
     setSaving(true);
-    const newStatus = getDbStatusForColumn(targetColumn);
 
     // Optimistic update
     setAppointments((prev) =>
-      prev.map((a) =>
-        a.id === appointmentId
-          ? { ...a, status: newStatus, technician_name: technicianName }
-          : a
-      )
+      prev.map((a) => (a.id === appointmentId ? { ...a, work_date: newDate } : a))
     );
 
     try {
-      const updateData: Record<string, unknown> = {
-        status: newStatus,
-        updated_at: new Date().toISOString(),
-      };
-
-      // If assigning technician
-      if (technicianName) {
-        updateData.technician_name = technicianName;
-      }
-
-      // If moving to backlog, remove technician
-      if (targetColumn === "backlog") {
-        updateData.technician_name = null;
-      }
-
       const { error: updateError } = await supabase
         .from("service_appointments")
-        .update(updateData)
+        .update({
+          work_date: newDate,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", appointmentId);
 
       if (updateError) throw updateError;
     } catch (err) {
-      // Revert on error
       fetchData();
-      setError(err instanceof Error ? err.message : "Failed to update status");
+      setError(err instanceof Error ? err.message : "Failed to update date");
     } finally {
       setSaving(false);
     }
   };
 
-  // Handle technician selection confirmation
-  const handleTechnicianConfirm = async () => {
-    if (!pendingMove || !selectedTechnician) return;
+  const handleAssignTechnician = async (appointmentId: string, technicianName: string) => {
+    setSaving(true);
 
-    setShowTechDialog(false);
-    await updateAppointmentStatus(
-      pendingMove.appointmentId,
-      pendingMove.targetColumn,
-      selectedTechnician
+    // Optimistic update
+    setAppointments((prev) =>
+      prev.map((a) =>
+        a.id === appointmentId
+          ? { ...a, technician_name: technicianName, status: "assigned" }
+          : a
+      )
     );
-    setPendingMove(null);
-    setSelectedTechnician("");
+
+    try {
+      const { error: updateError } = await supabase
+        .from("service_appointments")
+        .update({
+          technician_name: technicianName,
+          status: "assigned",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", appointmentId);
+
+      if (updateError) throw updateError;
+    } catch (err) {
+      fetchData();
+      setError(err instanceof Error ? err.message : "Failed to assign technician");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ─────────────────────────────────────────────────────────────────────────
   // DERIVED DATA
   // ─────────────────────────────────────────────────────────────────────────
-  const appointmentsByColumn = KANBAN_COLUMNS.reduce((acc, column) => {
-    acc[column.id] = appointments.filter((a) => getKanbanColumn(a) === column.id);
-    return acc;
-  }, {} as Record<KanbanStatus, ServiceAppointment[]>);
+  const filteredAppointments = filterTechnician === "all"
+    ? appointments
+    : appointments.filter((a) => a.technician_name === filterTechnician);
+
+  const appointmentsByDate = useMemo(() => {
+    const grouped: Record<string, ServiceAppointment[]> = {};
+    weekDates.forEach((date) => {
+      const dateStr = formatDateStr(date);
+      grouped[dateStr] = filteredAppointments.filter((a) => a.work_date === dateStr);
+    });
+    return grouped;
+  }, [filteredAppointments, weekDates]);
+
+  // Stats for header
+  const stats = useMemo(() => {
+    return {
+      noTech: appointments.filter((a) => !a.technician_name).length,
+      waiting: appointments.filter((a) => a.technician_name && getCardStatus(a) === "waiting").length,
+      inProgress: appointments.filter((a) => getCardStatus(a) === "in_progress").length,
+      completed: appointments.filter((a) => getCardStatus(a) === "completed").length,
+    };
+  }, [appointments]);
 
   const activeAppointment = activeId ? appointments.find((a) => a.id === activeId) : null;
+
+  // Week display range
+  const weekRangeDisplay = `${formatDateDisplay(weekDates[0])} - ${formatDateDisplay(weekDates[6])}`;
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -548,13 +628,63 @@ export function KanbanBoard() {
       onDragEnd={handleDragEnd}
     >
       <div className="relative h-full flex flex-col gap-4">
-        {/* Header */}
+        {/* Stats Header */}
+        <div className="flex items-center justify-between gap-4 rounded-lg border bg-card p-3">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className="h-3 w-3 rounded-full bg-red-500" />
+              <span className="text-xs text-muted-foreground">Без техник</span>
+              <Badge variant="secondary" className="text-xs">{stats.noTech}</Badge>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="h-3 w-3 rounded-full bg-amber-400" />
+              <span className="text-xs text-muted-foreground">Чакащи</span>
+              <Badge variant="secondary" className="text-xs">{stats.waiting}</Badge>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="h-3 w-3 rounded-full bg-green-500" />
+              <span className="text-xs text-muted-foreground">В процес</span>
+              <Badge variant="secondary" className="text-xs">{stats.inProgress}</Badge>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="h-3 w-3 rounded-full bg-blue-500" />
+              <span className="text-xs text-muted-foreground">Завършени</span>
+              <Badge variant="secondary" className="text-xs">{stats.completed}</Badge>
+            </div>
+          </div>
+
+          {/* Filter */}
+          <Select value={filterTechnician} onValueChange={setFilterTechnician}>
+            <SelectTrigger className="w-[200px] h-8">
+              <Filter className="h-3.5 w-3.5 mr-2" />
+              <SelectValue placeholder="Филтър по техник" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Всички техници</SelectItem>
+              {technicians.map((tech) => (
+                <SelectItem key={tech.id} value={tech.name}>
+                  {tech.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Week Navigation */}
         <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">Kanban Board</h2>
-            <p className="text-xs text-muted-foreground">
-              Плъзгайте задачи между колоните за промяна на статуса
-            </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={goToPreviousWeek}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="text-sm font-medium min-w-[180px] text-center">
+              {weekRangeDisplay}
+            </div>
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={goToNextWeek}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="ml-2" onClick={goToCurrentWeek}>
+              Тази седмица
+            </Button>
           </div>
           <Button variant="outline" size="sm" onClick={fetchData} disabled={loading || saving}>
             <RefreshCw className={cn("h-4 w-4 mr-1.5", (loading || saving) && "animate-spin")} />
@@ -572,62 +702,36 @@ export function KanbanBoard() {
           </div>
         )}
 
-        {/* Kanban Columns */}
-        <div className="flex-1 flex gap-4 overflow-x-auto pb-4">
-          {KANBAN_COLUMNS.map((column) => (
-            <KanbanColumnComponent
-              key={column.id}
-              column={column}
-              appointments={appointmentsByColumn[column.id]}
-              isOver={overId === column.id}
-            />
-          ))}
+        {/* Day Columns */}
+        <div className="flex-1 flex gap-3 overflow-x-auto pb-4">
+          {weekDates.map((date, index) => {
+            const dateStr = formatDateStr(date);
+            return (
+              <DayColumn
+                key={dateStr}
+                date={date}
+                dayIndex={index}
+                appointments={appointmentsByDate[dateStr] || []}
+                technicians={technicians}
+                onAssignTechnician={handleAssignTechnician}
+                isOver={overId === dateStr}
+                isToday={dateStr === todayStr}
+              />
+            );
+          })}
         </div>
       </div>
-
-      {/* Technician Selection Dialog */}
-      <Dialog open={showTechDialog} onOpenChange={setShowTechDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Изберете техник</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <Label htmlFor="technician">Техник</Label>
-            <Select value={selectedTechnician} onValueChange={setSelectedTechnician}>
-              <SelectTrigger className="mt-2">
-                <SelectValue placeholder="Изберете техник..." />
-              </SelectTrigger>
-              <SelectContent>
-                {technicians.map((tech) => (
-                  <SelectItem key={tech.id} value={tech.name}>
-                    {tech.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowTechDialog(false);
-                setPendingMove(null);
-              }}
-            >
-              Отказ
-            </Button>
-            <Button onClick={handleTechnicianConfirm} disabled={!selectedTechnician}>
-              Потвърди
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Drag Overlay */}
       <DragOverlay>
         {activeAppointment && (
           <div className="opacity-95">
-            <KanbanCard appointment={activeAppointment} isOverlay />
+            <KanbanCard
+              appointment={activeAppointment}
+              technicians={technicians}
+              onAssignTechnician={() => {}}
+              isOverlay
+            />
           </div>
         )}
       </DragOverlay>
