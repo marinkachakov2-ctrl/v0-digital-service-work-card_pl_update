@@ -9,11 +9,12 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDraggable,
+  useDroppable,
   type DragStartEvent,
   type DragEndEvent,
   type DragOverEvent,
 } from "@dnd-kit/core";
-import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
 import { 
   useAppointments, 
