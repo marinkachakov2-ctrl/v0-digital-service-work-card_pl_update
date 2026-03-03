@@ -104,7 +104,6 @@ function getDayLabel(date: Date, index: number): { short: string; full: string }
   };
 }
 
-// Format time string for display
 function formatTime(timeStr: string | null): string {
   if (!timeStr) return "";
   const [hours, minutes] = timeStr.split(":");
@@ -160,8 +159,8 @@ function KanbanCard({
           <span>/</span>
           <span className="font-mono">{jcId}</span>
         </div>
-        <Badge className={cn("text-[10px] px-1.5 py-0 shrink-0", statusBadge.className)}>
-          {statusBadge.label}
+        <Badge className={cn("text-[10px] px-1.5 py-0 shrink-0", statusBadge?.className)}>
+          {statusBadge?.label}
         </Badge>
       </div>
 
@@ -417,9 +416,9 @@ export function KanbanBoard() {
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────���───
+  // ─────────────────────────────────────────────────────────────────────────
   // UPDATE FUNCTIONS (using shared hook)
-  // ───────────────────────────────���───────────────────────────────��─────────
+  // ─────────────────────────────────────────────────────────────────────────
   const updateAppointmentDate = async (appointmentId: string, newDate: string) => {
     setSaving(true);
     const result = await updateAppointment(appointmentId, { work_date: newDate });
