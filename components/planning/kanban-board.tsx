@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -14,8 +14,15 @@ import {
   type DragOverEvent,
 } from "@dnd-kit/core";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { 
+  useAppointments, 
+  formatDateStr, 
+  getCardStatus, 
+  getStatusColor,
+  type ServiceAppointment,
+  type Technician 
+} from "@/lib/hooks/use-appointments";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -55,33 +62,6 @@ import {
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────────────────────────────────────
-interface ServiceAppointment {
-  id: string;
-  client_name: string | null;
-  machine_model: string | null;
-  serial_number: string | null;
-  technician_name: string | null;
-  work_date: string;
-  start_time: string | null;
-  end_time: string | null;
-  planned_hours: number | null;
-  status: string | null;
-  priority: string | null;
-  notes: string | null;
-  task_type: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-interface Technician {
-  id: string;
-  name: string;
-  active: boolean;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 const DAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"];
@@ -99,19 +79,29 @@ const STATUS_BADGES: Record<string, { label: string; className: string }> = {
 // ─────────────────────────────────────────────────────────────────────────────
 function getWeekDates(baseDate: Date): Date[] {
   const dates: Date[] = [];
-  const dayOfWeek = baseDate.getDay();
-  // Adjust for Monday start (0 = Sunday in JS)
-  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  
-  const monday = new Date(baseDate);
-  monday.setDate(baseDate.getDate() + mondayOffset);
-  monday.setHours(0, 0, 0, 0);
+  const start = new Date(baseDate);
+  const day = start.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  start.setDate(start.getDate() + diff);
 
   for (let i = 0; i < 7; i++) {
-    const date = new Date(monday);
-    date.setDate(monday.getDate() + i);
-    dates.push(date);
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    dates.push(d);
   }
+  return dates;
+}
+
+function formatDateDisplay(date: Date): string {
+  return date.toLocaleDateString("bg-BG", { day: "2-digit", month: "short" });
+}
+
+function getDayLabel(date: Date, index: number): { short: string; full: string } {
+  return {
+    short: DAY_LABELS[index],
+    full: date.toLocaleDateString("bg-BG", { day: "numeric", month: "long" }),
+  };
+}
   return dates;
 }
 
@@ -335,17 +325,30 @@ function DayColumn({
 // MAIN KANBAN BOARD COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 export function KanbanBoard() {
-  const [appointments, setAppointments] = useState<ServiceAppointment[]>([]);
-  const [waitingOrders, setWaitingOrders] = useState<ServiceAppointment[]>([]); // Orders without technician
-  const [quickNotes, setQuickNotes] = useState<ServiceAppointment[]>([]); // Notes
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
   // Week navigation
   const [weekBaseDate, setWeekBaseDate] = useState<Date>(new Date());
   const weekDates = useMemo(() => getWeekDates(weekBaseDate).slice(0, 5), [weekBaseDate]); // Only Mon-Fri
+  
+  // Use shared hook for data
+  const dateRange = useMemo(() => ({
+    start: weekDates[0],
+    end: weekDates[4],
+  }), [weekDates]);
+  
+  const {
+    assignedAppointments,
+    waitingOrders,
+    quickNotes,
+    technicians,
+    stats,
+    loading,
+    error,
+    refetch,
+    assignTechnician,
+    updateAppointment,
+  } = useAppointments({ dateRange });
+
+  const [saving, setSaving] = useState(false);
   
   // Filter state
   const [filterTechnician, setFilterTechnician] = useState<string>("all");
@@ -353,8 +356,6 @@ export function KanbanBoard() {
   // Drag state
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
-
-  const supabase = createClient();
 
   // DnD sensors
   const sensors = useSensors(
@@ -364,96 +365,6 @@ export function KanbanBoard() {
 
   // Today's date string
   const todayStr = formatDateStr(new Date());
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // DATA FETCHING
-  // ─────────────────────────────────────────────────────────────────────────
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const startDate = formatDateStr(weekDates[0]);
-      const endDate = formatDateStr(weekDates[4]); // Only Mon-Fri
-
-      // Fetch appointments for the week (assigned with technician)
-      const { data: appointmentsData, error: appointmentsError } = await supabase
-        .from("service_appointments")
-        .select("*")
-        .gte("work_date", startDate)
-        .lte("work_date", endDate)
-        .not("technician_name", "is", null)
-        .order("start_time", { ascending: true });
-
-      if (appointmentsError) throw appointmentsError;
-
-      // Fetch waiting orders (no technician, task_type = 'order' or null)
-      const { data: waitingData, error: waitingError } = await supabase
-        .from("service_appointments")
-        .select("*")
-        .is("technician_name", null)
-        .or("task_type.eq.order,task_type.is.null")
-        .order("work_date", { ascending: true });
-
-      if (waitingError) throw waitingError;
-
-      // Fetch quick notes (task_type = 'note')
-      const { data: notesData, error: notesError } = await supabase
-        .from("service_appointments")
-        .select("*")
-        .eq("task_type", "note")
-        .order("created_at", { ascending: false });
-
-      if (notesError) throw notesError;
-
-      // Fetch active technicians
-      const { data: techniciansData, error: techniciansError } = await supabase
-        .from("technicians")
-        .select("*")
-        .eq("active", true)
-        .order("name");
-
-      if (techniciansError) throw techniciansError;
-
-      setAppointments(appointmentsData || []);
-      setWaitingOrders(waitingData || []);
-      setQuickNotes(notesData || []);
-      setTechnicians(techniciansData || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
-    } finally {
-      setLoading(false);
-    }
-  }, [supabase, weekDates]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // REALTIME SUBSCRIPTION
-  // ─────────────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const channel = supabase
-      .channel("kanban-week-appointments")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "service_appointments",
-        },
-        (payload) => {
-          // Refetch to ensure proper categorization
-          fetchData();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // WEEK NAVIGATION
@@ -502,7 +413,7 @@ export function KanbanBoard() {
 
     // Find appointment in any list
     const appointment = 
-      appointments.find((a) => a.id === appointmentId) ||
+      assignedAppointments.find((a) => a.id === appointmentId) ||
       waitingOrders.find((a) => a.id === appointmentId) ||
       quickNotes.find((a) => a.id === appointmentId);
     
@@ -517,71 +428,32 @@ export function KanbanBoard() {
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // UPDATE FUNCTIONS
+  // UPDATE FUNCTIONS (using shared hook)
   // ─────────────────────────────────────────────────────────────────────────
   const updateAppointmentDate = async (appointmentId: string, newDate: string) => {
     setSaving(true);
-
-    // Optimistic update
-    setAppointments((prev) =>
-      prev.map((a) => (a.id === appointmentId ? { ...a, work_date: newDate } : a))
-    );
-
-    try {
-      const { error: updateError } = await supabase
-        .from("service_appointments")
-        .update({
-          work_date: newDate,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", appointmentId);
-
-      if (updateError) throw updateError;
-    } catch (err) {
-      fetchData();
-      setError(err instanceof Error ? err.message : "Failed to update date");
-    } finally {
-      setSaving(false);
+    const result = await updateAppointment(appointmentId, { work_date: newDate });
+    if (!result.success) {
+      refetch();
     }
+    setSaving(false);
   };
 
   const handleAssignTechnician = async (appointmentId: string, technicianName: string) => {
     setSaving(true);
-
-    // Optimistic update
-    setAppointments((prev) =>
-      prev.map((a) =>
-        a.id === appointmentId
-          ? { ...a, technician_name: technicianName, status: "assigned" }
-          : a
-      )
-    );
-
-    try {
-      const { error: updateError } = await supabase
-        .from("service_appointments")
-        .update({
-          technician_name: technicianName,
-          status: "assigned",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", appointmentId);
-
-      if (updateError) throw updateError;
-    } catch (err) {
-      fetchData();
-      setError(err instanceof Error ? err.message : "Failed to assign technician");
-    } finally {
-      setSaving(false);
+    const result = await assignTechnician(appointmentId, technicianName);
+    if (!result.success) {
+      refetch();
     }
+    setSaving(false);
   };
 
   // ─────────────────────────────────────────────────────────────────────────
   // DERIVED DATA
   // ─────────────────────────────────────────────────────────────────────────
   const filteredAppointments = filterTechnician === "all"
-    ? appointments
-    : appointments.filter((a) => a.technician_name === filterTechnician);
+    ? assignedAppointments
+    : assignedAppointments.filter((a) => a.technician_name === filterTechnician);
 
   const appointmentsByDate = useMemo(() => {
     const grouped: Record<string, ServiceAppointment[]> = {};
@@ -592,20 +464,8 @@ export function KanbanBoard() {
     return grouped;
   }, [filteredAppointments, weekDates]);
 
-  // Stats for header
-  const stats = useMemo(() => {
-    const allItems = [...appointments, ...waitingOrders, ...quickNotes];
-    return {
-      noTech: waitingOrders.length,
-      notes: quickNotes.length,
-      waiting: appointments.filter((a) => a.technician_name && getCardStatus(a) === "waiting").length,
-      inProgress: appointments.filter((a) => getCardStatus(a) === "in_progress").length,
-      completed: appointments.filter((a) => getCardStatus(a) === "completed").length,
-    };
-  }, [appointments, waitingOrders, quickNotes]);
-
   const activeAppointment = activeId 
-    ? (appointments.find((a) => a.id === activeId) || 
+    ? (assignedAppointments.find((a) => a.id === activeId) || 
        waitingOrders.find((a) => a.id === activeId) || 
        quickNotes.find((a) => a.id === activeId))
     : null;
@@ -629,7 +489,7 @@ export function KanbanBoard() {
       <div className="flex h-full flex-col items-center justify-center gap-4">
         <AlertCircle className="h-12 w-12 text-destructive" />
         <p className="text-sm text-muted-foreground">{error}</p>
-        <Button onClick={fetchData} variant="outline" size="sm">
+        <Button onClick={refetch} variant="outline" size="sm">
           <RefreshCw className="mr-2 h-4 w-4" />
           Опитай отново
         </Button>
@@ -704,7 +564,7 @@ export function KanbanBoard() {
               Тази седмица
             </Button>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchData} disabled={loading || saving}>
+          <Button variant="outline" size="sm" onClick={refetch} disabled={loading || saving}>
             <RefreshCw className={cn("h-4 w-4 mr-1.5", (loading || saving) && "animate-spin")} />
             Обнови
           </Button>

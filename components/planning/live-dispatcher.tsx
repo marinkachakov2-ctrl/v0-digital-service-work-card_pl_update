@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -16,7 +16,6 @@ import {
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/client";
 import { GripVertical, Clock, Loader2, AlertCircle, RefreshCw, User, ChevronLeft, ChevronRight, CalendarDays, Plus, FileText, FileEdit, X } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -29,33 +28,13 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────────────────────────────────────
-interface ServiceAppointment {
-  id: string;
-  client_name: string | null;
-  machine_model: string | null;
-  serial_number: string | null;
-  technician_name: string | null;
-  work_date: string;
-  start_time: string | null; // "HH:MM:SS"
-  end_time: string | null;
-  planned_hours: number | null;
-  status: string | null;
-  priority: string | null;
-  notes: string | null;
-  task_type: string | null; // 'order' | 'note' | null
-  created_at: string;
-  updated_at: string;
-}
-
-interface Technician {
-  id: string;
-  name: string;
-  active: boolean;
-}
+import { 
+  useAppointments, 
+  formatDateStr,
+  getStatusColor,
+  type ServiceAppointment,
+  type Technician 
+} from "@/lib/hooks/use-appointments";
 
 interface LiveDispatcherProps {
   selectedDate: Date;
@@ -171,7 +150,7 @@ function toUTCTimestamp(): string {
   return new Date().toISOString();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────��──────────────────────────
 // DRAGGABLE COMPONENTS
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -396,12 +375,31 @@ function TechnicianRow({
 // ─────────────────────────────────────────────────────────────────────────────
 export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProps) {
   const [currentDate, setCurrentDate] = useState<Date>(initialDate);
-  const [appointments, setAppointments] = useState<ServiceAppointment[]>([]);
-  const [backlog, setBacklog] = useState<ServiceAppointment[]>([]); // Global backlog (no date filter)
-  const [technicians, setTechnicians] = useState<Technician[]>([]);
-  const [loading, setLoading] = useState(true);
+  
+  // Use shared hook for data - synced with Kanban
+  const {
+    assignedAppointments,
+    sidebarBacklog, // Combined waiting orders + notes for sidebar
+    waitingOrders,
+    quickNotes,
+    technicians,
+    stats,
+    loading,
+    error,
+    refetch,
+    updateAppointment,
+    assignTechnician: assignTechnicianFromHook,
+    createQuickNote,
+    convertNoteToOrder,
+    appointmentsByTechnician,
+  } = useAppointments({ selectedDate: currentDate });
+
+  // Filter appointments for current date
+  const appointments = assignedAppointments.filter(
+    (a) => a.work_date === formatDateStr(currentDate)
+  );
+
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [dropHour, setDropHour] = useState<number | null>(null);
@@ -419,7 +417,6 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
   const [convertPriority, setConvertPriority] = useState<string>("normal");
   
   const scrollRef = useRef<HTMLDivElement>(null);
-  const supabase = createClient();
   
   // Check if selected date is today
   const isToday = formatDate(currentDate) === formatDate(new Date());
@@ -465,104 +462,6 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
   );
 
   // ─────────────────────────────────────────────────────────────────────────
-  // DATA FETCHING
-  // ─────────────────────────────────────────────────────────────────────────
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const dateStr = formatDate(currentDate);
-
-      // Fetch appointments for selected date (assigned to timeline)
-      const { data: appointmentsData, error: appointmentsError } = await supabase
-        .from("service_appointments")
-        .select("*")
-        .eq("work_date", dateStr)
-        .not("technician_name", "is", null)
-        .order("start_time", { ascending: true });
-
-      if (appointmentsError) throw appointmentsError;
-
-      // Fetch GLOBAL backlog - ALL unassigned tasks regardless of date
-      const { data: backlogData, error: backlogError } = await supabase
-        .from("service_appointments")
-        .select("*")
-        .is("technician_name", null)
-        .order("work_date", { ascending: true });
-
-      if (backlogError) throw backlogError;
-
-      // Fetch active technicians
-      const { data: techniciansData, error: techniciansError } = await supabase
-        .from("technicians")
-        .select("*")
-        .eq("active", true)
-        .order("name");
-
-      if (techniciansError) throw techniciansError;
-
-      setAppointments(appointmentsData || []);
-      setBacklog(backlogData || []);
-      setTechnicians(techniciansData || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
-    } finally {
-      setLoading(false);
-    }
-  }, [currentDate, supabase]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // REALTIME SUBSCRIPTION - Live updates from other users
-  // ─────────────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const dateStr = formatDate(currentDate);
-    
-    const channel = supabase
-      .channel(`appointments-${dateStr}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "service_appointments",
-          filter: `work_date=eq.${dateStr}`,
-        },
-        (payload) => {
-          if (payload.eventType === "INSERT") {
-            const newAppointment = payload.new as ServiceAppointment;
-            setAppointments((prev) => {
-              // Avoid duplicates
-              if (prev.some((a) => a.id === newAppointment.id)) return prev;
-              return [...prev, newAppointment].sort((a, b) => 
-                (a.start_time || "").localeCompare(b.start_time || "")
-              );
-            });
-          } else if (payload.eventType === "UPDATE") {
-            const updatedAppointment = payload.new as ServiceAppointment;
-            setAppointments((prev) =>
-              prev.map((a) => (a.id === updatedAppointment.id ? updatedAppointment : a))
-            );
-          } else if (payload.eventType === "DELETE") {
-            const deletedId = payload.old?.id;
-            if (deletedId) {
-              setAppointments((prev) => prev.filter((a) => a.id !== deletedId));
-            }
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [currentDate, supabase]);
-
-  // ─────────────────────────────────────────────────────────────────────────
   // CURRENT TIME UPDATES (every minute)
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -575,7 +474,7 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
 
   // ─────────────────────────────────────────────────────────────────────────
   // AUTO-SCROLL TO CURRENT HOUR ON TODAY
-  // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────��───────────────────────────────────────────────────
   useEffect(() => {
     if (isToday && scrollRef.current && !loading) {
       const now = new Date();
@@ -589,86 +488,41 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
   }, [isToday, loading]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // QUICK NOTE CREATION
+  // QUICK NOTE CREATION (using shared hook)
   // ─────────────────────────────────────────────────────────────────────────
   const handleAddQuickNote = async () => {
     if (!quickNoteText.trim()) return;
     
     setAddingNote(true);
-    try {
-      const { data, error: insertError } = await supabase
-        .from("service_appointments")
-        .insert({
-          client_name: quickNoteText.trim(),
-          task_type: "note",
-          work_date: formatDate(currentDate),
-          planned_hours: 1,
-          status: "scheduled",
-          priority: "normal",
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-      
-      // Add to backlog immediately
-      if (data) {
-        setBacklog((prev) => [...prev, data]);
-      }
+    const result = await createQuickNote(quickNoteText.trim(), formatDate(currentDate));
+    if (result.success) {
       setQuickNoteText("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add note");
-    } finally {
-      setAddingNote(false);
     }
+    setAddingNote(false);
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // NOTE TO ORDER CONVERSION
+  // NOTE TO ORDER CONVERSION (using shared hook)
   // ─────────────────────────────────────────────────────────────────────────
   const handleConvertNoteToOrder = async () => {
     if (!convertingNote || !convertMachineModel.trim()) return;
     
     setSaving(true);
-    try {
-      const { error: updateError } = await supabase
-        .from("service_appointments")
-        .update({
-          task_type: "order",
-          machine_model: convertMachineModel.trim(),
-          serial_number: convertSerialNumber.trim() || null,
-          priority: convertPriority,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", convertingNote.id);
-
-      if (updateError) throw updateError;
-      
-      // Update local state - the color will automatically change based on priority/notes
-      const updateFn = (a: ServiceAppointment) => 
-        a.id === convertingNote.id
-          ? { 
-              ...a, 
-              task_type: "order", 
-              machine_model: convertMachineModel.trim(), 
-              serial_number: convertSerialNumber.trim() || null,
-              priority: convertPriority,
-            }
-          : a;
-      
-      setAppointments((prev) => prev.map(updateFn));
-      setBacklog((prev) => prev.map(updateFn));
-      
+    const result = await convertNoteToOrder(
+      convertingNote.id,
+      convertMachineModel.trim(),
+      convertSerialNumber.trim() || undefined,
+      convertPriority
+    );
+    
+    if (result.success) {
       // Reset modal
       setConvertingNote(null);
       setConvertMachineModel("");
       setConvertSerialNumber("");
       setConvertPriority("normal");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to convert note");
-    } finally {
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -709,8 +563,8 @@ const handleDragEnd = async (event: DragEndEvent) => {
     if (!over) return;
 
     const appointmentId = active.id as string;
-    // Check both appointments (timeline) and backlog (waiting list)
-    const appointment = appointments.find((a) => a.id === appointmentId) || backlog.find((a) => a.id === appointmentId);
+    // Check both appointments (timeline) and sidebarBacklog (waiting list + notes)
+    const appointment = appointments.find((a) => a.id === appointmentId) || sidebarBacklog.find((a) => a.id === appointmentId);
     if (!appointment) return;
 
     // Extract technician info from drop target
@@ -760,54 +614,28 @@ const handleDragEnd = async (event: DragEndEvent) => {
     if (noChanges) return;
 
     // ─────────────────────────────────────────────────────────────────────
-    // DATABASE UPDATE (including work_date for future planning)
+    // DATABASE UPDATE using shared hook
     // ─────────────────────────────────────────────────────────────────────
     setSaving(true);
 
-    // If from backlog, remove from backlog and add to appointments
-    const isFromBacklog = backlog.some((a) => a.id === appointmentId);
-    const updatedAppointment = { 
-      ...appointment, 
-      technician_name: newTechnicianName, 
-      start_time: newStartTime,
-      work_date: newWorkDate,
-    };
+    const result = await assignTechnicianFromHook(
+      appointmentId,
+      newTechnicianName,
+      newWorkDate,
+      newStartTime
+    );
 
-    if (isFromBacklog) {
-      setBacklog((prev) => prev.filter((a) => a.id !== appointmentId));
-      setAppointments((prev) => [...prev, updatedAppointment]);
-    } else {
-      setAppointments((prev) =>
-        prev.map((a) => a.id === appointmentId ? updatedAppointment : a)
-      );
+    if (!result.success) {
+      refetch();
     }
-
-    try {
-      const { error: updateError } = await supabase
-        .from("service_appointments")
-        .update({
-          technician_name: newTechnicianName,
-          start_time: newStartTime,
-          work_date: newWorkDate,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", appointmentId);
-
-      if (updateError) throw updateError;
-    } catch (err) {
-      // Revert on error
-      fetchData();
-      setError(err instanceof Error ? err.message : "Failed to save changes");
-    } finally {
-      setSaving(false);
-    }
+    setSaving(false);
   };
 
   // ─────────────────────────────────────────────────────────────────────────
   // DERIVED DATA
   // ─────────────────────────────────────��───────────────────────────────────
-  // Waiting list: global backlog (all unassigned tasks regardless of date)
-  const waitingAppointments = backlog;
+  // Waiting list: combined waiting orders + notes from shared hook
+  const waitingAppointments = sidebarBacklog;
 
   // Appointments grouped by technician (only assigned tasks for current date)
   const appointmentsByTechnician = technicians.reduce((acc, tech) => {
@@ -817,7 +645,7 @@ const handleDragEnd = async (event: DragEndEvent) => {
 
   // Active appointment for drag overlay (check both lists)
   const activeAppointment = activeId 
-    ? (appointments.find((a) => a.id === activeId) || backlog.find((a) => a.id === activeId)) 
+    ? (appointments.find((a) => a.id === activeId) || sidebarBacklog.find((a) => a.id === activeId)) 
     : null;
 
   // Current time line position (only show on today)
@@ -844,7 +672,7 @@ const handleDragEnd = async (event: DragEndEvent) => {
       <div className="flex h-96 flex-col items-center justify-center gap-4">
         <AlertCircle className="h-12 w-12 text-destructive" />
         <p className="text-destructive">{error}</p>
-        <Button onClick={fetchData} variant="outline" size="sm">
+        <Button onClick={refetch} variant="outline" size="sm">
           <RefreshCw className="mr-2 h-4 w-4" />
           Опитай отново
         </Button>
@@ -902,7 +730,7 @@ const handleDragEnd = async (event: DragEndEvent) => {
               </Button>
             )}
             
-            <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+            <Button variant="outline" size="sm" onClick={refetch} disabled={loading}>
               <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
             </Button>
           </div>
