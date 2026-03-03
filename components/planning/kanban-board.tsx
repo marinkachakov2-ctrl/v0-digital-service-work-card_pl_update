@@ -336,6 +336,8 @@ function DayColumn({
 // ─────────────────────────────────────────────────────────────────────────────
 export function KanbanBoard() {
   const [appointments, setAppointments] = useState<ServiceAppointment[]>([]);
+  const [waitingOrders, setWaitingOrders] = useState<ServiceAppointment[]>([]); // Orders without technician
+  const [quickNotes, setQuickNotes] = useState<ServiceAppointment[]>([]); // Notes
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -343,7 +345,7 @@ export function KanbanBoard() {
   
   // Week navigation
   const [weekBaseDate, setWeekBaseDate] = useState<Date>(new Date());
-  const weekDates = useMemo(() => getWeekDates(weekBaseDate), [weekBaseDate]);
+  const weekDates = useMemo(() => getWeekDates(weekBaseDate).slice(0, 5), [weekBaseDate]); // Only Mon-Fri
   
   // Filter state
   const [filterTechnician, setFilterTechnician] = useState<string>("all");
@@ -372,17 +374,37 @@ export function KanbanBoard() {
 
     try {
       const startDate = formatDateStr(weekDates[0]);
-      const endDate = formatDateStr(weekDates[6]);
+      const endDate = formatDateStr(weekDates[4]); // Only Mon-Fri
 
-      // Fetch appointments for the week
+      // Fetch appointments for the week (assigned with technician)
       const { data: appointmentsData, error: appointmentsError } = await supabase
         .from("service_appointments")
         .select("*")
         .gte("work_date", startDate)
         .lte("work_date", endDate)
+        .not("technician_name", "is", null)
         .order("start_time", { ascending: true });
 
       if (appointmentsError) throw appointmentsError;
+
+      // Fetch waiting orders (no technician, task_type = 'order' or null)
+      const { data: waitingData, error: waitingError } = await supabase
+        .from("service_appointments")
+        .select("*")
+        .is("technician_name", null)
+        .or("task_type.eq.order,task_type.is.null")
+        .order("work_date", { ascending: true });
+
+      if (waitingError) throw waitingError;
+
+      // Fetch quick notes (task_type = 'note')
+      const { data: notesData, error: notesError } = await supabase
+        .from("service_appointments")
+        .select("*")
+        .eq("task_type", "note")
+        .order("created_at", { ascending: false });
+
+      if (notesError) throw notesError;
 
       // Fetch active technicians
       const { data: techniciansData, error: techniciansError } = await supabase
@@ -394,6 +416,8 @@ export function KanbanBoard() {
       if (techniciansError) throw techniciansError;
 
       setAppointments(appointmentsData || []);
+      setWaitingOrders(waitingData || []);
+      setQuickNotes(notesData || []);
       setTechnicians(techniciansData || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
@@ -420,23 +444,8 @@ export function KanbanBoard() {
           table: "service_appointments",
         },
         (payload) => {
-          if (payload.eventType === "INSERT") {
-            const newAppointment = payload.new as ServiceAppointment;
-            setAppointments((prev) => {
-              if (prev.some((a) => a.id === newAppointment.id)) return prev;
-              return [...prev, newAppointment];
-            });
-          } else if (payload.eventType === "UPDATE") {
-            const updatedAppointment = payload.new as ServiceAppointment;
-            setAppointments((prev) =>
-              prev.map((a) => (a.id === updatedAppointment.id ? updatedAppointment : a))
-            );
-          } else if (payload.eventType === "DELETE") {
-            const deletedId = payload.old?.id;
-            if (deletedId) {
-              setAppointments((prev) => prev.filter((a) => a.id !== deletedId));
-            }
-          }
+          // Refetch to ensure proper categorization
+          fetchData();
         }
       )
       .subscribe();
@@ -489,19 +498,22 @@ export function KanbanBoard() {
     if (!over) return;
 
     const appointmentId = active.id as string;
-    const targetDateStr = over.id as string;
+    const targetId = over.id as string;
 
-    // Validate target is a date string
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDateStr)) return;
-
-    const appointment = appointments.find((a) => a.id === appointmentId);
+    // Find appointment in any list
+    const appointment = 
+      appointments.find((a) => a.id === appointmentId) ||
+      waitingOrders.find((a) => a.id === appointmentId) ||
+      quickNotes.find((a) => a.id === appointmentId);
+    
     if (!appointment) return;
 
-    // No change needed
-    if (appointment.work_date === targetDateStr) return;
-
-    // Update work_date in database
-    await updateAppointmentDate(appointmentId, targetDateStr);
+    // Check if target is a day column (date string)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(targetId)) {
+      // Moving to a day - update work_date
+      if (appointment.work_date === targetId && appointment.technician_name) return;
+      await updateAppointmentDate(appointmentId, targetId);
+    }
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -582,18 +594,24 @@ export function KanbanBoard() {
 
   // Stats for header
   const stats = useMemo(() => {
+    const allItems = [...appointments, ...waitingOrders, ...quickNotes];
     return {
-      noTech: appointments.filter((a) => !a.technician_name).length,
+      noTech: waitingOrders.length,
+      notes: quickNotes.length,
       waiting: appointments.filter((a) => a.technician_name && getCardStatus(a) === "waiting").length,
       inProgress: appointments.filter((a) => getCardStatus(a) === "in_progress").length,
       completed: appointments.filter((a) => getCardStatus(a) === "completed").length,
     };
-  }, [appointments]);
+  }, [appointments, waitingOrders, quickNotes]);
 
-  const activeAppointment = activeId ? appointments.find((a) => a.id === activeId) : null;
+  const activeAppointment = activeId 
+    ? (appointments.find((a) => a.id === activeId) || 
+       waitingOrders.find((a) => a.id === activeId) || 
+       quickNotes.find((a) => a.id === activeId))
+    : null;
 
-  // Week display range
-  const weekRangeDisplay = `${formatDateDisplay(weekDates[0])} - ${formatDateDisplay(weekDates[6])}`;
+  // Week display range (Mon-Fri)
+  const weekRangeDisplay = `${formatDateDisplay(weekDates[0])} - ${formatDateDisplay(weekDates[4])}`;
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -638,8 +656,8 @@ export function KanbanBoard() {
             </div>
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-amber-400" />
-              <span className="text-xs text-muted-foreground">Чакащи</span>
-              <Badge variant="secondary" className="text-xs">{stats.waiting}</Badge>
+              <span className="text-xs text-muted-foreground">Бележки</span>
+              <Badge variant="secondary" className="text-xs">{stats.notes}</Badge>
             </div>
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-green-500" />
@@ -702,8 +720,9 @@ export function KanbanBoard() {
           </div>
         )}
 
-        {/* Day Columns */}
+        {/* Columns */}
         <div className="flex-1 flex gap-3 overflow-x-auto pb-4">
+          {/* Mon-Fri Day Columns */}
           {weekDates.map((date, index) => {
             const dateStr = formatDateStr(date);
             return (
@@ -719,6 +738,69 @@ export function KanbanBoard() {
               />
             );
           })}
+          
+          {/* Special Column: Чакащи поръчки */}
+          <div className="flex flex-col rounded-lg border bg-red-50 dark:bg-red-950/20 min-w-[200px] flex-1 border-red-200 dark:border-red-900">
+            <div className="flex items-center justify-between border-b border-red-200 dark:border-red-900 px-3 py-2.5 rounded-t-lg bg-red-100 dark:bg-red-950/40">
+              <div className="flex flex-col">
+                <span className="font-semibold text-sm text-red-700 dark:text-red-400">Чакащи поръчки</span>
+                <span className="text-[10px] text-red-600/70 dark:text-red-400/70">Без техник</span>
+              </div>
+              <Badge variant="secondary" className="text-xs bg-red-200 text-red-800">
+                {waitingOrders.length}
+              </Badge>
+            </div>
+            <ScrollArea className="flex-1 p-2">
+              <div className="space-y-2">
+                {waitingOrders.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center text-red-400">
+                    <p className="text-xs">Няма чакащи</p>
+                  </div>
+                ) : (
+                  waitingOrders.map((apt) => (
+                    <KanbanCard
+                      key={apt.id}
+                      appointment={apt}
+                      technicians={technicians}
+                      onAssignTechnician={handleAssignTechnician}
+                    />
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+
+          {/* Special Column: Бързи бележки */}
+          <div className="flex flex-col rounded-lg border bg-amber-50 dark:bg-amber-950/20 min-w-[200px] flex-1 border-amber-200 dark:border-amber-900">
+            <div className="flex items-center justify-between border-b border-amber-200 dark:border-amber-900 px-3 py-2.5 rounded-t-lg bg-amber-100 dark:bg-amber-950/40">
+              <div className="flex flex-col">
+                <span className="font-semibold text-sm text-amber-700 dark:text-amber-400">Бързи бележки</span>
+                <span className="text-[10px] text-amber-600/70 dark:text-amber-400/70">Notes</span>
+              </div>
+              <Badge variant="secondary" className="text-xs bg-amber-200 text-amber-800">
+                {quickNotes.length}
+              </Badge>
+            </div>
+            <ScrollArea className="flex-1 p-2">
+              <div className="space-y-2">
+                {quickNotes.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center text-amber-400">
+                    <FileText className="h-6 w-6 mb-1 opacity-50" />
+                    <p className="text-xs">Няма бележки</p>
+                  </div>
+                ) : (
+                  quickNotes.map((apt) => (
+                    <KanbanCard
+                      key={apt.id}
+                      appointment={apt}
+                      technicians={technicians}
+                      onAssignTechnician={handleAssignTechnician}
+                    />
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </div>
         </div>
       </div>
 
