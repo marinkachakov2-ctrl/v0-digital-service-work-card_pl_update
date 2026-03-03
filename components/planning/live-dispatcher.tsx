@@ -374,9 +374,20 @@ function TechnicianRow({
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProps) {
+  console.log("[v0] LiveDispatcher mounting with initialDate:", initialDate);
+  
   const [currentDate, setCurrentDate] = useState<Date>(initialDate);
   
   // Use shared hook for data - synced with Kanban
+  const hookResult = useAppointments({ selectedDate: currentDate });
+  
+  console.log("[v0] useAppointments result:", {
+    loading: hookResult.loading,
+    error: hookResult.error,
+    techniciansCount: hookResult.technicians?.length,
+    assignedCount: hookResult.assignedAppointments?.length,
+  });
+  
   const {
     assignedAppointments,
     sidebarBacklog, // Combined waiting orders + notes for sidebar
@@ -392,7 +403,7 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
     createQuickNote,
     convertNoteToOrder,
     appointmentsByTechnician,
-  } = useAppointments({ selectedDate: currentDate });
+  } = hookResult;
 
   // Filter appointments for current date
   const appointments = assignedAppointments.filter(

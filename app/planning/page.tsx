@@ -1,7 +1,40 @@
 "use client";
 
-import { useState } from "react";
-import { Wrench, ChevronRight, Home, Calendar, Users, Clock, ArrowLeft, LayoutGrid, GanttChart, CalendarRange } from "lucide-react";
+import { useState, Component, type ReactNode } from "react";
+import { Wrench, ChevronRight, Home, Calendar, Users, Clock, ArrowLeft, LayoutGrid, GanttChart, CalendarRange, AlertTriangle } from "lucide-react";
+
+// Error Boundary to catch and display errors
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+          <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+          <h2 className="text-lg font-semibold text-red-600 mb-2">Грешка при зареждане</h2>
+          <p className="text-sm text-muted-foreground mb-4 max-w-md">
+            {this.state.error?.message || "Възникна неочаквана грешка"}
+          </p>
+          <button 
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm"
+          >
+            Опитай отново
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -336,21 +369,27 @@ export default function PlanningBoardPage() {
         {/* Live Dispatcher View - Full-stack with Supabase */}
         {navigation.level === "dispatcher" && navigation.selectedDate && (
           <div className="h-[calc(100vh-180px)]">
-            <LiveDispatcher selectedDate={navigation.selectedDate} />
+            <ErrorBoundary>
+              <LiveDispatcher selectedDate={navigation.selectedDate} />
+            </ErrorBoundary>
           </div>
         )}
 
         {/* Calendar View - Full-stack planning calendar */}
         {navigation.level === "calendar" && (
           <div className="h-[calc(100vh-180px)]">
-            <ServicePlanningCalendar userRole="admin" />
+            <ErrorBoundary>
+              <ServicePlanningCalendar userRole="admin" />
+            </ErrorBoundary>
           </div>
         )}
 
         {/* Kanban View - Status-based board */}
         {navigation.level === "kanban" && (
           <div className="h-[calc(100vh-180px)]">
-            <KanbanBoard />
+            <ErrorBoundary>
+              <KanbanBoard />
+            </ErrorBoundary>
           </div>
         )}
 
