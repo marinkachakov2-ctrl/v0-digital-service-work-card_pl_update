@@ -102,24 +102,6 @@ function getDayLabel(date: Date, index: number): { short: string; full: string }
     full: date.toLocaleDateString("bg-BG", { day: "numeric", month: "long" }),
   };
 }
-  return dates;
-}
-
-function formatDateStr(date: Date): string {
-  return date.toISOString().split("T")[0];
-}
-
-function formatDateDisplay(date: Date): string {
-  return date.toLocaleDateString("bg-BG", { day: "2-digit", month: "short" });
-}
-
-function getCardStatus(appointment: ServiceAppointment): string {
-  if (!appointment.technician_name) return "no_tech";
-  const status = appointment.status?.toLowerCase() || "";
-  if (status === "completed" || status === "done") return "completed";
-  if (status === "in_progress" || status === "active") return "in_progress";
-  return "waiting";
-}
 
 function formatTime(timeStr: string | null): string {
   if (!timeStr) return "";
@@ -433,9 +415,9 @@ export function KanbanBoard() {
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────���───
   // UPDATE FUNCTIONS (using shared hook)
-  // ───────────────────────────────────────────────────────────────��─────────
+  // ───────────────────────────────���───────────────────────────────��─────────
   const updateAppointmentDate = async (appointmentId: string, newDate: string) => {
     setSaving(true);
     const result = await updateAppointment(appointmentId, { work_date: newDate });
