@@ -103,6 +103,7 @@ function getDayLabel(date: Date, index: number): { short: string; full: string }
   };
 }
 
+// Format time string for display
 function formatTime(timeStr: string | null): string {
   if (!timeStr) return "";
   const [hours, minutes] = timeStr.split(":");
