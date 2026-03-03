@@ -258,7 +258,7 @@ function DayColumn({
   dayIndex: number;
   appointments: ServiceAppointment[];
   technicians: Technician[];
-  onAssignTechnician: (appointmentId: string, technicianName: string) => void;
+  onAssignTechnician: (appointmentId: string, technicianName: string, workDate?: string) => void;
   isOver: boolean;
   isToday: boolean;
 }) {
@@ -267,6 +267,11 @@ function DayColumn({
     id: dateStr,
     data: { date, dateStr },
   });
+
+  // Wrap handler to include the date
+  const handleAssign = (appointmentId: string, technicianName: string) => {
+    onAssignTechnician(appointmentId, technicianName, dateStr);
+  };
 
   return (
     <div
@@ -311,7 +316,7 @@ function DayColumn({
                 key={apt.id}
                 appointment={apt}
                 technicians={technicians}
-                onAssignTechnician={onAssignTechnician}
+                onAssignTechnician={handleAssign}
               />
             ))
           )}
@@ -429,7 +434,7 @@ export function KanbanBoard() {
 
   // ─────────────────────────────────────────────────────────────────────────
   // UPDATE FUNCTIONS (using shared hook)
-  // ─────────────────────────────────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────��─────────
   const updateAppointmentDate = async (appointmentId: string, newDate: string) => {
     setSaving(true);
     const result = await updateAppointment(appointmentId, { work_date: newDate });
@@ -439,9 +444,11 @@ export function KanbanBoard() {
     setSaving(false);
   };
 
-  const handleAssignTechnician = async (appointmentId: string, technicianName: string) => {
+  const handleAssignTechnician = async (appointmentId: string, technicianName: string, workDate?: string) => {
     setSaving(true);
-    const result = await assignTechnician(appointmentId, technicianName);
+    // Default to today's date if not specified (e.g., from dropdown in special columns)
+    const targetDate = workDate || formatDateStr(new Date());
+    const result = await assignTechnician(appointmentId, technicianName, targetDate);
     if (!result.success) {
       refetch();
     }

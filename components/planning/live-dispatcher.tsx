@@ -16,7 +16,7 @@ import {
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { GripVertical, Clock, Loader2, AlertCircle, RefreshCw, User, ChevronLeft, ChevronRight, CalendarDays, Plus, FileText, FileEdit, X } from "lucide-react";
+import { GripVertical, Clock, Loader2, AlertCircle, RefreshCw, User, ChevronLeft, ChevronRight, CalendarDays, Plus, FileText, FileEdit, X, ArrowRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import {
@@ -631,17 +631,14 @@ const handleDragEnd = async (event: DragEndEvent) => {
     setSaving(false);
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
   // DERIVED DATA
-  // ─────────────────────────────────────��───────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
   // Waiting list: combined waiting orders + notes from shared hook
   const waitingAppointments = sidebarBacklog;
 
-  // Appointments grouped by technician (only assigned tasks for current date)
-  const appointmentsByTechnician = technicians.reduce((acc, tech) => {
-    acc[tech.name] = appointments.filter((a) => a.technician_name === tech.name);
-    return acc;
-  }, {} as Record<string, ServiceAppointment[]>);
+  // Appointments grouped by technician for current date (from shared hook)
+  const techAppointments = appointmentsByTechnician(currentDate);
 
   // Active appointment for drag overlay (check both lists)
   const activeAppointment = activeId 
@@ -788,7 +785,7 @@ const handleDragEnd = async (event: DragEndEvent) => {
                   <TechnicianRow
                     key={tech.id}
                     technician={tech}
-                    appointments={appointmentsByTechnician[tech.name] || []}
+                    appointments={techAppointments[tech.name] || []}
                     isOver={overId === `tech-${tech.id}`}
                     dropHour={overId === `tech-${tech.id}` ? dropHour : null}
                     onConvertNote={(apt) => {
