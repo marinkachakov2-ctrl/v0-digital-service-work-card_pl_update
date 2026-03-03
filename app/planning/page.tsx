@@ -1,7 +1,19 @@
 "use client";
 
 import { useState, Component, type ReactNode } from "react";
-import { Wrench, ChevronRight, Home, Calendar, Users, Clock, ArrowLeft, LayoutGrid, GanttChart, CalendarRange, AlertTriangle } from "lucide-react";
+import { Wrench, ChevronRight, Home, Calendar, Users, Clock, ArrowLeft, LayoutGrid, GanttChart, CalendarRange, AlertTriangle, Columns3 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+import { WorkshopDiary } from "@/components/planning/workshop-diary";
+import { TechnicianRoster } from "@/components/planning/technician-roster";
+import { DragDropScheduler } from "@/components/planning/drag-drop-scheduler";
+import { HourlyGantt } from "@/components/planning/hourly-gantt";
+import { LiveDispatcher } from "@/components/planning/live-dispatcher";
+import { WeeklyTaskView, type WeeklyTask, type WeeklyNote } from "@/components/planning/weekly-task-view";
+import { ServiceWideView, type ServiceTask } from "@/components/planning/service-wide-view";
+import { ServicePlanningCalendar } from "@/components/planning/service-planning-calendar";
+import { KanbanBoard } from "@/components/planning/kanban-board";
 
 // Error Boundary to catch and display errors
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
@@ -35,19 +47,6 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
     return this.props.children;
   }
 }
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import { cn } from "@/lib/utils";
-import { WorkshopDiary } from "@/components/planning/workshop-diary";
-import { TechnicianRoster } from "@/components/planning/technician-roster";
-import { DragDropScheduler } from "@/components/planning/drag-drop-scheduler";
-import { HourlyGantt } from "@/components/planning/hourly-gantt";
-import { LiveDispatcher } from "@/components/planning/live-dispatcher";
-import { WeeklyTaskView, type WeeklyTask, type WeeklyNote } from "@/components/planning/weekly-task-view";
-import { ServiceWideView, type ServiceTask } from "@/components/planning/service-wide-view";
-import { ServicePlanningCalendar } from "@/components/planning/service-planning-calendar";
-import { KanbanBoard } from "@/components/planning/kanban-board";
-import { Columns3 } from "lucide-react";
 
 type ViewLevel = "diary" | "roster" | "gantt" | "calendar" | "dispatcher" | "kanban";
 
