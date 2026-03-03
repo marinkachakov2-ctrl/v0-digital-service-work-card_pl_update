@@ -4,14 +4,14 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TYPES
+// TYPES - Single source of truth
 // ─────────────────────────────────────────────────────────────────────────────
 export interface ServiceAppointment {
   id: string;
   client_name: string | null;
   machine_model: string | null;
   serial_number: string | null;
-  technician_name: string | null;
+  technician_name: string | null; // <-- THIS is the column we use, NOT technician_id
   work_date: string;
   start_time: string | null;
   end_time: string | null;
@@ -28,7 +28,6 @@ export interface Technician {
   id: string;
   name: string;
   active: boolean;
-  specialization?: string | null;
 }
 
 export interface AppointmentStats {
@@ -41,19 +40,18 @@ export interface AppointmentStats {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HELPER FUNCTIONS
+// HELPER FUNCTIONS - Exported for use in components
 // ─────────────────────────────────────────────────────────────────────────────
 export function formatDateStr(date: Date): string {
   return date.toISOString().split("T")[0];
 }
 
-export function getCardStatus(appointment: ServiceAppointment): "no_tech" | "waiting" | "in_progress" | "completed" | "note" {
-  if (appointment.task_type === "note") return "note";
-  if (!appointment.technician_name) return "no_tech";
-  
-  const status = appointment.status?.toLowerCase();
-  if (status === "completed" || status === "done" || status === "завършена") return "completed";
-  if (status === "in_progress" || status === "started" || status === "в процес") return "in_progress";
+export function getCardStatus(apt: ServiceAppointment): "no_tech" | "note" | "waiting" | "in_progress" | "completed" {
+  if (apt.task_type === "note") return "note";
+  if (!apt.technician_name) return "no_tech";
+  const s = apt.status?.toLowerCase() || "";
+  if (s === "completed" || s === "done" || s === "завършена") return "completed";
+  if (s === "in_progress" || s === "started" || s === "в процес") return "in_progress";
   return "waiting";
 }
 
@@ -69,7 +67,8 @@ export function getStatusColor(status: ReturnType<typeof getCardStatus>) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// UNIFIED HOOK
+// UNIFIED APPOINTMENTS HOOK
+// Both Kanban and Gantt use this SINGLE hook for data consistency
 // ─────────────────────────────────────────────────────────────────────────────
 interface UseAppointmentsOptions {
   dateRange?: { start: Date; end: Date };
@@ -87,82 +86,77 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
   const supabase = createClient();
 
   // ─────────────────────────────────────────────────────────────────────────
-  // FETCH DATA
+  // SINGLE FETCH FUNCTION - Fetches ALL data needed
   // ─────────────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // Build query for appointments
-      let appointmentsQuery = supabase
+      // 1. Fetch ALL technicians from database
+      const { data: techData, error: techError } = await supabase
+        .from("technicians")
+        .select("id, name, active")
+        .eq("active", true)
+        .order("name");
+
+      if (techError) throw techError;
+
+      // 2. Fetch appointments with optional date filtering
+      let query = supabase
         .from("service_appointments")
         .select("*")
         .order("work_date", { ascending: true })
         .order("start_time", { ascending: true });
 
-      // Apply date range filter if provided
       if (dateRange) {
-        const startStr = formatDateStr(dateRange.start);
-        const endStr = formatDateStr(dateRange.end);
-        appointmentsQuery = appointmentsQuery
-          .gte("work_date", startStr)
-          .lte("work_date", endStr);
+        query = query
+          .gte("work_date", formatDateStr(dateRange.start))
+          .lte("work_date", formatDateStr(dateRange.end));
       } else if (selectedDate) {
-        const dateStr = formatDateStr(selectedDate);
-        appointmentsQuery = appointmentsQuery.eq("work_date", dateStr);
+        query = query.eq("work_date", formatDateStr(selectedDate));
       }
 
-      const { data: appointmentsData, error: appointmentsError } = await appointmentsQuery;
-      if (appointmentsError) throw appointmentsError;
+      const { data: dateAppointments, error: aptError } = await query;
+      if (aptError) throw aptError;
 
-      // Also fetch ALL backlog items (no technician) regardless of date
+      // 3. ALWAYS fetch global backlog (unassigned tasks, any date)
       const { data: backlogData, error: backlogError } = await supabase
         .from("service_appointments")
         .select("*")
         .is("technician_name", null)
         .order("work_date", { ascending: true });
-      
+
       if (backlogError) throw backlogError;
 
-      // Also fetch ALL notes regardless of date
+      // 4. ALWAYS fetch all notes (task_type = 'note')
       const { data: notesData, error: notesError } = await supabase
         .from("service_appointments")
         .select("*")
         .eq("task_type", "note")
         .order("created_at", { ascending: false });
-      
+
       if (notesError) throw notesError;
 
-      // Merge all data, removing duplicates by id
-      const allData = [...(appointmentsData || [])];
-      const seenIds = new Set(allData.map(a => a.id));
-      
-      for (const item of (backlogData || [])) {
-        if (!seenIds.has(item.id)) {
-          allData.push(item);
-          seenIds.add(item.id);
-        }
-      }
-      
-      for (const item of (notesData || [])) {
-        if (!seenIds.has(item.id)) {
-          allData.push(item);
-          seenIds.add(item.id);
-        }
-      }
+      // 5. Merge all appointments, removing duplicates
+      const merged: ServiceAppointment[] = [];
+      const seenIds = new Set<string>();
 
-      // Fetch technicians
-      const { data: techniciansData, error: techniciansError } = await supabase
-        .from("technicians")
-        .select("*")
-        .eq("active", true)
-        .order("name");
+      const addUnique = (items: ServiceAppointment[] | null) => {
+        (items || []).forEach((item) => {
+          if (!seenIds.has(item.id)) {
+            merged.push(item);
+            seenIds.add(item.id);
+          }
+        });
+      };
 
-      if (techniciansError) throw techniciansError;
+      addUnique(dateAppointments);
+      addUnique(backlogData);
+      addUnique(notesData);
 
-      setAllAppointments(allData);
-      setTechnicians(techniciansData || []);
+      setTechnicians(techData || []);
+      setAllAppointments(merged);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
@@ -176,25 +170,20 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
   }, [fetchData]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // REALTIME SUBSCRIPTION
+  // REALTIME - Force complete refresh on ANY change
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     const channel = supabase
-      .channel("appointments-sync")
+      .channel("schema-db-changes")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "service_appointments" },
-        () => {
-          // Refetch all data on any change for consistency
-          fetchData();
-        }
+        () => fetchData()
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "technicians" },
-        () => {
-          fetchData();
-        }
+        () => fetchData()
       )
       .subscribe();
 
@@ -204,14 +193,12 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
   }, [supabase, fetchData]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // DERIVED DATA - Same filters for both Kanban and Gantt
+  // DERIVED DATA - IDENTICAL filters for Kanban and Gantt
   // ─────────────────────────────────────────────────────────────────────────
-  
-  // Waiting Orders: technician_name IS NULL AND task_type != 'note'
+
+  // Waiting Orders: no technician AND not a note
   const waitingOrders = useMemo(() => {
-    return allAppointments.filter(
-      (a) => !a.technician_name && a.task_type !== "note"
-    );
+    return allAppointments.filter((a) => !a.technician_name && a.task_type !== "note");
   }, [allAppointments]);
 
   // Quick Notes: task_type = 'note'
@@ -219,56 +206,40 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
     return allAppointments.filter((a) => a.task_type === "note");
   }, [allAppointments]);
 
-  // Assigned appointments (has technician)
+  // Assigned: has technician_name AND not a note
   const assignedAppointments = useMemo(() => {
-    return allAppointments.filter((a) => a.technician_name && a.task_type !== "note");
+    return allAppointments.filter((a) => !!a.technician_name && a.task_type !== "note");
   }, [allAppointments]);
 
-  // Combined backlog for sidebar (both waiting orders and notes)
+  // Sidebar backlog = waiting orders + notes (for Gantt sidebar)
   const sidebarBacklog = useMemo(() => {
-    return [...waitingOrders, ...quickNotes].sort((a, b) => {
-      // Notes first, then by date
-      if (a.task_type === "note" && b.task_type !== "note") return 1;
-      if (a.task_type !== "note" && b.task_type === "note") return -1;
-      return (a.work_date || "").localeCompare(b.work_date || "");
-    });
+    return [...waitingOrders, ...quickNotes];
   }, [waitingOrders, quickNotes]);
 
-  // Stats
-  const stats: AppointmentStats = useMemo(() => {
-    return {
-      noTech: waitingOrders.length,
-      notes: quickNotes.length,
-      waiting: assignedAppointments.filter((a) => getCardStatus(a) === "waiting").length,
-      inProgress: assignedAppointments.filter((a) => getCardStatus(a) === "in_progress").length,
-      completed: assignedAppointments.filter((a) => getCardStatus(a) === "completed").length,
-      total: allAppointments.length,
-    };
-  }, [allAppointments, waitingOrders, quickNotes, assignedAppointments]);
+  // Stats - same for both views
+  const stats: AppointmentStats = useMemo(() => ({
+    noTech: waitingOrders.length,
+    notes: quickNotes.length,
+    waiting: assignedAppointments.filter((a) => getCardStatus(a) === "waiting").length,
+    inProgress: assignedAppointments.filter((a) => getCardStatus(a) === "in_progress").length,
+    completed: assignedAppointments.filter((a) => getCardStatus(a) === "completed").length,
+    total: allAppointments.length,
+  }), [allAppointments, waitingOrders, quickNotes, assignedAppointments]);
 
-  // Group by date
-  const appointmentsByDate = useCallback((dates: Date[]) => {
-    const grouped: Record<string, ServiceAppointment[]> = {};
-    dates.forEach((date) => {
-      const dateStr = formatDateStr(date);
-      grouped[dateStr] = assignedAppointments.filter((a) => a.work_date === dateStr);
-    });
-    return grouped;
-  }, [assignedAppointments]);
-
-  // Group by technician for a specific date
-  const appointmentsByTechnician = useCallback((date: Date) => {
+  // Group by technician for a specific date (Gantt rows)
+  const appointmentsByTechnician = useCallback((date: Date): Record<string, ServiceAppointment[]> => {
     const dateStr = formatDateStr(date);
-    const grouped: Record<string, ServiceAppointment[]> = {};
+    const result: Record<string, ServiceAppointment[]> = {};
     
+    // Create an entry for EVERY technician from DB
     technicians.forEach((tech) => {
-      grouped[tech.name] = assignedAppointments.filter(
+      result[tech.name] = assignedAppointments.filter(
         (a) => a.work_date === dateStr && a.technician_name === tech.name
       );
     });
     
-    return grouped;
-  }, [assignedAppointments, technicians]);
+    return result;
+  }, [technicians, assignedAppointments]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // MUTATIONS
@@ -280,19 +251,10 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
     try {
       const { error: updateError } = await supabase
         .from("service_appointments")
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ ...updates, updated_at: new Date().toISOString() })
         .eq("id", id);
 
       if (updateError) throw updateError;
-      
-      // Optimistic update
-      setAllAppointments((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, ...updates } : a))
-      );
-      
       return { success: true };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : "Update failed" };
@@ -300,27 +262,23 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
   }, [supabase]);
 
   const assignTechnician = useCallback(async (
-    appointmentId: string,
+    id: string,
     technicianName: string,
     workDate?: string,
     startTime?: string
   ): Promise<{ success: boolean; error?: string }> => {
-    const updates: Partial<ServiceAppointment> = {
-      technician_name: technicianName,
-    };
-    
+    const updates: Partial<ServiceAppointment> = { technician_name: technicianName };
     if (workDate) updates.work_date = workDate;
     if (startTime) updates.start_time = startTime;
-    
-    return updateAppointment(appointmentId, updates);
+    return updateAppointment(id, updates);
   }, [updateAppointment]);
 
   const createQuickNote = useCallback(async (
     text: string,
     workDate?: string
-  ): Promise<{ success: boolean; error?: string; data?: ServiceAppointment }> => {
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
-      const { data, error: insertError } = await supabase
+      const { error: insertError } = await supabase
         .from("service_appointments")
         .insert({
           client_name: text.trim(),
@@ -329,17 +287,10 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
           planned_hours: 1,
           status: "scheduled",
           priority: "normal",
-        })
-        .select()
-        .single();
+        });
 
       if (insertError) throw insertError;
-      
-      if (data) {
-        setAllAppointments((prev) => [...prev, data]);
-      }
-      
-      return { success: true, data };
+      return { success: true };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : "Failed to create note" };
     }
@@ -369,8 +320,7 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
     technicians,
     stats,
     
-    // Computed
-    appointmentsByDate,
+    // Computed functions
     appointmentsByTechnician,
     
     // State

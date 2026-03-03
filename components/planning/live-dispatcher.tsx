@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -374,41 +374,25 @@ function TechnicianRow({
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProps) {
-  console.log("[v0] LiveDispatcher mounting with initialDate:", initialDate);
-  
   const [currentDate, setCurrentDate] = useState<Date>(initialDate);
   
   // Use shared hook for data - synced with Kanban
-  const hookResult = useAppointments({ selectedDate: currentDate });
-  
-  console.log("[v0] useAppointments result:", {
-    loading: hookResult.loading,
-    error: hookResult.error,
-    techniciansCount: hookResult.technicians?.length,
-    assignedCount: hookResult.assignedAppointments?.length,
-  });
-  
   const {
     assignedAppointments,
-    sidebarBacklog, // Combined waiting orders + notes for sidebar
-    waitingOrders,
-    quickNotes,
+    sidebarBacklog,
     technicians,
     stats,
     loading,
     error,
     refetch,
-    updateAppointment,
     assignTechnician: assignTechnicianFromHook,
     createQuickNote,
     convertNoteToOrder,
     appointmentsByTechnician,
-  } = hookResult;
+  } = useAppointments({ selectedDate: currentDate });
 
-  // Filter appointments for current date
-  const appointments = assignedAppointments.filter(
-    (a) => a.work_date === formatDateStr(currentDate)
-  );
+  // Get appointments grouped by technician for current date
+  const techAppointments = appointmentsByTechnician(currentDate);
 
   const [saving, setSaving] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -648,12 +632,9 @@ const handleDragEnd = async (event: DragEndEvent) => {
   // Waiting list: combined waiting orders + notes from shared hook
   const waitingAppointments = sidebarBacklog;
 
-  // Appointments grouped by technician for current date (from shared hook)
-  const techAppointments = appointmentsByTechnician(currentDate);
-
   // Active appointment for drag overlay (check both lists)
   const activeAppointment = activeId 
-    ? (appointments.find((a) => a.id === activeId) || sidebarBacklog.find((a) => a.id === activeId)) 
+    ? (assignedAppointments.find((a) => a.id === activeId) || sidebarBacklog.find((a) => a.id === activeId)) 
     : null;
 
   // Current time line position (only show on today)

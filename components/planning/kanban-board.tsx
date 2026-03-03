@@ -334,28 +334,13 @@ export function KanbanBoard() {
   const [weekBaseDate, setWeekBaseDate] = useState<Date>(new Date());
   const weekDates = useMemo(() => getWeekDates(weekBaseDate).slice(0, 5), [weekBaseDate]); // Only Mon-Fri
   
-  console.log("[v0] KanbanBoard weekDates:", weekDates?.length, weekDates?.[0], weekDates?.[4]);
+  // Date range for the hook
+  const dateRange = useMemo(() => ({
+    start: weekDates[0],
+    end: weekDates[4],
+  }), [weekDates]);
   
-  // Use shared hook for data - only create dateRange if weekDates is valid
-  const dateRange = useMemo(() => {
-    if (!weekDates || weekDates.length < 5) {
-      console.log("[v0] KanbanBoard: weekDates not ready");
-      return undefined;
-    }
-    return {
-      start: weekDates[0],
-      end: weekDates[4],
-    };
-  }, [weekDates]);
-  
-  const hookResult = useAppointments({ dateRange });
-  
-  console.log("[v0] KanbanBoard useAppointments result:", {
-    loading: hookResult.loading,
-    error: hookResult.error,
-    techniciansCount: hookResult.technicians?.length,
-  });
-  
+  // Use shared hook for data - synced with Gantt
   const {
     assignedAppointments,
     waitingOrders,
@@ -367,7 +352,7 @@ export function KanbanBoard() {
     refetch,
     assignTechnician,
     updateAppointment,
-  } = hookResult;
+  } = useAppointments({ dateRange });
 
   const [saving, setSaving] = useState(false);
   
