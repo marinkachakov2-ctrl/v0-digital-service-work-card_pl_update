@@ -16,6 +16,9 @@ import {
   CalendarPlus,
   FileText,
   StickyNote,
+  ArrowUpRight,
+  Split,
+  ChevronDown,
   Trash2,
   Pencil,
   Play,
@@ -45,23 +48,37 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import { useClocking, type ClockingActivity } from "@/lib/clocking-context";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 // Types
 interface ScheduledTask {
   id: string;
   orderId: string;
+  orderNumber: string;
+  jobCardNumber: string;
   technicianId: string;
   type: "service" | "repair" | "inspection" | "custom";
+  status: "active" | "overdue" | "completed" | "pending";
   startHour: number;
   startMinute: number;
   durationMinutes: number;
   description: string;
   color?: string;
+  progressNotes?: string[];
 }
 
 interface UnassignedOrder {
   id: string;
   orderId: string;
+  orderNumber: string;
+  jobCardNumber: string;
   description: string;
   estimatedHours: number;
   type: "service" | "repair" | "inspection";
@@ -70,6 +87,8 @@ interface UnassignedOrder {
 interface UnbilledJob {
   id: string;
   orderId: string;
+  orderNumber: string;
+  jobCardNumber: string;
   clientName: string;
   dateFinished: string;
   description: string;
@@ -118,8 +137,11 @@ const initialTasks: ScheduledTask[] = [
   {
     id: "t1",
     orderId: "#12345",
+    orderNumber: "ON-5521",
+    jobCardNumber: "JC-0012",
     technicianId: "tech-1",
     type: "service",
+    status: "completed",
     startHour: 8,
     startMinute: 0,
     durationMinutes: 120,
@@ -128,8 +150,11 @@ const initialTasks: ScheduledTask[] = [
   {
     id: "t2",
     orderId: "#12346",
+    orderNumber: "ON-5521",
+    jobCardNumber: "JC-0013",
     technicianId: "tech-1",
     type: "repair",
+    status: "active",
     startHour: 13,
     startMinute: 0,
     durationMinutes: 180,
@@ -138,8 +163,11 @@ const initialTasks: ScheduledTask[] = [
   {
     id: "t3",
     orderId: "#12347",
+    orderNumber: "ON-5523",
+    jobCardNumber: "JC-0014",
     technicianId: "tech-2",
     type: "inspection",
+    status: "completed",
     startHour: 9,
     startMinute: 30,
     durationMinutes: 90,
@@ -148,8 +176,11 @@ const initialTasks: ScheduledTask[] = [
   {
     id: "t4",
     orderId: "#12348",
+    orderNumber: "ON-5524",
+    jobCardNumber: "JC-0015",
     technicianId: "tech-3",
     type: "service",
+    status: "overdue",
     startHour: 7,
     startMinute: 0,
     durationMinutes: 240,
@@ -158,8 +189,11 @@ const initialTasks: ScheduledTask[] = [
   {
     id: "t5",
     orderId: "#12349",
+    orderNumber: "ON-5525",
+    jobCardNumber: "JC-0016",
     technicianId: "tech-4",
     type: "repair",
+    status: "pending",
     startHour: 10,
     startMinute: 0,
     durationMinutes: 150,
@@ -171,6 +205,8 @@ const initialUnassigned: UnassignedOrder[] = [
   {
     id: "u1",
     orderId: "#999",
+    orderNumber: "ON-5530",
+    jobCardNumber: "JC-0020",
     description: "Смяна на масло - John Deere",
     estimatedHours: 2,
     type: "service",
@@ -178,6 +214,8 @@ const initialUnassigned: UnassignedOrder[] = [
   {
     id: "u2",
     orderId: "#1001",
+    orderNumber: "ON-5531",
+    jobCardNumber: "JC-0021",
     description: "Диагностика - Claas",
     estimatedHours: 1,
     type: "inspection",
@@ -185,6 +223,8 @@ const initialUnassigned: UnassignedOrder[] = [
   {
     id: "u3",
     orderId: "#1002",
+    orderNumber: "ON-5532",
+    jobCardNumber: "JC-0022",
     description: "Ремонт на спирачки - Fendt",
     estimatedHours: 3,
     type: "repair",
@@ -192,6 +232,8 @@ const initialUnassigned: UnassignedOrder[] = [
   {
     id: "u4",
     orderId: "#1003",
+    orderNumber: "ON-5533",
+    jobCardNumber: "JC-0023",
     description: "Смяна на филтри - New Holland",
     estimatedHours: 1.5,
     type: "service",
@@ -202,6 +244,8 @@ const initialUnbilled: UnbilledJob[] = [
   {
     id: "ub1",
     orderId: "#12340",
+    orderNumber: "ON-5510",
+    jobCardNumber: "JC-0005",
     clientName: "Агро ООД",
     dateFinished: "28.01.2026",
     description: "Ремонт на комбайн",
@@ -209,6 +253,8 @@ const initialUnbilled: UnbilledJob[] = [
   {
     id: "ub2",
     orderId: "#12341",
+    orderNumber: "ON-5511",
+    jobCardNumber: "JC-0006",
     clientName: "Фермер ЕООД",
     dateFinished: "27.01.2026",
     description: "Смяна на хидравлика",
@@ -216,6 +262,8 @@ const initialUnbilled: UnbilledJob[] = [
   {
     id: "ub3",
     orderId: "#12342",
+    orderNumber: "ON-5512",
+    jobCardNumber: "JC-0007",
     clientName: "Зърно АД",
     dateFinished: "26.01.2026",
     description: "Годишен сервиз",
@@ -277,6 +325,14 @@ const customColorOptions = [
   { name: "Лилав", value: "#6b7280" },
 ];
 
+// Status-based color coding: RED=overdue, GREEN=active, ORANGE=unscheduled, GRAY=completed
+const statusColors: Record<ScheduledTask["status"], { bg: string; border: string; text: string }> = {
+  overdue: { bg: "bg-red-600", border: "border-red-400", text: "text-white" },
+  active: { bg: "bg-emerald-600", border: "border-emerald-400", text: "text-white" },
+  completed: { bg: "bg-muted", border: "border-muted-foreground/30", text: "text-muted-foreground" },
+  pending: { bg: "bg-orange-500", border: "border-orange-400", text: "text-white" },
+};
+
 function getTaskStyle(task: ScheduledTask) {
   if (task.type === "custom" && task.color) {
     return {
@@ -288,11 +344,11 @@ function getTaskStyle(task: ScheduledTask) {
 }
 
 function getTaskClasses(task: ScheduledTask) {
-  const colors = taskColors[task.type];
   if (task.type === "custom" && task.color) {
     return "border text-white";
   }
-  return `${colors.bg} ${colors.border} ${colors.text}`;
+  const sc = statusColors[task.status];
+  return `${sc.bg} ${sc.border} ${sc.text}`;
 }
 
 function snapToGrid(minutes: number): number {
@@ -342,8 +398,8 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
     useState<UnassignedOrder[]>(initialUnassigned);
   const [unbilled, setUnbilled] = useState<UnbilledJob[]>(initialUnbilled);
   const [notes, setNotes] = useState<NoteItem[]>(initialNotes);
-  // Get clocking activities from shared context
-  const { clockingActivities } = useClocking();
+  // Get clocking activities and admin state from shared context
+  const { clockingActivities, isAdmin, convertNoteToOrder } = useClocking();
   const [newNoteText, setNewNoteText] = useState("");
   const [draggingTask, setDraggingTask] = useState<string | null>(null);
   const [draggingUnassigned, setDraggingUnassigned] = useState<string | null>(
@@ -373,7 +429,7 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
   const [quickCreateDuration, setQuickCreateDuration] = useState(60); // Default 1 hour
   const descInputRef = useRef<HTMLInputElement>(null);
   const editDescInputRef = useRef<HTMLInputElement>(null);
-  const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [currentTime, setCurrentTime] = useState(new Date());
   const [showHelpModal, setShowHelpModal] = useState(false);
   
   // Edit task state
@@ -384,6 +440,23 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
   const [editTaskStartHour, setEditTaskStartHour] = useState(8);
   const [editTaskStartMinute, setEditTaskStartMinute] = useState(0);
 
+  // Split reservation state (admin only)
+  const [splitDialogOpen, setSplitDialogOpen] = useState(false);
+  const [splitMode, setSplitMode] = useState<"days" | "technicians">("technicians");
+  const [splitTargetTech, setSplitTargetTech] = useState("");
+  const [splitDays, setSplitDays] = useState(2);
+
+  // Note-to-order conversion state
+  const [convertNoteDialog, setConvertNoteDialog] = useState<NoteItem | null>(null);
+  const [convertType, setConvertType] = useState<"service" | "repair" | "inspection">("repair");
+  const [convertHours, setConvertHours] = useState("1");
+
+  // Progress note state (technician view)
+  const [progressNoteInput, setProgressNoteInput] = useState<Record<string, string>>({});
+
+  // Recently converted note IDs (for highlight animation)
+  const [recentlyConverted, setRecentlyConverted] = useState<Set<string>>(new Set());
+
   const gridRef = useRef<HTMLDivElement>(null);
   const resizeStartRef = useRef<{
     startX: number;
@@ -393,7 +466,6 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
   } | null>(null);
 
   useEffect(() => {
-    setCurrentTime(new Date());
     const interval = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(interval);
   }, []);
@@ -482,34 +554,39 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
           const order = unassigned.find((u) => u.id === unassignedId);
           if (order) {
             const newTask: ScheduledTask = {
-              id: `task-${Date.now()}`,
-              orderId: order.orderId,
-              technicianId: techId,
-              type: order.type,
-              startHour: dropTarget.hour,
-              startMinute: dropTarget.minute,
-              durationMinutes: order.estimatedHours * 60,
-              description: order.description,
-            };
-            setTasks((prev) => [...prev, newTask]);
-            // Remove from unassigned after assignment
-            setUnassigned((prev) => prev.filter((u) => u.id !== unassignedId));
+  id: `task-${Date.now()}`,
+  orderId: order.orderId,
+  orderNumber: order.orderNumber,
+  jobCardNumber: order.jobCardNumber,
+  technicianId: techId,
+  type: order.type,
+  status: "pending",
+  startHour: dropTarget.hour,
+  startMinute: dropTarget.minute,
+  durationMinutes: order.estimatedHours * 60,
+  description: order.description,
+  };
+  setTasks((prev) => [...prev, newTask]);
+  setUnassigned((prev) => prev.filter((u) => u.id !== unassignedId));
           }
         } else if (noteId) {
           // Create new task from sticky note
           const note = notes.find((n) => n.id === noteId);
           if (note) {
             const newTask: ScheduledTask = {
-              id: `task-${Date.now()}`,
-              orderId: "Бележка",
-              technicianId: techId,
-              type: "custom",
-              startHour: dropTarget.hour,
-              startMinute: dropTarget.minute,
-              durationMinutes: 60, // Default 1 hour
-              description: note.text,
-              color: "#fbbf24", // Yellow for notes
-            };
+  id: `task-${Date.now()}`,
+  orderId: "Бележка",
+  orderNumber: "-",
+  jobCardNumber: "-",
+  technicianId: techId,
+  type: "custom",
+  status: "pending",
+  startHour: dropTarget.hour,
+  startMinute: dropTarget.minute,
+  durationMinutes: 60,
+  description: note.text,
+  color: "#fbbf24",
+  };
             setTasks((prev) => [...prev, newTask]);
             // Remove from notes after assignment
             setNotes((prev) => prev.filter((n) => n.id !== noteId));
@@ -519,16 +596,19 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
           const job = unbilled.find((j) => j.id === unbilledId);
           if (job) {
             const newTask: ScheduledTask = {
-              id: `task-${Date.now()}`,
-              orderId: job.orderId,
-              technicianId: techId,
-              type: "custom",
-              startHour: dropTarget.hour,
-              startMinute: dropTarget.minute,
-              durationMinutes: 60, // Default 1 hour
-              description: `${job.clientName} - ${job.description}`,
-              color: "#22c55e", // Green for unbilled
-            };
+  id: `task-${Date.now()}`,
+  orderId: job.orderId,
+  orderNumber: job.orderNumber,
+  jobCardNumber: job.jobCardNumber,
+  technicianId: techId,
+  type: "custom",
+  status: "pending",
+  startHour: dropTarget.hour,
+  startMinute: dropTarget.minute,
+  durationMinutes: 60,
+  description: `${job.clientName} - ${job.description}`,
+  color: "#22c55e",
+  };
             setTasks((prev) => [...prev, newTask]);
             // Remove from unbilled after assignment
             setUnbilled((prev) => prev.filter((j) => j.id !== unbilledId));
@@ -636,6 +716,7 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
   // Double-click for quick create
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent, techId: string) => {
+      if (!isAdmin) return; // Read-only for non-admin
       if (gridRef.current) {
         const rect = gridRef.current.getBoundingClientRect();
         const x = e.clientX - rect.left - SIDEBAR_WIDTH;
@@ -660,17 +741,20 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
   const handleQuickCreate = useCallback(() => {
     if (!quickCreateModal || !quickCreateDesc.trim()) return;
 
-    const newTask: ScheduledTask = {
-      id: `custom-${Date.now()}`,
-      orderId: "Без №",
-      technicianId: quickCreateModal.techId,
-      type: "custom",
-      startHour: quickCreateModal.hour,
-      startMinute: quickCreateModal.minute,
-      durationMinutes: quickCreateDuration,
-      description: quickCreateDesc,
-      color: quickCreateColor,
-    };
+  const newTask: ScheduledTask = {
+  id: `custom-${Date.now()}`,
+  orderId: "Без №",
+  orderNumber: "-",
+  jobCardNumber: "-",
+  technicianId: quickCreateModal.techId,
+  type: "custom",
+  status: "pending",
+  startHour: quickCreateModal.hour,
+  startMinute: quickCreateModal.minute,
+  durationMinutes: quickCreateDuration,
+  description: quickCreateDesc,
+  color: quickCreateColor,
+  };
 
     setTasks((prev) => [...prev, newTask]);
     setQuickCreateModal(null);
@@ -750,6 +834,82 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
     setEditTaskStartMinute(newMinutes % 60);
   }, [editTaskStartHour, editTaskStartMinute]);
 
+  // Split reservation handler (admin only)
+  const handleSplitTask = useCallback(() => {
+    if (!editingTask) return;
+    if (splitMode === "technicians" && splitTargetTech) {
+      const halfDuration = Math.max(30, Math.floor(editingTask.durationMinutes / 2));
+      // Shorten original
+      setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, durationMinutes: halfDuration } : t));
+      // Create second half for target tech
+      const newTask: ScheduledTask = {
+        ...editingTask,
+        id: `split-${Date.now()}`,
+        technicianId: splitTargetTech,
+        durationMinutes: editingTask.durationMinutes - halfDuration,
+        progressNotes: [],
+      };
+      setTasks(prev => [...prev, newTask]);
+    } else if (splitMode === "days") {
+      const perDay = Math.max(30, Math.floor(editingTask.durationMinutes / splitDays));
+      setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, durationMinutes: perDay } : t));
+      for (let i = 1; i < splitDays; i++) {
+        const newTask: ScheduledTask = {
+          ...editingTask,
+          id: `split-day-${Date.now()}-${i}`,
+          durationMinutes: perDay,
+          description: `${editingTask.description} (Ден ${i + 1})`,
+          progressNotes: [],
+        };
+        setTasks(prev => [...prev, newTask]);
+      }
+    }
+    setSplitDialogOpen(false);
+    setEditingTask(null);
+  }, [editingTask, isAdmin, splitMode, splitTargetTech, splitDays]);
+
+  // Convert note to work order
+  const handleConvertNote = useCallback(() => {
+    if (!convertNoteDialog) return;
+    convertNoteToOrder({
+      text: convertNoteDialog.text,
+      type: convertType,
+      estimatedHours: Number(convertHours) || 1,
+    });
+    // Add to unassigned list as well
+    const newUnassigned: UnassignedOrder = {
+      id: `conv-${Date.now()}`,
+      orderId: `#${Date.now()}`,
+      orderNumber: `ON-UNSCH-${Date.now()}`,
+      jobCardNumber: `JC-NEW`,
+      description: convertNoteDialog.text,
+      estimatedHours: Number(convertHours) || 1,
+      type: convertType,
+    };
+    setUnassigned(prev => [...prev, newUnassigned]);
+    // Remove note and show highlight
+    setNotes(prev => prev.filter(n => n.id !== convertNoteDialog.id));
+    setRecentlyConverted(prev => new Set(prev).add(newUnassigned.id));
+    setTimeout(() => {
+      setRecentlyConverted(prev => {
+        const next = new Set(prev);
+        next.delete(newUnassigned.id);
+        return next;
+      });
+    }, 3000);
+    setConvertNoteDialog(null);
+  }, [convertNoteDialog, convertType, convertHours, convertNoteToOrder]);
+
+  // Add progress note to a task
+  const handleAddProgressNote = useCallback((taskId: string) => {
+    const text = progressNoteInput[taskId]?.trim();
+    if (!text) return;
+    setTasks(prev => prev.map(t =>
+      t.id === taskId ? { ...t, progressNotes: [...(t.progressNotes || []), text] } : t
+    ));
+    setProgressNoteInput(prev => ({ ...prev, [taskId]: "" }));
+  }, [progressNoteInput]);
+
   // Note drag handlers
   const handleNoteDragStart = useCallback(
     (e: React.DragEvent, noteId: string) => {
@@ -801,13 +961,16 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
       const newTask: ScheduledTask = {
         id: `task-${Date.now()}`,
         orderId: job.orderId,
+        orderNumber: job.orderNumber,
+        jobCardNumber: job.jobCardNumber,
         technicianId: technicianId,
         type: "custom",
+        status: "pending",
         startHour,
         startMinute,
-        durationMinutes: 60, // Default 1 hour
+        durationMinutes: 60,
         description: `${job.clientName} - ${job.description}`,
-        color: "#22c55e", // Green for unbilled
+        color: "#22c55e",
       };
 
       setTasks((prev) => [...prev, newTask]);
@@ -912,8 +1075,11 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
       const newTask: ScheduledTask = {
         id: `task-${Date.now()}`,
         orderId: order.orderId,
+        orderNumber: order.orderNumber,
+        jobCardNumber: order.jobCardNumber,
         technicianId: technicianId,
         type: order.type,
+        status: "pending",
         startHour,
         startMinute,
         durationMinutes: order.estimatedHours * 60,
@@ -1002,8 +1168,12 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
           <div className="h-3 w-6 rounded bg-orange-400" />
           <span className="text-muted-foreground">Извън график</span>
         </div>
-        <div className="ml-auto text-muted-foreground">
-          Дв��ен клик за бърза резервация
+        <div className="ml-auto flex items-center gap-2 text-muted-foreground">
+          {isAdmin ? (
+            <span>Двоен клик за бърза резервация</span>
+          ) : (
+            <Badge variant="secondary" className="text-[10px]">Read-only</Badge>
+          )}
         </div>
       </div>
 
@@ -1221,15 +1391,35 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                               {/* Content */}
                               <div className="flex flex-1 items-center gap-1 overflow-hidden px-2">
                                 <GripVertical className="h-3 w-3 flex-shrink-0 opacity-50" />
-                                <span className="truncate text-xs font-medium">
-                                  {task.orderId}
+                                {task.status === "active" && (
+                                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white animate-pulse" />
+                                )}
+                                <span className="truncate text-[10px] font-medium">
+                                  {task.orderNumber}
                                 </span>
-                                {pos.width > 100 && (
-                                  <span className="truncate text-xs opacity-75">
+                                <span className="truncate text-[10px] opacity-70">
+                                  / {task.jobCardNumber}
+                                </span>
+                                {pos.width > 140 && (
+                                  <span className="truncate text-[10px] opacity-60">
                                     - {task.description}
                                   </span>
                                 )}
                               </div>
+
+                              {/* Split button (visible on hover) */}
+                              <button
+                                type="button"
+                                className="mr-0.5 flex-shrink-0 rounded p-0.5 opacity-0 hover:bg-black/20 group-hover:opacity-100 transition-opacity"
+                                title="Split Reservation"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenTaskEdit(task);
+                                  setSplitDialogOpen(true);
+                                }}
+                              >
+                                <Split className="h-3 w-3" />
+                              </button>
 
                               {/* Delete button */}
                               <button
@@ -1378,6 +1568,7 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                       unassigned.map((order) => {
                         const colors = taskColors[order.type];
                         const isDragging = draggingUnassigned === order.id;
+                        const isNew = recentlyConverted.has(order.id);
 
                         return (
                           <ContextMenu key={order.id}>
@@ -1388,7 +1579,8 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                                   colors.border,
                                   isDragging
                                     ? "opacity-50 scale-95"
-                                    : "cursor-grab hover:shadow-md"
+                                    : "cursor-grab hover:shadow-md",
+                                  isNew && "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background animate-pulse"
                                 )}
                                 draggable
                                 onDragStart={(e) => handleUnassignedDragStart(e, order.id)}
@@ -1404,10 +1596,10 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                                         "text-xs border-0"
                                       )}
                                     >
-                                      {order.orderId}
-                                    </Badge>
-                                  </div>
-                                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  {order.orderNumber} / {order.jobCardNumber}
+  </Badge>
+  </div>
+  <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                     <Clock className="h-3 w-3" />
                                     {order.estimatedHours}ч
                                   </div>
@@ -1475,9 +1667,9 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex items-center gap-2">
                                     <GripVertical className="h-4 w-4 text-green-600" />
-                                    <Badge className="bg-green-600 text-white text-xs border-0">
-                                      {job.orderId}
-                                    </Badge>
+  <Badge className="bg-green-600 text-white text-xs border-0">
+  {job.orderNumber} / {job.jobCardNumber}
+  </Badge>
                                   </div>
                                   <span className="text-xs text-muted-foreground">
                                     {job.dateFinished}
@@ -1575,13 +1767,28 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                                     <GripVertical className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                                     <StickyNote className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteNote(note.id)}
-                                    className="text-muted-foreground hover:text-destructive transition-colors"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setConvertNoteDialog(note);
+                                        setConvertType("repair");
+                                        setConvertHours("1");
+                                      }}
+                                      className="flex items-center gap-1 rounded bg-emerald-600/90 px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-emerald-600 transition-colors"
+                                      title="Convert to Work Order"
+                                    >
+                                      <ArrowUpRight className="h-3 w-3" />
+                                      Order
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteNote(note.id)}
+                                      className="text-muted-foreground hover:text-destructive transition-colors"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
                                 </div>
                                 <p className="mt-2 text-xs text-amber-900 dark:text-amber-100">
                                   {note.text}
@@ -1888,6 +2095,79 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
                 </span>
               </div>
             </div>
+
+            {/* Split Reservation */}
+            {editingTask && (
+              <div className="space-y-3 rounded-lg border border-border p-3">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 text-sm font-medium text-foreground"
+                  onClick={() => setSplitDialogOpen(prev => !prev)}
+                >
+                  <Split className="h-4 w-4" />
+                  Split Reservation
+                  <ChevronDown className={cn("ml-auto h-4 w-4 transition-transform", splitDialogOpen && "rotate-180")} />
+                </button>
+                {splitDialogOpen && (
+                  <div className="space-y-3 pt-2">
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant={splitMode === "technicians" ? "default" : "outline"}
+                        onClick={() => setSplitMode("technicians")}
+                        className={splitMode !== "technicians" ? "bg-transparent" : ""}
+                      >
+                        Across Technicians
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={splitMode === "days" ? "default" : "outline"}
+                        onClick={() => setSplitMode("days")}
+                        className={splitMode !== "days" ? "bg-transparent" : ""}
+                      >
+                        Across Days
+                      </Button>
+                    </div>
+                    {splitMode === "technicians" ? (
+                      <Select value={splitTargetTech} onValueChange={setSplitTargetTech}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Select second technician..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {technicians
+                            .filter(t => t.id !== editingTask.technicianId)
+                            .map(t => (
+                              <SelectItem key={t.id} value={t.id}>
+                                {t.name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-muted-foreground">Days:</Label>
+                        <Button size="sm" variant="outline" className="h-7 w-7 bg-transparent" onClick={() => setSplitDays(d => Math.max(2, d - 1))}>
+                          <Minus className="h-3 w-3" />
+                        </Button>
+                        <span className="w-8 text-center text-sm font-medium">{splitDays}</span>
+                        <Button size="sm" variant="outline" className="h-7 w-7 bg-transparent" onClick={() => setSplitDays(d => Math.min(5, d + 1))}>
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <Button
+                      size="sm"
+                      onClick={handleSplitTask}
+                      disabled={splitMode === "technicians" && !splitTargetTech}
+                      className="w-full"
+                    >
+                      <Split className="mr-1.5 h-3.5 w-3.5" />
+                      Split
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
@@ -1916,6 +2196,59 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
               className="bg-foreground text-background hover:bg-foreground/90"
             >
               Запази
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Convert Note to Work Order Dialog */}
+      <Dialog
+        open={!!convertNoteDialog}
+        onOpenChange={() => setConvertNoteDialog(null)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+              <ArrowUpRight className="h-5 w-5" />
+              Convert Note to Work Order
+            </DialogTitle>
+          </DialogHeader>
+          {convertNoteDialog && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg bg-amber-100 dark:bg-amber-900/30 p-3 text-xs text-amber-900 dark:text-amber-100">
+                {convertNoteDialog.text}
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Type</Label>
+                <Select value={convertType} onValueChange={(v: "service" | "repair" | "inspection") => setConvertType(v)}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="service">Service</SelectItem>
+                    <SelectItem value="repair">Repair</SelectItem>
+                    <SelectItem value="inspection">Inspection</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Estimated Hours</Label>
+                <Input
+                  type="number"
+                  value={convertHours}
+                  onChange={(e) => setConvertHours(e.target.value)}
+                  min="0.5"
+                  step="0.5"
+                  className="h-9"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" onClick={() => setConvertNoteDialog(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConvertNote}>
+              Create Order
             </Button>
           </DialogFooter>
         </DialogContent>

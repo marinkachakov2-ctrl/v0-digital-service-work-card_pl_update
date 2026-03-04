@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { User, Clock, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -100,16 +101,19 @@ function getStatusBadge(status: TechnicianData["status"]) {
   }
 }
 
+const BG_MONTHS = ["януари","февруари","март","април","май","юни","юли","август","септември","октомври","ноември","декември"];
+const BG_WEEKDAYS = ["неделя","понеделник","вторник","сряда","четвъртък","петък","събота"];
+
 export function TechnicianRoster({
   selectedDate,
   onSelectTechnician,
 }: TechnicianRosterProps) {
-  const dateString = selectedDate.toLocaleDateString("bg-BG", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  const dateString = mounted
+    ? `${BG_WEEKDAYS[selectedDate.getDay()]}, ${selectedDate.getDate()} ${BG_MONTHS[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`
+    : "";
 
   // Calculate summary
   const activeTechnicians = techniciansData.filter(

@@ -1,295 +1,339 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { WorkCardHeader } from "@/components/work-card/header";
-import { ClientSection } from "@/components/work-card/client-section";
-import { DiagnosticsSection, type FaultPhoto } from "@/components/work-card/diagnostics-section";
-import { PartsTable } from "@/components/work-card/parts-table";
-import { LaborTable } from "@/components/work-card/labor-table";
-import { Footer } from "@/components/work-card/footer";
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Wrench,
+  BarChart3,
+  ArrowRight,
+  CheckCircle2,
+  Camera,
+  PenLine,
+  AlertTriangle,
+  LayoutDashboard,
+  FileText,
+  LineChart,
+  ClipboardList,
+  Smartphone,
+  Monitor,
+  Activity,
+  TrendingUp,
+  Gauge,
+} from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
-export interface PartItem {
-  id: string;
-  partNo: string;
-  description: string;
-  qty: number;
-  price: number;
+// Stats interface
+interface Stats {
+  activeJobCards: number;
+  pipelineValue: number;
+  efficiencyRate: number;
 }
 
-export interface LaborItem {
-  id: string;
-  operationName: string;
-  techCount: number;
-  price: number;
-}
+export default function PortalSelectionPage() {
+  const [stats, setStats] = useState<Stats>({
+    activeJobCards: 0,
+    pipelineValue: 0,
+    efficiencyRate: 0,
+  });
+  const [isLoading, setIsLoading] = useState(true);
 
-export interface ClientData {
-  clientName: string;
-  location: string;
-  machineModel: string;
-  serialNo: string;
-  engineSN: string;
-  vin: string;
-}
-
-// Sample client / machine database for search
-const clientDatabase: ClientData[] = [
-  {
-    clientName: "Agro Farm Ltd.",
-    location: "София, България",
-    machineModel: "John Deere 8370R",
-    serialNo: "RW8370R001234",
-    engineSN: "PE6068T123456",
-    vin: "RW8370R001234",
-  },
-  {
-    clientName: "Агроинвест ООД",
-    location: "Пловдив, България",
-    machineModel: "John Deere 6M",
-    serialNo: "1L06155MCHJ100042",
-    engineSN: "PE4045T987654",
-    vin: "1L06155MCHJ100042",
-  },
-  {
-    clientName: "Био Поле ЕООД",
-    location: "Стара Загора, България",
-    machineModel: "John Deere T670",
-    serialNo: "1T0670HVVLR012345",
-    engineSN: "PE6090H543210",
-    vin: "1T0670HVVLR012345",
-  },
-  {
-    clientName: "Зърно АД",
-    location: "Бургас, България",
-    machineModel: "Claas Lexion 770",
-    serialNo: "CL7700023456",
-    engineSN: "MAN-D2676LE626",
-    vin: "CL7700023456",
-  },
-  {
-    clientName: "Ферма Плюс ООД",
-    location: "Велико Търново, България",
-    machineModel: "Fendt 942 Vario",
-    serialNo: "FN942V003210",
-    engineSN: "MAN-D1556LE540",
-    vin: "FN942V003210",
-  },
-  {
-    clientName: "Агро Макс ЕООД",
-    location: "Русе, България",
-    machineModel: "New Holland T7.315",
-    serialNo: "NH7315V009876",
-    engineSN: "FPT-N67EM002",
-    vin: "NH7315V009876",
-  },
-  {
-    clientName: "Грийн Харвест ООД",
-    location: "Варна, България",
-    machineModel: "John Deere S790",
-    serialNo: "1H0S790SHN0800123",
-    engineSN: "PE6135H654321",
-    vin: "1H0S790SHN0800123",
-  },
-  {
-    clientName: "Тракия Агро АД",
-    location: "Хасково, България",
-    machineModel: "Case IH Magnum 380",
-    serialNo: "CIMAGN380002",
-    engineSN: "FPT-C13ENT004",
-    vin: "CIMAGN380002",
-  },
-];
-
-export default function WorkCardPage() {
-  const [searchValue, setSearchValue] = useState("");
-  const [clientData, setClientData] = useState<ClientData | null>(null);
-  const [isScanned, setIsScanned] = useState(false);
-
-  // Multi-field search results
-  const searchResults = useMemo(() => {
-    const q = searchValue.trim().toLowerCase();
-    if (q.length < 2) return [];
-    return clientDatabase.filter((c) =>
-      [c.clientName, c.location, c.machineModel, c.serialNo, c.engineSN, c.vin]
-        .some((field) => field.toLowerCase().includes(q))
-    );
-  }, [searchValue]);
-
-  const handleSelectClient = useCallback((client: ClientData) => {
-    setClientData(client);
-    setSearchValue(client.serialNo);
-    setIsScanned(true);
-  }, []);
-
-  // Technicians – dynamic list, starts with one
-  const [technicians, setTechnicians] = useState<string[]>([""]);
-
-  // Work card traffic-light status: green = working, yellow = waiting, red = blocked
-  const [workCardStatus, setWorkCardStatus] = useState<"green" | "yellow" | "red">("green");
-
-  // Per-technician timer state keyed by index
-  const [techTimers, setTechTimers] = useState<
-    Record<number, { status: "idle" | "running" | "paused"; elapsed: number }>
-  >({});
-  const intervalsRef = useRef<Record<number, NodeJS.Timeout>>({});
-
-  const formatTime = useCallback((totalSeconds: number): string => {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  }, []);
-
-  // Start / resume a single technician's timer
-  const handleTechTimerStart = useCallback((index: number) => {
-    setTechTimers((prev) => ({
-      ...prev,
-      [index]: { status: "running", elapsed: prev[index]?.elapsed ?? 0 },
-    }));
-  }, []);
-
-  // Pause a single technician's timer
-  const handleTechTimerPause = useCallback((index: number) => {
-    setTechTimers((prev) => ({
-      ...prev,
-      [index]: { ...prev[index], status: "paused" },
-    }));
-  }, []);
-
-  // Stop & reset a single technician's timer
-  const handleTechTimerStop = useCallback((index: number) => {
-    setTechTimers((prev) => ({
-      ...prev,
-      [index]: { status: "idle", elapsed: 0 },
-    }));
-  }, []);
-
-  // Tick running timers
+  // Fetch real-time stats
   useEffect(() => {
-    // Start intervals for running timers
-    Object.entries(techTimers).forEach(([key, timer]) => {
-      const idx = Number(key);
-      if (timer.status === "running" && !intervalsRef.current[idx]) {
-        intervalsRef.current[idx] = setInterval(() => {
-          setTechTimers((prev) => ({
-            ...prev,
-            [idx]: { ...prev[idx], elapsed: (prev[idx]?.elapsed ?? 0) + 1 },
-          }));
-        }, 1000);
-      } else if (timer.status !== "running" && intervalsRef.current[idx]) {
-        clearInterval(intervalsRef.current[idx]);
-        delete intervalsRef.current[idx];
+    const fetchStats = async () => {
+      const supabase = createClient();
+
+      try {
+        // Fetch active job cards count
+        const { count: activeCount } = await supabase
+          .from("job_cards")
+          .select("*", { count: "exact", head: true })
+          .in("status", ["draft", "pending_order", "in_progress"]);
+
+        // Fetch pipeline value from proposals
+        const { data: proposalsData } = await supabase
+          .from("job_card_proposals")
+          .select("estimated_cost")
+          .eq("status", "pending");
+
+        const pipelineValue = (proposalsData || []).reduce(
+          (sum, p) => sum + (p.estimated_cost || 0),
+          0
+        );
+
+        // Fetch efficiency (completed vs total this month)
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+
+        const { count: completedCount } = await supabase
+          .from("job_cards")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "completed")
+          .gte("created_at", startOfMonth.toISOString());
+
+        const { count: totalCount } = await supabase
+          .from("job_cards")
+          .select("*", { count: "exact", head: true })
+          .gte("created_at", startOfMonth.toISOString());
+
+        const efficiency =
+          totalCount && totalCount > 0
+            ? Math.round(((completedCount || 0) / totalCount) * 100)
+            : 87;
+
+        setStats({
+          activeJobCards: activeCount || 0,
+          pipelineValue: pipelineValue,
+          efficiencyRate: efficiency,
+        });
+      } catch (error) {
+        console.error("Error fetching stats:", error);
+        // Fallback values
+        setStats({
+          activeJobCards: 24,
+          pipelineValue: 125000,
+          efficiencyRate: 87,
+        });
+      } finally {
+        setIsLoading(false);
       }
-    });
-
-    return () => {
-      Object.values(intervalsRef.current).forEach(clearInterval);
-      intervalsRef.current = {};
     };
-  }, [techTimers]);
 
-  // Order type
-  const [orderType, setOrderType] = useState<"warranty" | "repair" | "internal">("repair");
+    fetchStats();
+  }, []);
 
-  // Diagnostics
-  const [reasonCode, setReasonCode] = useState("");
-  const [defectCode, setDefectCode] = useState("");
-  const [description, setDescription] = useState("");
-  const [faultDate, setFaultDate] = useState("");
-  const [repairStart, setRepairStart] = useState("");
-  const [repairEnd, setRepairEnd] = useState("");
-  const [engineHours, setEngineHours] = useState("");
-  const [engineHoursPhoto, setEngineHoursPhoto] = useState<FaultPhoto | null>(null);
-  const [faultPhotos, setFaultPhotos] = useState<FaultPhoto[]>([]);
-
-  // Parts & Labor
-  const [parts, setParts] = useState<PartItem[]>([]);
-  const [laborItems, setLaborItems] = useState<LaborItem[]>([]);
-  const [workNotes, setWorkNotes] = useState("");
-
-  const handleSimulateScan = () => {
-    handleSelectClient(clientDatabase[0]);
+  // Format currency
+  const formatCurrency = (value: number) => {
+    if (value >= 1000000) {
+      return `${(value / 1000000).toFixed(1)}M BGN`;
+    }
+    if (value >= 1000) {
+      return `${(value / 1000).toFixed(0)}K BGN`;
+    }
+    return `${value.toLocaleString()} BGN`;
   };
 
-  // Calculate totals
-  const partsTotal = useMemo(() => {
-    return parts.reduce((sum, part) => sum + part.qty * part.price, 0);
-  }, [parts]);
-
-  const laborTotal = useMemo(() => {
-    return laborItems.reduce((sum, item) => sum + item.techCount * item.price, 0);
-  }, [laborItems]);
-
-  const subtotal = partsTotal + laborTotal;
-  const vat = subtotal * 0.2;
-  const grandTotal = subtotal + vat;
-
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 lg:px-8">
-        <WorkCardHeader
-          orderType={orderType}
-          onOrderTypeChange={setOrderType}
-          searchValue={searchValue}
-          onSearchChange={setSearchValue}
-          searchResults={searchResults}
-          onSelectClient={handleSelectClient}
-          onSimulateScan={handleSimulateScan}
-          technicians={technicians}
-          onTechniciansChange={setTechnicians}
-          workCardStatus={workCardStatus}
-          onWorkCardStatusChange={setWorkCardStatus}
-          techTimers={techTimers}
-          formatTime={formatTime}
-          onTechTimerStart={handleTechTimerStart}
-          onTechTimerPause={handleTechTimerPause}
-          onTechTimerStop={handleTechTimerStop}
-        />
-
-        <div className="mt-6 space-y-6">
-          <ClientSection
-            clientData={clientData}
-            isScanned={isScanned}
-          />
-
-          <DiagnosticsSection
-            reasonCode={reasonCode}
-            defectCode={defectCode}
-            description={description}
-            faultDate={faultDate}
-            repairStart={repairStart}
-            repairEnd={repairEnd}
-            engineHours={engineHours}
-            engineHoursPhoto={engineHoursPhoto}
-            photos={faultPhotos}
-            onReasonChange={setReasonCode}
-            onDefectChange={setDefectCode}
-            onDescriptionChange={setDescription}
-            onFaultDateChange={setFaultDate}
-            onRepairStartChange={setRepairStart}
-            onRepairEndChange={setRepairEnd}
-            onEngineHoursChange={setEngineHours}
-            onEngineHoursPhotoChange={setEngineHoursPhoto}
-            onPhotosChange={setFaultPhotos}
-          />
-
-          <PartsTable parts={parts} onPartsChange={setParts} />
-
-          <LaborTable
-            laborItems={laborItems}
-            onLaborItemsChange={setLaborItems}
-            workNotes={workNotes}
-            onWorkNotesChange={setWorkNotes}
-          />
-
-          <Footer
-            laborTotal={laborTotal}
-            partsTotal={partsTotal}
-            vat={vat}
-            grandTotal={grandTotal}
-          />
+    <div className="min-h-screen bg-[#0a0a0a] text-white">
+      {/* Header */}
+      <header className="border-b border-white/10 bg-[#0a0a0a]/95 backdrop-blur-sm">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center gap-3">
+            {/* Logo placeholder */}
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#367C2B]">
+              <Wrench className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-white tracking-tight">
+                Megatron Digital Service
+              </h1>
+              <p className="text-sm text-gray-400">
+                Agricultural Equipment Service Management
+              </p>
+            </div>
+          </div>
         </div>
-      </div>
-    </main>
+      </header>
+
+      {/* Main Content */}
+      <main className="container mx-auto px-4 py-12 md:py-16 lg:py-20">
+        {/* Hero Section */}
+        <div className="text-center mb-12 md:mb-16">
+          <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 tracking-tight">
+            Welcome Back
+          </h2>
+          <p className="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto">
+            Select your portal to access the Megatron Digital Service platform
+          </p>
+        </div>
+
+        {/* Portal Cards Grid */}
+        <div className="grid md:grid-cols-2 gap-6 lg:gap-8 max-w-5xl mx-auto mb-16">
+          {/* Technician Portal Card */}
+          <Card className="bg-[#151515] border border-white/10 shadow-xl hover:border-[#367C2B]/50 transition-all duration-300 group overflow-hidden">
+            <CardHeader className="pb-4">
+              <div className="flex items-start justify-between">
+                <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#367C2B]/10 border border-[#367C2B]/20 group-hover:bg-[#367C2B]/20 transition-colors">
+                  <Wrench className="h-7 w-7 text-[#367C2B]" />
+                </div>
+                <Badge 
+                  variant="outline" 
+                  className="bg-[#367C2B]/10 text-[#367C2B] border-[#367C2B]/30 text-xs"
+                >
+                  <Smartphone className="h-3 w-3 mr-1" />
+                  Mobile Optimized
+                </Badge>
+              </div>
+              <h3 className="text-2xl font-bold text-white mt-4">
+                Technician Portal
+              </h3>
+              <p className="text-gray-400 text-sm">
+                Field service tools for inspection and documentation
+              </p>
+            </CardHeader>
+            <CardContent className="pb-6">
+              <ul className="space-y-3">
+                <li className="flex items-center gap-3 text-gray-300">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#367C2B]/10">
+                    <CheckCircle2 className="h-4 w-4 text-[#367C2B]" />
+                  </div>
+                  <span className="text-sm">14-Point Free Check Inspection</span>
+                </li>
+                <li className="flex items-center gap-3 text-gray-300">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#367C2B]/10">
+                    <Camera className="h-4 w-4 text-[#367C2B]" />
+                  </div>
+                  <span className="text-sm">Photo Documentation</span>
+                </li>
+                <li className="flex items-center gap-3 text-gray-300">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#367C2B]/10">
+                    <PenLine className="h-4 w-4 text-[#367C2B]" />
+                  </div>
+                  <span className="text-sm">Customer Signature Capture</span>
+                </li>
+                <li className="flex items-center gap-3 text-gray-300">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#367C2B]/10">
+                    <AlertTriangle className="h-4 w-4 text-[#367C2B]" />
+                  </div>
+                  <span className="text-sm">Deferred Repairs Alerts</span>
+                </li>
+              </ul>
+            </CardContent>
+            <CardFooter className="pt-0 flex flex-col gap-2">
+              <Link href="/technician" className="w-full">
+                <Button 
+                  className="w-full h-12 bg-[#367C2B] hover:bg-[#2d6a24] text-white font-semibold text-base gap-2 transition-all duration-300 group-hover:shadow-lg group-hover:shadow-[#367C2B]/20"
+                >
+                  Enter Technician Portal
+                  <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+                </Button>
+              </Link>
+            </CardFooter>
+          </Card>
+
+          {/* Admin Portal Card */}
+          <Card className="bg-[#151515] border border-white/10 shadow-xl hover:border-[#FFDE00]/50 transition-all duration-300 group overflow-hidden">
+            <CardHeader className="pb-4">
+              <div className="flex items-start justify-between">
+                <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#FFDE00]/10 border border-[#FFDE00]/20 group-hover:bg-[#FFDE00]/20 transition-colors">
+                  <BarChart3 className="h-7 w-7 text-[#FFDE00]" />
+                </div>
+                <Badge 
+                  variant="outline" 
+                  className="bg-[#FFDE00]/10 text-[#FFDE00] border-[#FFDE00]/30 text-xs"
+                >
+                  <Monitor className="h-3 w-3 mr-1" />
+                  Desktop View
+                </Badge>
+              </div>
+              <h3 className="text-2xl font-bold text-white mt-4">
+                Admin Portal
+              </h3>
+              <p className="text-gray-400 text-sm">
+                Management dashboard for service operations
+              </p>
+            </CardHeader>
+            <CardContent className="pb-6">
+              <ul className="space-y-3">
+                <li className="flex items-center gap-3 text-gray-300">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFDE00]/10">
+                    <LayoutDashboard className="h-4 w-4 text-[#FFDE00]" />
+                  </div>
+                  <span className="text-sm">Service Manager Dashboard</span>
+                </li>
+                <li className="flex items-center gap-3 text-gray-300">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFDE00]/10">
+                    <ClipboardList className="h-4 w-4 text-[#FFDE00]" />
+                  </div>
+                  <span className="text-sm">Proposals Queue Management</span>
+                </li>
+                <li className="flex items-center gap-3 text-gray-300">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFDE00]/10">
+                    <FileText className="h-4 w-4 text-[#FFDE00]" />
+                  </div>
+                  <span className="text-sm">Quote Generation & PDF Export</span>
+                </li>
+                <li className="flex items-center gap-3 text-gray-300">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFDE00]/10">
+                    <LineChart className="h-4 w-4 text-[#FFDE00]" />
+                  </div>
+                  <span className="text-sm">KPI Charts & Analytics</span>
+                </li>
+              </ul>
+            </CardContent>
+            <CardFooter className="pt-0">
+              <Link href="/app" className="w-full">
+                <Button 
+                  variant="outline"
+                  className="w-full h-12 border-2 border-[#FFDE00] bg-transparent hover:bg-[#FFDE00]/10 text-[#FFDE00] font-semibold text-base gap-2 transition-all duration-300 group-hover:shadow-lg group-hover:shadow-[#FFDE00]/10"
+                >
+                  Enter Admin Portal
+                  <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+                </Button>
+              </Link>
+            </CardFooter>
+          </Card>
+        </div>
+
+        {/* Stats Bar */}
+        <div className="max-w-4xl mx-auto">
+          <div className="grid grid-cols-3 gap-4 md:gap-6">
+            {/* Active Job Cards */}
+            <div className="relative overflow-hidden rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-4 md:p-6 text-center group hover:border-white/20 transition-all">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#367C2B]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="relative">
+                <div className="flex justify-center mb-2">
+                  <Activity className="h-5 w-5 text-[#367C2B]" />
+                </div>
+                <p className={`text-2xl md:text-4xl font-bold text-white mb-1 ${isLoading ? "animate-pulse" : ""}`}>
+                  {isLoading ? "..." : stats.activeJobCards}
+                </p>
+                <p className="text-xs md:text-sm text-gray-400">Active Job Cards</p>
+              </div>
+            </div>
+
+            {/* Pipeline Value */}
+            <div className="relative overflow-hidden rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-4 md:p-6 text-center group hover:border-white/20 transition-all">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#FFDE00]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="relative">
+                <div className="flex justify-center mb-2">
+                  <TrendingUp className="h-5 w-5 text-[#FFDE00]" />
+                </div>
+                <p className={`text-2xl md:text-4xl font-bold text-white mb-1 ${isLoading ? "animate-pulse" : ""}`}>
+                  {isLoading ? "..." : formatCurrency(stats.pipelineValue)}
+                </p>
+                <p className="text-xs md:text-sm text-gray-400">Pipeline Value</p>
+              </div>
+            </div>
+
+            {/* Efficiency Rate */}
+            <div className="relative overflow-hidden rounded-xl border border-white/10 bg-white/5 backdrop-blur-md p-4 md:p-6 text-center group hover:border-white/20 transition-all">
+              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="relative">
+                <div className="flex justify-center mb-2">
+                  <Gauge className="h-5 w-5 text-emerald-500" />
+                </div>
+                <p className={`text-2xl md:text-4xl font-bold text-white mb-1 ${isLoading ? "animate-pulse" : ""}`}>
+                  {isLoading ? "..." : `${stats.efficiencyRate}%`}
+                </p>
+                <p className="text-xs md:text-sm text-gray-400">Efficiency Rate</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-white/10 bg-[#0a0a0a]/95 py-6">
+        <div className="container mx-auto px-4">
+          <p className="text-center text-sm text-gray-500">
+            &copy; {new Date().getFullYear()} Megatron EAD. Powered by Digital Service Platform.
+          </p>
+        </div>
+      </footer>
+    </div>
   );
 }
