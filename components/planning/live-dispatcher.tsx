@@ -558,8 +558,8 @@ const handleDragEnd = async (event: DragEndEvent) => {
     if (!over) return;
 
     const appointmentId = active.id as string;
-    // Check both appointments (timeline) and sidebarBacklog (waiting list + notes)
-    const appointment = appointments.find((a) => a.id === appointmentId) || sidebarBacklog.find((a) => a.id === appointmentId);
+    // Check both assignedAppointments (timeline) and sidebarBacklog (waiting list + notes)
+    const appointment = assignedAppointments.find((a) => a.id === appointmentId) || sidebarBacklog.find((a) => a.id === appointmentId);
     if (!appointment) return;
 
     // Extract technician info from drop target
@@ -576,7 +576,7 @@ const handleDragEnd = async (event: DragEndEvent) => {
     }
     const newStartTime = hoursToTimeStr(newStartHour);
 
-    // ─────────────────────────────────────────────────────────────────────
+    // ───────────────────────���─────────────────────────────────────────────
     // PAST TIME VALIDATION
     // ─────────────────────────────────────────────────────────────────────
     const now = new Date();
