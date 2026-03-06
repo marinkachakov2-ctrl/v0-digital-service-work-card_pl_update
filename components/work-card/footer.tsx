@@ -1,38 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { SignaturePad } from "@/components/ui/signature-pad";
-import { TechnicianSignaturePad } from "@/components/ui/technician-signature-pad";
-import { Banknote, CreditCard, PenLine, CheckCircle2, AlertTriangle, Save, Loader2, Clock, FileText, Lock, Download, AlertCircle, ShieldCheck, MessageCircle, Mail, Share2, Phone } from "lucide-react";
-import { generateJobCardPDF, type PDFJobCardData } from "@/lib/pdf-export";
-import { uploadSignature, markJobCardAsShared } from "@/lib/actions";
-import { toast } from "sonner";
-import Image from "next/image";
-
-const ADMIN_PIN = "1234";
-
-interface SaveResult {
-  success: boolean;
-  message?: string;
-  jobCardId?: string;
-  pendingOrder?: boolean;
-  status?: "draft" | "completed";
-}
+import { Banknote, CreditCard, PenLine } from "lucide-react";
 
 interface FooterProps {
   paymentMethod: "bank" | "cash";
@@ -41,19 +13,6 @@ interface FooterProps {
   partsTotal: number;
   vat: number;
   grandTotal: number;
-  timerStatus: "idle" | "running" | "paused";
-  orderNumber: string;
-  onSaveCard: (signatureData?: string | null, signerName?: string) => Promise<SaveResult>;
-  onFormReset: () => void;
-  isReadOnly?: boolean;
-  onStatusChange?: (status: "new" | "draft" | "completed") => void;
-  // PDF Export data
-  pdfData?: Omit<PDFJobCardData, "partsTotal" | "laborTotal" | "vat" | "grandTotal" | "customerSignature" | "customerName">;
-  // Client data for sharing
-  clientPhone?: string;
-  clientName?: string;
-  machineModel?: string;
-  jobCardId?: string;
 }
 
 export function Footer({
@@ -63,479 +22,7 @@ export function Footer({
   partsTotal,
   vat,
   grandTotal,
-  timerStatus,
-  orderNumber,
-  onSaveCard,
-  onFormReset,
-  isReadOnly = false,
-  onStatusChange,
-  pdfData,
-  clientPhone,
-  clientName,
-  machineModel,
-  jobCardId,
 }: FooterProps) {
-  const router = useRouter();
-  const [isSaving, setIsSaving] = useState(false);
-  const [isExportingPDF, setIsExportingPDF] = useState(false);
-  const [savedResult, setSavedResult] = useState<SaveResult | null>(null);
-  const [signatureData, setSignatureData] = useState<string | null>(null);
-  const [signerName, setSignerName] = useState<string>("");
-  // Technician signature state
-  const [techSignatureData, setTechSignatureData] = useState<string | null>(null);
-  const [technicianName, setTechnicianName] = useState<string>("");
-  // Saved signature URL (from Supabase Storage)
-  const [savedSignatureUrl, setSavedSignatureUrl] = useState<string | null>(null);
-  // Admin PIN dialog state
-  const [showPinDialog, setShowPinDialog] = useState(false);
-  const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState(false);
-  const hasActiveTimer = timerStatus === "running" || timerStatus === "paused";
-  const hasPendingOrder = !orderNumber || orderNumber.trim() === "";
-  
-  // Share dialog state
-  const [showShareDialog, setShowShareDialog] = useState(false);
-  const [sharePhoneInput, setSharePhoneInput] = useState(clientPhone || "");
-  const [isSharing, setIsSharing] = useState(false);
-  const [hasShared, setHasShared] = useState(false);
-
-  // Handle admin PIN verification
-  const handlePinSubmit = () => {
-    if (pinInput === ADMIN_PIN) {
-      setShowPinDialog(false);
-      setPinInput("");
-      setPinError(false);
-      // Store in sessionStorage so user doesn't need to re-enter
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("megatron_admin_auth", "true");
-      }
-      router.push("/admin/job-cards");
-    } else {
-      setPinError(true);
-      setPinInput("");
-    }
-  };
-
-  // Check if already authorized
-  const handleAdminClick = () => {
-    if (typeof window !== "undefined" && sessionStorage.getItem("megatron_admin_auth") === "true") {
-      router.push("/admin/job-cards");
-    } else {
-      setShowPinDialog(true);
-    }
-  };
-
-  // Generate share message for WhatsApp/Email
-  const generateShareMessage = () => {
-    const machine = machineModel || pdfData?.machineModel || "вашата машина";
-    const order = orderNumber || savedResult?.jobCardId?.slice(0, 8) || "N/A";
-    return `Здравейте! Вашият сервизен отчет за ${machine} (Поръчка: ${order}) е готов. Моля, свържете се с нас за PDF копие на документа.`;
-  };
-
-  // Handle WhatsApp share
-  const handleWhatsAppShare = async () => {
-    const phone = sharePhoneInput.replace(/\D/g, ""); // Remove non-digits
-    if (!phone || phone.length < 9) {
-      toast.error("Невалиден телефонен номер", {
-        description: "Моля, въведете валиден телефонен номер.",
-      });
-      return;
-    }
-
-    setIsSharing(true);
-    try {
-      // Mark job card as shared if we have a job card ID
-      const cardId = jobCardId || savedResult?.jobCardId;
-      if (cardId) {
-        await markJobCardAsShared(cardId, "whatsapp");
-        onStatusChange?.("completed");
-      }
-
-      // Generate WhatsApp link
-      const message = encodeURIComponent(generateShareMessage());
-      const formattedPhone = phone.startsWith("359") ? phone : `359${phone.replace(/^0/, "")}`;
-      const whatsappUrl = `https://wa.me/${formattedPhone}?text=${message}`;
-      
-      window.open(whatsappUrl, "_blank");
-      setHasShared(true);
-      setShowShareDialog(false);
-      
-      toast.success("Отчетът е споделен", {
-        description: "WhatsApp се отвори с вашето съобщение.",
-      });
-    } catch (error) {
-      console.error("WhatsApp share error:", error);
-      toast.error("Грешка при споделяне", {
-        description: "Възникна грешка. Моля, опитайте отново.",
-      });
-    } finally {
-      setIsSharing(false);
-    }
-  };
-
-  // Handle Email share
-  const handleEmailShare = async () => {
-    setIsSharing(true);
-    try {
-      // Mark job card as shared if we have a job card ID
-      const cardId = jobCardId || savedResult?.jobCardId;
-      if (cardId) {
-        await markJobCardAsShared(cardId, "email");
-        onStatusChange?.("completed");
-      }
-
-      // Generate email link
-      const subject = encodeURIComponent(`Сервизен отчет - ${machineModel || pdfData?.machineModel || "Машина"} - ${orderNumber || savedResult?.jobCardId?.slice(0, 8) || "N/A"}`);
-      const body = encodeURIComponent(generateShareMessage());
-      const mailtoUrl = `mailto:?subject=${subject}&body=${body}`;
-      
-      window.location.href = mailtoUrl;
-      setHasShared(true);
-      setShowShareDialog(false);
-      
-      toast.success("Отчетът е споделен", {
-        description: "Email приложението се отвори.",
-      });
-    } catch (error) {
-      console.error("Email share error:", error);
-      toast.error("Грешка при споделяне", {
-        description: "Възникна грешка. Моля, опитайте отново.",
-      });
-    } finally {
-      setIsSharing(false);
-    }
-  };
-
-  // Export PDF handler with validation
-  const handleExportPDF = async () => {
-    if (!pdfData) {
-      toast.error("PDF Export Error", {
-        description: "Missing job card data for PDF export.",
-      });
-      return;
-    }
-
-    // Validate: Technician signature is required for PDF export
-    if (!techSignatureData) {
-      toast.error("Липсва подпис на техника", {
-        description: "Моля, добавете подпис на техника преди генериране на PDF.",
-      });
-      return;
-    }
-
-    setIsExportingPDF(true);
-    try {
-      const fullPdfData: PDFJobCardData = {
-        ...pdfData,
-        partsTotal,
-        laborTotal,
-        vat,
-        grandTotal,
-        // Use saved signature URL from storage if available, fallback to base64 data
-        customerSignature: savedSignatureUrl || signatureData,
-        customerName: signerName,
-        technicianSignature: techSignatureData,
-        technicianName: technicianName,
-      };
-
-      await generateJobCardPDF(fullPdfData);
-      
-      toast.success("PDF Exported!", {
-        description: "Service report has been downloaded.",
-      });
-    } catch (error) {
-      console.error("[v0] PDF export failed:", error);
-      toast.error("PDF Export Failed", {
-        description: "Could not generate the PDF. Please try again.",
-      });
-    } finally {
-      setIsExportingPDF(false);
-    }
-  };
-
-  // Handle customer signature change from SignaturePad
-  const handleSignatureChange = (signature: string | null, name?: string) => {
-    setSignatureData(signature);
-    if (name !== undefined) {
-      setSignerName(name);
-    }
-  };
-
-  // Handle technician signature change
-  const handleTechSignatureChange = (signature: string | null, name?: string) => {
-    setTechSignatureData(signature);
-    if (name !== undefined) {
-      setTechnicianName(name);
-    }
-  };
-
-  // Save as draft (no signature required)
-  const handleSaveDraft = async () => {
-    setIsSaving(true);
-    try {
-      const result = await onSaveCard(null, signerName); // No signature = draft
-      if (result.success) {
-        setSavedResult({ ...result, status: "draft" });
-        onStatusChange?.("draft");
-        toast.success("Картата е записана като чернова!", {
-          description: "Можете да я редактирате и подпишете по-късно.",
-        });
-      } else {
-        toast.error("Грешка при запис", {
-          description: result.message || "Моля, опитайте отново.",
-        });
-      }
-    } catch {
-      toast.error("Грешка при запис", {
-        description: "Възникна неочаквана грешка.",
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // Finalize with signature (status = completed, read-only after)
-  const handleFinalizeAndSign = async () => {
-    if (!signatureData) {
-      toast.error("Липсва подпис", {
-        description: "Моля, добавете подпис на клиента преди финализиране.",
-      });
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      // First save the job card to get/confirm the ID
-      const result = await onSaveCard(signatureData, signerName);
-      
-      if (result.success && result.jobCardId) {
-        // Upload signature to Supabase Storage and update job_cards with URL
-        const uploadResult = await uploadSignature(
-          result.jobCardId,
-          signatureData,
-          signerName || null
-        );
-
-        if (uploadResult.success && uploadResult.url) {
-          setSavedSignatureUrl(uploadResult.url);
-          setSavedResult({ ...result, status: "completed" });
-          onStatusChange?.("completed");
-          toast.success("Картата е финализирана!", {
-            description: "Подписът е качен успешно и картата е заключена.",
-          });
-        } else {
-          // Signature upload failed, but job card was saved
-          setSavedResult({ ...result, status: "completed" });
-          onStatusChange?.("completed");
-          toast.warning("Картата е записана", {
-            description: `Подписът не можа да бъде качен: ${uploadResult.error}`,
-          });
-        }
-      } else {
-        toast.error("Грешка при финализиране", {
-          description: result.message || "Моля, опитайте отново.",
-        });
-      }
-    } catch {
-      toast.error("Грешка при финализиране", {
-        description: "Възникна неочаквана грешка.",
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // For drafts, just clear the savedResult after showing confirmation briefly (keep form data)
-  // For completed cards, do NOT auto-reset - user must manually click "Start New Job"
-  useEffect(() => {
-    if (savedResult?.success && savedResult.status === "draft") {
-      const timer = setTimeout(() => {
-        setSavedResult(null);
-        // Do NOT call onFormReset() - keep all data visible for draft
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [savedResult]);
-
-  // Show success screen ONLY for completed cards - drafts stay on the form
-  if (savedResult?.success && savedResult.status === "completed") {
-    return (
-      <Card className="border-emerald-500/40 bg-emerald-500/5">
-        <CardContent className="flex flex-col items-center justify-center py-12 space-y-6">
-          {/* Animated Checkmark */}
-          <div className="relative flex h-24 w-24 items-center justify-center">
-            <div className="absolute inset-0 rounded-full bg-emerald-500/20 animate-ping" style={{ animationDuration: "1.5s" }} />
-            <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/30">
-              <CheckCircle2 className="h-12 w-12 text-white animate-in zoom-in duration-300" />
-            </div>
-          </div>
-          
-          <div className="text-center space-y-2">
-            <h2 className="text-2xl font-bold text-emerald-500">Успешно запазено!</h2>
-            <p className="text-muted-foreground">
-              Работната карта е финализирана и записана в базата данни.
-            </p>
-          </div>
-          
-          {/* Job Card ID */}
-          <div className="flex items-center gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-6 py-4">
-            <FileText className="h-5 w-5 text-emerald-500" />
-            <div>
-              <p className="text-xs text-muted-foreground">Job Card ID (Supabase)</p>
-              <p className="font-mono text-lg font-bold text-emerald-400">{savedResult.jobCardId}</p>
-            </div>
-          </div>
-
-          {/* Saved Signature Preview */}
-          {savedSignatureUrl && (
-            <div className="flex flex-col items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <PenLine className="h-3 w-3" />
-                Запазен подпис
-              </p>
-              <div className="relative h-16 w-48 rounded border border-emerald-500/20 bg-card overflow-hidden">
-                <Image
-                  src={savedSignatureUrl}
-                  alt="Запазен подпис"
-                  fill
-                  className="object-contain p-1"
-                  unoptimized
-                />
-              </div>
-              {signerName && (
-                <p className="text-xs text-emerald-400 font-medium">{signerName}</p>
-              )}
-            </div>
-          )}
-
-          {/* Status Badges */}
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <Badge 
-              variant="outline" 
-              className="border-emerald-500/30 bg-emerald-500/10 text-emerald-500 px-4 py-2"
-            >
-              <Lock className="mr-2 h-4 w-4" />
-              Заключена
-            </Badge>
-            {savedResult.pendingOrder && (
-              <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-500 px-4 py-2">
-                <Clock className="mr-2 h-4 w-4" />
-                pending_order (TEMP номер)
-              </Badge>
-            )}
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex flex-col gap-4 pt-4">
-            {/* Primary Row - Download PDF */}
-            <div className="flex justify-center">
-              <Button
-                onClick={handleExportPDF}
-                disabled={isExportingPDF}
-                size="lg"
-                className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-base font-semibold shadow-lg"
-              >
-                {isExportingPDF ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <Download className="h-5 w-5" />
-                )}
-                Download PDF Report
-              </Button>
-            </div>
-
-            {/* Share Buttons Row */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <p className="text-sm text-muted-foreground">Сподели отчет:</p>
-              <div className="flex gap-2">
-                {/* WhatsApp Button */}
-                <Button
-                  onClick={() => setShowShareDialog(true)}
-                  variant="outline"
-                  size="lg"
-                  className="gap-2 border-green-500/50 text-green-600 hover:bg-green-500/10 hover:text-green-500 px-6"
-                  disabled={hasShared}
-                >
-                  <MessageCircle className="h-5 w-5" />
-                  WhatsApp
-                </Button>
-                
-                {/* Email Button */}
-                <Button
-                  onClick={handleEmailShare}
-                  variant="outline"
-                  size="lg"
-                  className="gap-2 border-blue-500/50 text-blue-600 hover:bg-blue-500/10 hover:text-blue-500 px-6"
-                  disabled={isSharing || hasShared}
-                >
-                  {isSharing ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <Mail className="h-5 w-5" />
-                  )}
-                  Email
-                </Button>
-              </div>
-              {hasShared && (
-                <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-500">
-                  <CheckCircle2 className="mr-1 h-3 w-3" />
-                  Споделено
-                </Badge>
-              )}
-            </div>
-            
-            {/* New Job Button - Secondary action */}
-            <div className="flex justify-center pt-2">
-              <Button
-                onClick={() => {
-                  setSavedResult(null);
-                  setSavedSignatureUrl(null);
-                  setHasShared(false);
-                  onFormReset();
-                }}
-                variant="outline"
-                size="lg"
-                className="gap-2 px-8 py-6 text-base border-2"
-              >
-                <FileText className="h-5 w-5" />
-                Start New Job
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Read-only mode for completed cards
-  if (isReadOnly) {
-    return (
-      <Card className="border-emerald-500/40 bg-emerald-500/5">
-        <CardContent className="flex flex-col items-center justify-center py-8 space-y-4">
-          <Lock className="h-12 w-12 text-emerald-500" />
-          <p className="text-lg font-semibold text-emerald-500">Картата е заключена</p>
-          <p className="text-sm text-muted-foreground text-center">
-            Тази работна карта е подписана от клиента и не може да бъде редактирана.
-          </p>
-          {/* Export PDF button for completed cards */}
-          <Button
-            onClick={handleExportPDF}
-            disabled={isExportingPDF}
-            variant="outline"
-            className="gap-2 px-6 py-5 text-base border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
-          >
-            {isExportingPDF ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Download className="h-5 w-5" />
-            )}
-            Export Service Report (PDF)
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <div className="space-y-6">
       {/* Payment & Totals */}
@@ -558,14 +45,20 @@ export function Footer({
               >
                 <div className="flex items-center space-x-3 rounded-md border border-border bg-secondary p-3">
                   <RadioGroupItem value="bank" id="bank" />
-                  <Label htmlFor="bank" className="flex flex-1 cursor-pointer items-center gap-2 text-foreground">
+                  <Label
+                    htmlFor="bank"
+                    className="flex flex-1 cursor-pointer items-center gap-2 text-foreground"
+                  >
                     <CreditCard className="h-4 w-4 text-muted-foreground" />
                     По банков път (Bank Transfer)
                   </Label>
                 </div>
                 <div className="flex items-center space-x-3 rounded-md border border-border bg-secondary p-3">
                   <RadioGroupItem value="cash" id="cash" />
-                  <Label htmlFor="cash" className="flex flex-1 cursor-pointer items-center gap-2 text-foreground">
+                  <Label
+                    htmlFor="cash"
+                    className="flex flex-1 cursor-pointer items-center gap-2 text-foreground"
+                  >
                     <Banknote className="h-4 w-4 text-muted-foreground" />
                     В брой (Cash)
                   </Label>
@@ -587,7 +80,9 @@ export function Footer({
                 <Separator className="bg-border" />
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal:</span>
-                  <span className="font-mono text-foreground">{(laborTotal + partsTotal).toFixed(2)} лв.</span>
+                  <span className="font-mono text-foreground">
+                    {(laborTotal + partsTotal).toFixed(2)} лв.
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">VAT (20%):</span>
@@ -596,7 +91,9 @@ export function Footer({
                 <Separator className="bg-border" />
                 <div className="flex justify-between">
                   <span className="text-lg font-semibold text-foreground">Grand Total:</span>
-                  <span className="font-mono text-xl font-bold text-primary">{grandTotal.toFixed(2)} лв.</span>
+                  <span className="font-mono text-xl font-bold text-primary">
+                    {grandTotal.toFixed(2)} лв.
+                  </span>
                 </div>
               </div>
             </div>
@@ -604,231 +101,36 @@ export function Footer({
         </CardContent>
       </Card>
 
-      {/* Technician Signature Pad - Required for PDF export */}
-      <TechnicianSignaturePad
-        onSignatureChange={handleTechSignatureChange}
-        disabled={isReadOnly}
-        leadTechnician={pdfData?.leadTechnician}
-      />
-
-      {/* Client Signature Pad */}
-      <SignaturePad
-        onSignatureChange={handleSignatureChange}
-        disabled={isReadOnly}
-      />
-
-      {/* Warning: signing auto-stops clocking */}
-      {hasActiveTimer && (
-        <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
-          <p className="text-sm text-amber-500">
-            Финализирането ще спре автоматично всички активни часовници за тази карта.
-          </p>
-        </div>
-      )}
-
-      {/* Pending Order Warning */}
-      {hasPendingOrder && (
-        <div className="flex items-center justify-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3">
-          <Clock className="h-4 w-4 shrink-0 text-amber-500" />
-          <p className="text-sm text-amber-500">
-            Няма номер на поръчка (Navision). Ще бъде генериран временен вътрешен номер (TEMP-2026-XXXX).
-            Картата ще има статус &quot;pending_order&quot; докато се присвои реален номер.
-          </p>
-        </div>
-      )}
-
-      {/* PDF Export Warning - requires technician signature */}
-      {!techSignatureData && (
-        <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-4 py-3">
-          <AlertCircle className="h-4 w-4 shrink-0 text-primary" />
-          <p className="text-sm text-primary">
-            За да генерирате PDF, техникът трябва да се подпише по-горе.
-          </p>
-        </div>
-      )}
-
-      {/* Action Buttons */}
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-        {/* Export PDF */}
-        <Button
-          onClick={handleExportPDF}
-          disabled={isExportingPDF || isSaving || !techSignatureData}
-          variant="outline"
-          className="gap-2 px-5 py-5 text-base border-primary/30 text-primary hover:bg-primary/10 disabled:opacity-50"
-        >
-          {isExportingPDF ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <Download className="h-5 w-5" />
-          )}
-          Export PDF
-        </Button>
-
-        {/* Save as Draft */}
-        <Button
-          onClick={handleSaveDraft}
-          disabled={isSaving}
-          variant="outline"
-          className="gap-2 px-6 py-5 text-base"
-        >
-          {isSaving ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <Save className="h-5 w-5" />
-          )}
-          Запази Чернова
-        </Button>
-
-        {/* Finalize & Sign */}
-        <Button
-          onClick={handleFinalizeAndSign}
-          disabled={isSaving || !signatureData}
-          className="gap-2 bg-emerald-600 px-6 py-5 text-base text-white hover:bg-emerald-700"
-        >
-          {isSaving ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <PenLine className="h-5 w-5" />
-          )}
-          Финализирай и Подпиши
-        </Button>
-      </div>
-
-      {/* Status indicators */}
-      <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <span className="h-2 w-2 rounded-full bg-amber-500"></span>
-          Чернова = Редактируема
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-          Подписана = Заключена
-        </span>
-      </div>
+      {/* Signatures */}
+      <Card className="border-border bg-card">
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2 text-base text-foreground">
+            <PenLine className="h-4 w-4 text-primary" />
+            Подписи (Signatures)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-6 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Technician</Label>
+              <div className="flex h-24 items-center justify-center rounded-md border-2 border-dashed border-border bg-secondary">
+                <span className="text-sm text-muted-foreground">Signature Area</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Client</Label>
+              <div className="flex h-24 items-center justify-center rounded-md border-2 border-dashed border-border bg-secondary">
+                <span className="text-sm text-muted-foreground">Signature Area</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Disclaimer */}
       <p className="text-center text-xs text-muted-foreground">
-        С подписването клиентът се съгласява с общите условия на Мегатрон ЕАД.
+        The client agrees to the general terms of Megatron EAD.
       </p>
-
-      {/* Admin Link - subtle footer link with PIN protection */}
-      <div className="flex justify-center pt-4 border-t border-border/30 mt-4">
-        <button
-          type="button"
-          onClick={handleAdminClick}
-          className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-        >
-          <Lock className="h-3 w-3" />
-          Admin
-        </button>
-      </div>
-
-      {/* PIN Dialog */}
-      <Dialog open={showPinDialog} onOpenChange={setShowPinDialog}>
-        <DialogContent className="sm:max-w-[340px] bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-foreground">
-              <ShieldCheck className="h-5 w-5 text-primary" />
-              Admin Access
-            </DialogTitle>
-            <DialogDescription>
-              Въведете PIN код за достъп до админ панела.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <Label htmlFor="admin-pin" className="text-foreground">PIN Code</Label>
-              <Input
-                id="admin-pin"
-                type="password"
-                inputMode="numeric"
-                maxLength={4}
-                placeholder="----"
-                value={pinInput}
-                onChange={(e) => {
-                  setPinInput(e.target.value.replace(/\D/g, ""));
-                  setPinError(false);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && pinInput.length === 4) {
-                    handlePinSubmit();
-                  }
-                }}
-                className={`text-center text-2xl tracking-[0.5em] font-mono bg-background ${
-                  pinError ? "border-destructive" : ""
-                }`}
-              />
-              {pinError && (
-                <p className="text-xs text-destructive">Грешен PIN код. Опитайте отново.</p>
-              )}
-            </div>
-            <Button
-              onClick={handlePinSubmit}
-              disabled={pinInput.length !== 4}
-              className="w-full"
-            >
-              <Lock className="h-4 w-4 mr-2" />
-              Вход
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* WhatsApp Phone Dialog */}
-      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
-        <DialogContent className="sm:max-w-[400px] bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <MessageCircle className="h-5 w-5 text-green-500" />
-              Сподели чрез WhatsApp
-            </DialogTitle>
-            <DialogDescription>
-              Въведете телефонен номер на клиента за изпращане на отчета.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="phone">Телефонен номер</Label>
-              <div className="flex gap-2">
-                <span className="flex items-center px-3 bg-muted rounded-l-md border border-r-0 text-sm text-muted-foreground">
-                  +359
-                </span>
-                <Input
-                  id="phone"
-                  type="tel"
-                  placeholder="888 123 456"
-                  value={sharePhoneInput}
-                  onChange={(e) => setSharePhoneInput(e.target.value.replace(/[^\d\s]/g, ""))}
-                  className="rounded-l-none"
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Примерен формат: 888 123 456 (без +359)
-              </p>
-            </div>
-            
-            {/* Preview message */}
-            <div className="rounded-lg border bg-muted/50 p-3">
-              <p className="text-xs text-muted-foreground mb-1">Предварителен преглед:</p>
-              <p className="text-sm">{generateShareMessage()}</p>
-            </div>
-            
-            <Button
-              onClick={handleWhatsAppShare}
-              disabled={isSharing || !sharePhoneInput || sharePhoneInput.replace(/\D/g, "").length < 9}
-              className="w-full gap-2 bg-green-600 hover:bg-green-700"
-            >
-              {isSharing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <MessageCircle className="h-4 w-4" />
-              )}
-              Изпрати чрез WhatsApp
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

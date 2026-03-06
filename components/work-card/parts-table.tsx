@@ -1,11 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
 import type { PartItem } from "@/app/page";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -14,14 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Trash2, Package, Search, Loader2, AlertTriangle, CheckCircle2, WifiOff, Database } from "lucide-react";
-import { searchParts, fetchCommonParts, type PartSearchResult } from "@/lib/actions";
-import { cn } from "@/lib/utils";
-
-// Local storage key for cached parts
-const PARTS_CACHE_KEY = "megatron_parts_cache";
-const PARTS_CACHE_TIMESTAMP_KEY = "megatron_parts_cache_timestamp";
-const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+import { Plus, Trash2, Package } from "lucide-react";
 
 interface PartsTableProps {
   parts: PartItem[];
@@ -29,149 +20,7 @@ interface PartsTableProps {
 }
 
 export function PartsTable({ parts, onPartsChange }: PartsTableProps) {
-  // Search state
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<PartSearchResult[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [showResults, setShowResults] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
-
-  // Local cache state
-  const [cachedParts, setCachedParts] = useState<PartSearchResult[]>([]);
-  const [isOffline, setIsOffline] = useState(false);
-  const [cacheLoaded, setCacheLoaded] = useState(false);
-
-  // Load cached parts on mount
-  useEffect(() => {
-    const loadCachedParts = async () => {
-      // Check if we have a valid cache
-      const cachedTimestamp = localStorage.getItem(PARTS_CACHE_TIMESTAMP_KEY);
-      const cachedData = localStorage.getItem(PARTS_CACHE_KEY);
-
-      if (cachedTimestamp && cachedData) {
-        const timestamp = parseInt(cachedTimestamp, 10);
-        const isValid = Date.now() - timestamp < CACHE_DURATION_MS;
-
-        if (isValid) {
-          try {
-            const parsed = JSON.parse(cachedData) as PartSearchResult[];
-            setCachedParts(parsed);
-            setCacheLoaded(true);
-            console.log("[v0] Loaded", parsed.length, "parts from cache");
-          } catch {
-            console.error("[v0] Failed to parse cached parts");
-          }
-        }
-      }
-
-      // Refresh cache from server (in background)
-      try {
-        const freshParts = await fetchCommonParts();
-        if (freshParts.length > 0) {
-          localStorage.setItem(PARTS_CACHE_KEY, JSON.stringify(freshParts));
-          localStorage.setItem(PARTS_CACHE_TIMESTAMP_KEY, Date.now().toString());
-          setCachedParts(freshParts);
-          setCacheLoaded(true);
-          console.log("[v0] Refreshed cache with", freshParts.length, "common parts");
-        }
-      } catch (error) {
-        console.error("[v0] Failed to refresh parts cache:", error);
-        setIsOffline(true);
-      }
-    };
-
-    loadCachedParts();
-
-    // Listen for online/offline events
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-    setIsOffline(!navigator.onLine);
-
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, []);
-
-  // Debounced search - uses server when online, local cache when offline
-  useEffect(() => {
-    if (searchQuery.length < 2) {
-      setSearchResults([]);
-      setShowResults(false);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      setIsSearching(true);
-      const query = searchQuery.toLowerCase().trim();
-
-      try {
-        if (isOffline || !navigator.onLine) {
-          // Offline mode: search in local cache
-          const offlineResults = cachedParts.filter(
-            (p) =>
-              p.partNumber.toLowerCase().includes(query) ||
-              p.description.toLowerCase().includes(query)
-          );
-          setSearchResults(offlineResults.slice(0, 10));
-          setShowResults(true);
-          console.log("[v0] Offline search returned", offlineResults.length, "results from cache");
-        } else {
-          // Online mode: search from server
-          const results = await searchParts(searchQuery);
-          setSearchResults(results);
-          setShowResults(true);
-        }
-      } catch (error) {
-        console.error("Parts search error:", error);
-        // Fallback to cache on error
-        const fallbackResults = cachedParts.filter(
-          (p) =>
-            p.partNumber.toLowerCase().includes(query) ||
-            p.description.toLowerCase().includes(query)
-        );
-        setSearchResults(fallbackResults.slice(0, 10));
-        setShowResults(fallbackResults.length > 0);
-        setIsOffline(true);
-      } finally {
-        setIsSearching(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery, isOffline, cachedParts]);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setShowResults(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Add part from search result
-  const addPartFromSearch = (part: PartSearchResult) => {
-    const newPart: PartItem = {
-      id: crypto.randomUUID(),
-      partId: part.id,
-      partNo: part.partNumber,
-      description: part.description,
-      qty: 1,
-      price: part.unitPrice,
-      stockQuantity: part.stockQuantity,
-    };
-    onPartsChange([...parts, newPart]);
-    setSearchQuery("");
-    setShowResults(false);
-  };
-
-  // Manual add part (without database lookup)
-  const addManualPart = () => {
+  const addPart = () => {
     const newPart: PartItem = {
       id: crypto.randomUUID(),
       partNo: "",
@@ -198,122 +47,30 @@ export function PartsTable({ parts, onPartsChange }: PartsTableProps) {
 
   return (
     <Card className="border-border bg-card">
-      <CardHeader className="flex flex-col gap-4 pb-4">
-        <div className="flex flex-row items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base text-foreground">
-            <Package className="h-4 w-4 text-primary" />
-            Резервни части (Parts)
-          </CardTitle>
-          <Button
-            onClick={addManualPart}
-            size="sm"
-            variant="outline"
-            className="gap-1 bg-transparent"
-          >
-            <Plus className="h-4 w-4" />
-            Manual
-          </Button>
-        </div>
-
-        {/* Offline/Cache Status */}
-        {(isOffline || cacheLoaded) && (
-          <div className={cn(
-            "flex items-center gap-2 text-xs px-3 py-1.5 rounded-md",
-            isOffline 
-              ? "bg-amber-500/10 text-amber-500 border border-amber-500/30" 
-              : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30"
-          )}>
-            {isOffline ? (
-              <>
-                <WifiOff className="h-3.5 w-3.5" />
-                <span>Офлайн режим - търсене в локален кеш ({cachedParts.length} части)</span>
-              </>
-            ) : (
-              <>
-                <Database className="h-3.5 w-3.5" />
-                <span>Кеширани {cachedParts.length} често използвани части (филтри, масла, ремъци за 6030/7030)</span>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Search Input */}
-        <div className="relative" ref={searchRef}>
-          <Label className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1.5">
-            <Search className="h-3 w-3" />
-            Търсене на части по номер или описание
-            {isOffline && <span className="text-amber-500">(офлайн)</span>}
-          </Label>
-          <div className="relative">
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => searchQuery.length >= 2 && setShowResults(true)}
-              placeholder="Въведете номер на част или описание..."
-              className="bg-card text-foreground border-primary/30 focus:border-primary pr-10"
-            />
-            {isSearching && (
-              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
-            )}
-          </div>
-
-          {/* Search Results Dropdown */}
-          {showResults && searchResults.length > 0 && (
-            <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-popover shadow-lg">
-              <div className="max-h-64 overflow-y-auto p-1">
-                {searchResults.map((part) => (
-                  <button
-                    key={part.id}
-                    type="button"
-                    onClick={() => addPartFromSearch(part)}
-                    className={cn(
-                      "w-full rounded-md px-3 py-2 text-left transition-colors",
-                      "hover:bg-accent hover:text-accent-foreground",
-                      "focus:outline-none focus:bg-accent"
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="font-mono text-sm font-medium text-primary">
-                          {part.partNumber}
-                        </span>
-                        <p className="text-sm text-foreground truncate">{part.description}</p>
-                      </div>
-                      <div className="text-right shrink-0 ml-2">
-                        <p className="text-sm font-medium text-foreground">
-                          {part.unitPrice.toFixed(2)} лв.
-                        </p>
-                        <p className={cn(
-                          "text-[10px]",
-                          part.stockQuantity > 0 ? "text-emerald-500" : "text-red-500"
-                        )}>
-                          Наличност: {part.stockQuantity}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {showResults && searchResults.length === 0 && !isSearching && searchQuery.length >= 2 && (
-            <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-popover p-3 shadow-lg">
-              <p className="text-sm text-muted-foreground text-center">Няма намерени части</p>
-            </div>
-          )}
-        </div>
+      <CardHeader className="flex flex-row items-center justify-between pb-4">
+        <CardTitle className="flex items-center gap-2 text-base text-foreground">
+          <Package className="h-4 w-4 text-primary" />
+          Части (Parts)
+        </CardTitle>
+        <Button
+          onClick={addPart}
+          size="sm"
+          className="gap-1 bg-primary text-primary-foreground hover:bg-primary/90"
+        >
+          <Plus className="h-4 w-4" />
+          Add Part
+        </Button>
       </CardHeader>
-
       <CardContent>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
                 <TableHead className="text-muted-foreground">Part No</TableHead>
-                <TableHead className="text-muted-foreground">Описание</TableHead>
-                <TableHead className="text-right text-muted-foreground">Кол.</TableHead>
-                <TableHead className="text-right text-muted-foreground">Цена (лв.)</TableHead>
-                <TableHead className="text-right text-muted-foreground">Сума</TableHead>
+                <TableHead className="text-muted-foreground">Description</TableHead>
+                <TableHead className="text-right text-muted-foreground">Qty</TableHead>
+                <TableHead className="text-right text-muted-foreground">Price (лв.)</TableHead>
+                <TableHead className="text-right text-muted-foreground">Total</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
@@ -324,98 +81,62 @@ export function PartsTable({ parts, onPartsChange }: PartsTableProps) {
                     colSpan={6}
                     className="h-24 text-center text-muted-foreground"
                   >
-                    Няма добавени части. Търсете по-горе или добавете ръчно.
+                    No parts added. Click &quot;Add Part&quot; to add a new part.
                   </TableCell>
                 </TableRow>
               ) : (
-                parts.map((part) => {
-                  const exceedsStock = part.stockQuantity !== undefined && part.qty > part.stockQuantity;
-                  const isFromDatabase = !!part.partId;
-                  
-                  return (
-                    <TableRow key={part.id} className={cn(
-                      "border-border",
-                      exceedsStock && "bg-amber-500/5"
-                    )}>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          {isFromDatabase ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                          ) : null}
-                          <Input
-                            value={part.partNo}
-                            onChange={(e) => updatePart(part.id, "partNo", e.target.value)}
-                            placeholder="Part #"
-                            readOnly={isFromDatabase}
-                            className={cn(
-                              "h-9 text-foreground",
-                              isFromDatabase ? "bg-secondary font-mono" : "bg-card"
-                            )}
-                          />
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          value={part.description}
-                          onChange={(e) => updatePart(part.id, "description", e.target.value)}
-                          placeholder="Description"
-                          readOnly={isFromDatabase}
-                          className={cn(
-                            "h-9 text-foreground",
-                            isFromDatabase ? "bg-secondary" : "bg-card"
-                          )}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <Input
-                            type="number"
-                            min="1"
-                            value={part.qty}
-                            onChange={(e) => updatePart(part.id, "qty", parseInt(e.target.value) || 1)}
-                            className={cn(
-                              "h-9 w-20 text-right text-foreground",
-                              exceedsStock ? "border-amber-500 bg-amber-500/10" : "bg-card"
-                            )}
-                          />
-                          {exceedsStock && (
-                            <p className="text-[9px] text-amber-500 flex items-center gap-0.5">
-                              <AlertTriangle className="h-3 w-3" />
-                              Над наличност ({part.stockQuantity})
-                            </p>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={part.price}
-                          onChange={(e) => updatePart(part.id, "price", parseFloat(e.target.value) || 0)}
-                          readOnly={isFromDatabase}
-                          className={cn(
-                            "h-9 w-24 text-right text-foreground",
-                            isFromDatabase ? "bg-secondary" : "bg-card"
-                          )}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-foreground">
-                        {(part.qty * part.price).toFixed(2)} лв.
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removePart(part.id)}
-                          className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
+                parts.map((part) => (
+                  <TableRow key={part.id} className="border-border">
+                    <TableCell>
+                      <Input
+                        value={part.partNo}
+                        onChange={(e) => updatePart(part.id, "partNo", e.target.value)}
+                        placeholder="Part #"
+                        className="h-9 bg-secondary text-foreground"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={part.description}
+                        onChange={(e) => updatePart(part.id, "description", e.target.value)}
+                        placeholder="Description"
+                        className="h-9 bg-secondary text-foreground"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={part.qty}
+                        onChange={(e) => updatePart(part.id, "qty", parseInt(e.target.value) || 1)}
+                        className="h-9 w-20 bg-secondary text-right text-foreground"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={part.price}
+                        onChange={(e) => updatePart(part.id, "price", parseFloat(e.target.value) || 0)}
+                        className="h-9 w-24 bg-secondary text-right text-foreground"
+                      />
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-foreground">
+                      {(part.qty * part.price).toFixed(2)} лв.
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removePart(part.id)}
+                        className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>
@@ -424,7 +145,7 @@ export function PartsTable({ parts, onPartsChange }: PartsTableProps) {
         {/* Subtotal */}
         <div className="mt-4 flex justify-end border-t border-border pt-4">
           <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">Обща сума на частите:</span>
+            <span className="text-sm text-muted-foreground">Parts Subtotal:</span>
             <span className="font-mono text-lg font-semibold text-foreground">
               {subtotal.toFixed(2)} лв.
             </span>
