@@ -335,7 +335,7 @@ export function NotificationCenter({ userId }: NotificationCenterProps) {
                           {/* Action Button */}
                           {notification.job_card_id && (
                             <Link 
-                              href={`/?editId=${notification.job_card_id}`}
+                              href={`/technician?editId=${notification.job_card_id}`}
                               onClick={() => setIsOpen(false)}
                             >
                               <Button

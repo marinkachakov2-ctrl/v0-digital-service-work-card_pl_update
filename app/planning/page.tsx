@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Wrench, ChevronRight, Home, Calendar, Users, Clock, ArrowLeft, LayoutGrid, GanttChart } from "lucide-react";
+import { useState, Component, type ReactNode } from "react";
+import { Wrench, ChevronRight, Home, Calendar, Users, Clock, ArrowLeft, LayoutGrid, GanttChart, CalendarRange, AlertTriangle, Columns3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -9,10 +9,46 @@ import { WorkshopDiary } from "@/components/planning/workshop-diary";
 import { TechnicianRoster } from "@/components/planning/technician-roster";
 import { DragDropScheduler } from "@/components/planning/drag-drop-scheduler";
 import { HourlyGantt } from "@/components/planning/hourly-gantt";
+import { LiveDispatcher } from "@/components/planning/live-dispatcher";
 import { WeeklyTaskView, type WeeklyTask, type WeeklyNote } from "@/components/planning/weekly-task-view";
 import { ServiceWideView, type ServiceTask } from "@/components/planning/service-wide-view";
+import { ServicePlanningCalendar } from "@/components/planning/service-planning-calendar";
+import { KanbanBoard } from "@/components/planning/kanban-board";
 
-type ViewLevel = "diary" | "roster" | "gantt";
+// Error Boundary to catch and display errors
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+          <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+          <h2 className="text-lg font-semibold text-red-600 mb-2">Грешка при зареждане</h2>
+          <p className="text-sm text-muted-foreground mb-4 max-w-md">
+            {this.state.error?.message || "Възникна неочаквана грешка"}
+          </p>
+          <button 
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm"
+          >
+            Опитай отново
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+type ViewLevel = "diary" | "roster" | "gantt" | "calendar" | "dispatcher" | "kanban";
 
 interface NavigationState {
   level: ViewLevel;
@@ -235,14 +271,46 @@ export default function PlanningBoardPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button 
+              variant={navigation.level === "dispatcher" ? "default" : "outline"} 
+              size="sm" 
+              className={navigation.level === "dispatcher" ? "" : "bg-transparent"}
+              onClick={() => setNavigation({ level: "dispatcher", selectedDate: new Date(), selectedTechnicianId: null, selectedTechnicianName: null })}
+            >
+              <Users className="h-4 w-4 mr-1.5" />
+              Gantt
+            </Button>
+            <Button 
+              variant={navigation.level === "calendar" ? "default" : "outline"} 
+              size="sm" 
+              className={navigation.level === "calendar" ? "" : "bg-transparent"}
+              onClick={() => setNavigation({ level: "calendar", selectedDate: null, selectedTechnicianId: null, selectedTechnicianName: null })}
+            >
+              <CalendarRange className="h-4 w-4 mr-1.5" />
+              Calendar
+            </Button>
+            <Button 
+              variant={navigation.level === "kanban" ? "default" : "outline"} 
+              size="sm" 
+              className={navigation.level === "kanban" ? "" : "bg-transparent"}
+              onClick={() => setNavigation({ level: "kanban", selectedDate: null, selectedTechnicianId: null, selectedTechnicianName: null })}
+            >
+              <Columns3 className="h-4 w-4 mr-1.5" />
+              Kanban
+            </Button>
             <Link href="/admin">
               <Button variant="outline" size="sm" className="bg-transparent">
                 Admin
               </Button>
             </Link>
-            <Link href="/">
+            <Link href="/technician">
               <Button variant="outline" size="sm" className="bg-transparent">
                 Работна Карта
+              </Button>
+            </Link>
+            <Link href="/">
+              <Button variant="outline" size="sm" className="bg-transparent">
+                Portal
               </Button>
             </Link>
           </div>
@@ -297,6 +365,33 @@ export default function PlanningBoardPage() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto p-4">
+        {/* Live Dispatcher View - Full-stack with Supabase */}
+        {navigation.level === "dispatcher" && navigation.selectedDate && (
+          <div className="h-[calc(100vh-180px)]">
+            <ErrorBoundary>
+              <LiveDispatcher selectedDate={navigation.selectedDate} />
+            </ErrorBoundary>
+          </div>
+        )}
+
+        {/* Calendar View - Full-stack planning calendar */}
+        {navigation.level === "calendar" && (
+          <div className="h-[calc(100vh-180px)]">
+            <ErrorBoundary>
+              <ServicePlanningCalendar userRole="admin" />
+            </ErrorBoundary>
+          </div>
+        )}
+
+        {/* Kanban View - Status-based board */}
+        {navigation.level === "kanban" && (
+          <div className="h-[calc(100vh-180px)]">
+            <ErrorBoundary>
+              <KanbanBoard />
+            </ErrorBoundary>
+          </div>
+        )}
+
         {/* Level 1: Workshop Diary */}
         {navigation.level === "diary" && (
           <WorkshopDiary onSelectDay={handleSelectDay} />
@@ -402,6 +497,30 @@ export default function PlanningBoardPage() {
       {/* Level Indicator */}
       <footer className="border-t border-border bg-card px-4 py-2">
         <div className="flex items-center justify-center gap-6 text-xs text-muted-foreground">
+          <div
+            className={`flex items-center gap-1.5 ${navigation.level === "dispatcher" ? "text-primary" : ""}`}
+          >
+            <div
+              className={`h-2 w-2 rounded-full ${navigation.level === "dispatcher" ? "bg-primary" : "bg-muted"}`}
+            />
+            <span>Dispatcher</span>
+          </div>
+          <div
+            className={`flex items-center gap-1.5 ${navigation.level === "calendar" ? "text-primary" : ""}`}
+          >
+            <div
+              className={`h-2 w-2 rounded-full ${navigation.level === "calendar" ? "bg-primary" : "bg-muted"}`}
+            />
+            <span>Calendar</span>
+          </div>
+          <div
+            className={`flex items-center gap-1.5 ${navigation.level === "kanban" ? "text-primary" : ""}`}
+          >
+            <div
+              className={`h-2 w-2 rounded-full ${navigation.level === "kanban" ? "bg-primary" : "bg-muted"}`}
+            />
+            <span>Kanban</span>
+          </div>
           <div
             className={`flex items-center gap-1.5 ${navigation.level === "diary" ? "text-primary" : ""}`}
           >

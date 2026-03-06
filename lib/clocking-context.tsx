@@ -94,6 +94,36 @@ export const reverseTechnicianMapping: Record<string, string> = {
 
 // ────────────────────────────── Sample Data ──────────────────────────────
 
+// Helper to get current time in Bulgaria timezone (for display purposes)
+export function getBulgariaTime(): Date {
+  return new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Sofia" }));
+}
+
+// Helper to format time for display in Bulgaria timezone
+export function formatBulgariaTime(date: Date | number): string {
+  const d = typeof date === "number" ? new Date(date) : date;
+  return d.toLocaleTimeString("bg-BG", { 
+    timeZone: "Europe/Sofia", 
+    hour: "2-digit", 
+    minute: "2-digit" 
+  });
+}
+
+// Helper to check if a scheduled start time is in the future
+export function isScheduledInFuture(scheduledStartTime: string | null, workDate: string | null): boolean {
+  if (!scheduledStartTime || !workDate) return false;
+  
+  const now = new Date();
+  const [hours, minutes] = scheduledStartTime.split(":").map(Number);
+  const scheduled = new Date(workDate);
+  scheduled.setHours(hours, minutes, 0, 0);
+  
+  return scheduled.getTime() > now.getTime();
+}
+
+// Calculate start times relative to NOW for sample data (prevents future timestamps)
+const NOW = Date.now();
+
 const initialWorkOrders: WorkOrder[] = [
   {
     id: "JC-0012",
@@ -131,7 +161,7 @@ const initialWorkOrders: WorkOrder[] = [
     status: "In Progress",
     plannedHours: 8,
     actualHours: 0,
-    startTime: Date.now() - 7200000,
+    startTime: NOW - 7200000, // Started 2 hours ago
     technicianIds: ["tech-1", "tech-2"],
     leadTechnicianId: "tech-1",
     clockAtJobLevel: true,
@@ -177,7 +207,7 @@ const initialWorkOrders: WorkOrder[] = [
     status: "Overdue",
     plannedHours: 6,
     actualHours: 7.5,
-    startTime: Date.now() - 10800000,
+    startTime: NOW - 10800000, // Started 3 hours ago
     technicianIds: ["tech-3", "tech-4"],
     leadTechnicianId: "tech-3",
     clockAtJobLevel: true,
@@ -325,6 +355,11 @@ function workOrdersToClockingActivities(orders: WorkOrder[]): ClockingActivity[]
 
 // ────────────────────────────── Context ──────────────────────────────
 
+export interface ClockInValidationResult {
+  canClockIn: boolean;
+  errorMessage?: string;
+}
+
 interface ClockingContextType {
   clockingActivities: ClockingActivity[];
   workOrders: WorkOrder[];
@@ -345,6 +380,7 @@ interface ClockingContextType {
   getPreviousEngineHours: (machine: string) => number | null;
   linkOrderToJobCard: (jcId: string, orderNumber: string) => void;
   convertNoteToOrder: (note: { text: string; type?: "service" | "repair" | "inspection"; estimatedHours?: number }) => WorkOrder;
+  validateClockIn: (scheduledStartTime?: string | null, workDate?: string | null) => ClockInValidationResult;
 }
 
 const ClockingContext = createContext<ClockingContextType | undefined>(undefined);
@@ -414,7 +450,7 @@ export function ClockingProvider({ children }: { children: React.ReactNode }) {
             id: orderId,
             orderNumber: `ON-${orderId}`,
             type: "repair" as const,
-            machineOwner: customer || "Непланирано",
+            machineOwner: customer || "��епланирано",
             billingEntity: customer || "Непланирано",
             machine: machine || "-",
             serialNo: "-",
@@ -672,6 +708,41 @@ export function ClockingProvider({ children }: { children: React.ReactNode }) {
     return newOrder;
   }, []);
 
+  // Validate if clock-in is allowed (checks for future scheduled times)
+  const validateClockIn = useCallback((scheduledStartTime?: string | null, workDate?: string | null): ClockInValidationResult => {
+    // If no scheduled time provided, allow clock-in (unscheduled work)
+    if (!scheduledStartTime || !workDate) {
+      return { canClockIn: true };
+    }
+
+    const now = new Date();
+    const todayStr = now.toISOString().split("T")[0];
+    
+    // Parse the scheduled time
+    const [hours, minutes] = scheduledStartTime.split(":").map(Number);
+    const scheduledDate = new Date(workDate);
+    scheduledDate.setHours(hours, minutes, 0, 0);
+
+    // Check if the work date is in the future
+    if (workDate > todayStr) {
+      return {
+        canClockIn: false,
+        errorMessage: "Не можете да започнете задача, планирана за бъдеща дата",
+      };
+    }
+
+    // Check if the scheduled start time is in the future (for today)
+    if (workDate === todayStr && scheduledDate.getTime() > now.getTime()) {
+      const formattedTime = scheduledStartTime;
+      return {
+        canClockIn: false,
+        errorMessage: `Не можете да започнете задача преди планираното време (${formattedTime})`,
+      };
+    }
+
+    return { canClockIn: true };
+  }, []);
+
   return (
     <ClockingContext.Provider
       value={{
@@ -694,6 +765,7 @@ export function ClockingProvider({ children }: { children: React.ReactNode }) {
         getPreviousEngineHours,
         linkOrderToJobCard,
         convertNoteToOrder,
+        validateClockIn,
       }}
     >
       {children}

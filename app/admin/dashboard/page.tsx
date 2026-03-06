@@ -47,6 +47,7 @@ import {
   ChevronRight,
   CheckCircle2,
   ExternalLink,
+  Send,
 } from "lucide-react";
 
 // Types for the admin view
