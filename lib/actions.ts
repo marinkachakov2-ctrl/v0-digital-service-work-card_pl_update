@@ -2090,6 +2090,13 @@ export async function fetchJobCardForPDF(jobCardId: string): Promise<{
       qty: number;
       price: number;
     }>;
+    // Labor
+    laborItems: Array<{
+      operationName: string;
+      techCount: number;
+      price: number;
+      notes: string;
+    }>;
     // Costs
     partsTotal: number;
     laborTotal: number;
@@ -2101,7 +2108,7 @@ export async function fetchJobCardForPDF(jobCardId: string): Promise<{
     notes: string;
     photoUrls: string[];
     engineHoursPhotoUrl: string | null;
-    totalWorkTime: number;
+    totalWorkTime: string;
     customerSignature: string | null;
     customerName: string | null;
     technicianSignature: string | null;
@@ -2228,6 +2235,13 @@ export async function fetchJobCardForPDF(jobCardId: string): Promise<{
       repairEnd: jobCard.end_time ? new Date(jobCard.end_time).toLocaleString("bg-BG") : "N/A",
       // Parts
       parts,
+      // Labor - generate a single labor item based on total work time
+      laborItems: [{
+        operationName: "Repair Work",
+        techCount: 1,
+        price: laborTotal,
+        notes: jobCard.notes || "",
+      }],
       // Costs
       partsTotal,
       laborTotal,
@@ -2239,7 +2253,12 @@ export async function fetchJobCardForPDF(jobCardId: string): Promise<{
       notes: jobCard.notes || "",
       photoUrls,
       engineHoursPhotoUrl: jobCard.hours_photo_url || null,
-      totalWorkTime: jobCard.total_seconds || 0,
+      totalWorkTime: (() => {
+        const totalSeconds = jobCard.total_seconds || 0;
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        return `${hours}h ${minutes}m`;
+      })(),
       customerSignature: jobCard.signature_url || jobCard.signature_data || null,
       customerName: jobCard.client_name_signed || null,
       technicianSignature: null,
