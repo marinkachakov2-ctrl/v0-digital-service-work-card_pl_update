@@ -2090,6 +2090,13 @@ export async function fetchJobCardForPDF(jobCardId: string): Promise<{
       qty: number;
       price: number;
     }>;
+    // Labor
+    laborItems: Array<{
+      operationName: string;
+      techCount: number;
+      price: number;
+      notes: string;
+    }>;
     // Costs
     partsTotal: number;
     laborTotal: number;
@@ -2228,6 +2235,13 @@ export async function fetchJobCardForPDF(jobCardId: string): Promise<{
       repairEnd: jobCard.end_time ? new Date(jobCard.end_time).toLocaleString("bg-BG") : "N/A",
       // Parts
       parts,
+      // Labor - generate a single labor item based on total work time
+      laborItems: [{
+        operationName: "Repair Work",
+        techCount: 1,
+        price: laborTotal,
+        notes: jobCard.notes || "",
+      }],
       // Costs
       partsTotal,
       laborTotal,
