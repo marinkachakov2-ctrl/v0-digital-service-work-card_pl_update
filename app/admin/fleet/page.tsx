@@ -18,12 +18,14 @@ import {
   TrendingUp,
   Battery,
   Play,
+  Square,
   Radar,
   Sun,
   Moon,
-  Monitor,
+  MonitorPlay,
   Settings,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -685,7 +687,16 @@ export default function FleetIntelligencePage() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isSimulating, setIsSimulating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [theme, setTheme] = useState<Theme>("dark");
+  const { theme: currentTheme, setTheme: setNextTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  
+  // Derive our custom theme type from next-themes
+  const theme: Theme = currentTheme === "presentation" ? "presentation" : currentTheme === "light" ? "light" : "dark";
+
+  // Ensure component is mounted before using theme
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Simulate initial loading
   useEffect(() => {
@@ -698,17 +709,11 @@ export default function FleetIntelligencePage() {
     const interval = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
-
-  // Apply theme class to document
-  useEffect(() => {
-    const root = document.documentElement;
-    root.classList.remove("dark", "light");
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else if (theme === "light") {
-      root.classList.remove("dark");
-    }
-  }, [theme]);
+  
+  // Helper to set theme
+  const setTheme = (newTheme: Theme) => {
+    setNextTheme(newTheme);
+  };
 
   const getThemeStyles = () => {
     switch (theme) {
@@ -772,7 +777,7 @@ export default function FleetIntelligencePage() {
                   ? "bg-[#367C2B]/10 border-[#367C2B]/30"
                   : "bg-primary/10 border-primary/30"
               )}>
-                <Radar className={cn(
+                <Activity className={cn(
                   "h-6 w-6",
                   theme === "presentation" ? "text-[#367C2B]" : "text-primary"
                 )} />
@@ -841,7 +846,7 @@ export default function FleetIntelligencePage() {
                 )}
                 title="Presentation Mode (High Contrast)"
               >
-                <Monitor className={cn(
+                <MonitorPlay className={cn(
                   "h-4 w-4",
                   theme === "presentation" ? "text-[#367C2B]" : styles.muted
                 )} />
@@ -869,29 +874,28 @@ export default function FleetIntelligencePage() {
               <span className={cn("text-xs uppercase tracking-wider", styles.muted)}>Live</span>
             </div>
 
-            {/* Time */}
-            <span className={cn("text-sm font-mono", styles.text)}>
-              {currentTime.toLocaleTimeString()}
+            {/* Time - Only render on client to avoid hydration mismatch */}
+            <span className={cn("text-sm font-mono", styles.text)} suppressHydrationWarning>
+              {mounted ? currentTime.toLocaleTimeString() : "--:--:--"}
             </span>
 
-            {/* Start Live Simulation Button - Futuristic Style */}
+            {/* Start Live Data / Halt Simulation Button - Futuristic Style */}
             <Button
               onClick={() => setIsSimulating(!isSimulating)}
               className={cn(
                 "relative overflow-hidden gap-2 px-5 py-2 font-semibold tracking-wide uppercase text-sm",
-                "bg-transparent border-2 border-[#367C2B] text-[#367C2B]",
-                "hover:bg-[#367C2B]/10 hover:shadow-[0_0_20px_rgba(54,124,43,0.4)]",
-                "transition-all duration-300",
-                isSimulating && "bg-[#367C2B]/20 shadow-[0_0_25px_rgba(54,124,43,0.5)]"
+                "bg-transparent border-2 transition-all duration-300",
+                isSimulating 
+                  ? "border-red-500 text-red-500 hover:bg-red-500/10 hover:shadow-[0_0_20px_rgba(239,68,68,0.4)] animate-pulse"
+                  : "border-[#367C2B] text-[#367C2B] hover:bg-[#367C2B]/10 hover:shadow-[0_0_20px_rgba(54,124,43,0.4)]"
               )}
             >
-              <Play
-                className={cn(
-                  "h-4 w-4",
-                  isSimulating && "animate-pulse"
-                )}
-              />
-              {isSimulating ? "Simulating..." : "Start Live Simulation"}
+              {isSimulating ? (
+                <Square className="h-4 w-4" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
+              {isSimulating ? "Halt Simulation" : "Start Live Data"}
             </Button>
           </div>
         </div>
