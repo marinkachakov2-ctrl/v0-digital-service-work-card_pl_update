@@ -208,8 +208,12 @@ export default function JobCardsAdminPage() {
         return;
       }
 
-      // Generate PDF
-      await generateJobCardPDF(result.data as PDFJobCardData);
+      // Generate PDF - ensure laborItems exists (default to empty array if missing)
+      const pdfData: PDFJobCardData = {
+        ...result.data,
+        laborItems: result.data.laborItems ?? [],
+      } as PDFJobCardData;
+      await generateJobCardPDF(pdfData);
       
       toast.success("PDF generated", {
         description: "The job card PDF has been downloaded.",
