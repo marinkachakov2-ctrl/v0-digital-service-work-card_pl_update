@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   ArrowLeft,
   Fuel,
@@ -25,7 +26,7 @@ import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
-// Mock tractor data with telematics
+// Mock tractor data with real Bulgarian coordinates
 const mockTractors = [
   {
     id: "JD-8R-410",
@@ -33,7 +34,7 @@ const mockTractors = [
     model: "8R 410",
     serialNumber: "1RW8410KVPD012847",
     owner: "Agro Farm Ltd.",
-    position: { lat: 42.6977, lng: 23.3219 }, // Sofia area
+    position: { lat: 42.6977, lng: 23.3219 }, // Sofia
     status: "active",
     telematics: {
       fuelLevel: 72,
@@ -55,7 +56,7 @@ const mockTractors = [
     model: "7R 350",
     serialNumber: "1RW7350KMPD008912",
     owner: "Golden Fields EOOD",
-    position: { lat: 42.7105, lng: 23.2915 },
+    position: { lat: 42.1354, lng: 24.7453 }, // Plovdiv
     status: "active",
     telematics: {
       fuelLevel: 45,
@@ -79,7 +80,7 @@ const mockTractors = [
     model: "6M 195",
     serialNumber: "1RW6195VLND003421",
     owner: "Green Valley Farm",
-    position: { lat: 42.6850, lng: 23.3450 },
+    position: { lat: 43.4170, lng: 24.6067 }, // Pleven
     status: "idle",
     telematics: {
       fuelLevel: 28,
@@ -104,7 +105,7 @@ const mockTractors = [
     model: "9RX 640",
     serialNumber: "1RW9640KTRD001256",
     owner: "Big Harvest Corp.",
-    position: { lat: 42.7200, lng: 23.2700 },
+    position: { lat: 43.2141, lng: 27.9147 }, // Varna
     status: "active",
     telematics: {
       fuelLevel: 89,
@@ -124,111 +125,18 @@ const mockTractors = [
 
 type Tractor = typeof mockTractors[0];
 
-// Tractor icon positions on SVG map (percentages)
-const tractorPositions = [
-  { x: 35, y: 40 },
-  { x: 55, y: 30 },
-  { x: 25, y: 60 },
-  { x: 70, y: 55 },
-];
-
-function TractorMarker({ 
-  tractor, 
-  position, 
-  isSelected, 
-  onClick 
-}: { 
-  tractor: Tractor; 
-  position: { x: number; y: number }; 
-  isSelected: boolean; 
-  onClick: () => void;
-}) {
-  const hasErrors = tractor.dtcCodes.some(d => d.severity === "critical");
-  const hasWarnings = tractor.dtcCodes.some(d => d.severity === "warning");
-  
-  return (
-    <g
-      className="cursor-pointer transition-transform hover:scale-110"
-      style={{ transform: `translate(${position.x}%, ${position.y}%)` }}
-      onClick={onClick}
-    >
-      {/* Pulse ring for active/selected */}
-      {(tractor.status === "active" || isSelected) && (
-        <>
-          <circle
-            cx="0"
-            cy="0"
-            r={isSelected ? "18" : "14"}
-            className={cn(
-              "animate-ping opacity-30",
-              hasErrors ? "fill-red-500" : hasWarnings ? "fill-amber-500" : "fill-emerald-500"
-            )}
-          />
-          <circle
-            cx="0"
-            cy="0"
-            r={isSelected ? "14" : "10"}
-            className={cn(
-              "opacity-50",
-              hasErrors ? "fill-red-500" : hasWarnings ? "fill-amber-500" : "fill-emerald-500"
-            )}
-          />
-        </>
-      )}
-      
-      {/* Main marker */}
-      <circle
-        cx="0"
-        cy="0"
-        r={isSelected ? "12" : "8"}
-        className={cn(
-          "stroke-2 transition-all",
-          isSelected ? "stroke-white" : "stroke-background",
-          hasErrors 
-            ? "fill-red-500" 
-            : hasWarnings 
-              ? "fill-amber-500" 
-              : tractor.status === "active" 
-                ? "fill-emerald-500" 
-                : "fill-muted-foreground"
-        )}
-      />
-      
-      {/* Tractor icon */}
-      <text
-        x="0"
-        y="1"
-        textAnchor="middle"
-        dominantBaseline="middle"
-        className="fill-white text-[6px] font-bold pointer-events-none"
-      >
-        JD
-      </text>
-      
-      {/* Label */}
-      {isSelected && (
-        <g>
-          <rect
-            x="-35"
-            y="18"
-            width="70"
-            height="20"
-            rx="4"
-            className="fill-background/95 stroke-border"
-          />
-          <text
-            x="0"
-            y="30"
-            textAnchor="middle"
-            className="fill-foreground text-[8px] font-medium"
-          >
-            {tractor.id}
-          </text>
-        </g>
-      )}
-    </g>
-  );
-}
+// Dynamically import the map component to avoid SSR issues
+const FleetMap = dynamic(() => import("@/components/fleet/fleet-map"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-[#0a0f14]">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <span className="text-sm text-muted-foreground">Loading map...</span>
+      </div>
+    </div>
+  ),
+});
 
 function TelematicsPanel({ tractor }: { tractor: Tractor }) {
   const { telematics } = tractor;
@@ -583,95 +491,18 @@ export default function FleetIntelligencePage() {
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* Map Area */}
-        <div className="flex-1 relative bg-[#0a0f14]">
-          {/* Dark styled map background */}
-          <svg
-            viewBox="0 0 100 100"
-            className="w-full h-full"
-            preserveAspectRatio="xMidYMid slice"
-          >
-            {/* Background gradient */}
-            <defs>
-              <linearGradient id="mapGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#0a0f14" />
-                <stop offset="50%" stopColor="#0d1318" />
-                <stop offset="100%" stopColor="#0a0f14" />
-              </linearGradient>
-              <filter id="glow">
-                <feGaussianBlur stdDeviation="0.5" result="coloredBlur"/>
-                <feMerge>
-                  <feMergeNode in="coloredBlur"/>
-                  <feMergeNode in="SourceGraphic"/>
-                </feMerge>
-              </filter>
-            </defs>
-            
-            <rect width="100" height="100" fill="url(#mapGradient)" />
-            
-            {/* Grid lines */}
-            {Array.from({ length: 10 }).map((_, i) => (
-              <g key={i}>
-                <line
-                  x1={i * 10}
-                  y1="0"
-                  x2={i * 10}
-                  y2="100"
-                  stroke="#1a2530"
-                  strokeWidth="0.2"
-                />
-                <line
-                  x1="0"
-                  y1={i * 10}
-                  x2="100"
-                  y2={i * 10}
-                  stroke="#1a2530"
-                  strokeWidth="0.2"
-                />
-              </g>
-            ))}
-            
-            {/* Stylized roads */}
-            <path
-              d="M 10,50 Q 30,45 50,50 T 90,50"
-              fill="none"
-              stroke="#1e3a4c"
-              strokeWidth="1.5"
-              filter="url(#glow)"
-            />
-            <path
-              d="M 50,10 Q 55,30 50,50 T 50,90"
-              fill="none"
-              stroke="#1e3a4c"
-              strokeWidth="1.5"
-              filter="url(#glow)"
-            />
-            <path
-              d="M 20,20 Q 40,35 60,40 T 85,70"
-              fill="none"
-              stroke="#152530"
-              strokeWidth="0.8"
-            />
-            
-            {/* Field boundaries */}
-            <rect x="15" y="25" width="25" height="20" fill="none" stroke="#1a4530" strokeWidth="0.3" rx="1" />
-            <rect x="45" y="35" width="30" height="25" fill="none" stroke="#1a4530" strokeWidth="0.3" rx="1" />
-            <rect x="20" y="55" width="20" height="18" fill="none" stroke="#1a4530" strokeWidth="0.3" rx="1" />
-            <rect x="60" y="20" width="22" height="15" fill="none" stroke="#1a4530" strokeWidth="0.3" rx="1" />
-            
-            {/* Tractor markers */}
-            {mockTractors.map((tractor, i) => (
-              <TractorMarker
-                key={tractor.id}
-                tractor={tractor}
-                position={tractorPositions[i]}
-                isSelected={selectedTractor?.id === tractor.id}
-                onClick={() => setSelectedTractor(tractor)}
-              />
-            ))}
-          </svg>
+        <div className="flex-1 relative">
+          <FleetMap 
+            tractors={mockTractors} 
+            selectedTractorId={selectedTractor?.id || null}
+            onSelectTractor={(id) => {
+              const tractor = mockTractors.find(t => t.id === id);
+              setSelectedTractor(tractor || null);
+            }}
+          />
           
           {/* Map overlay info */}
-          <div className="absolute bottom-4 left-4 flex items-center gap-4 text-xs text-muted-foreground">
+          <div className="absolute bottom-4 left-4 z-[1000] flex items-center gap-4 text-xs text-white bg-black/60 px-3 py-2 rounded-lg backdrop-blur">
             <div className="flex items-center gap-2">
               <span className="h-3 w-3 rounded-full bg-emerald-500" />
               Active
@@ -685,15 +516,15 @@ export default function FleetIntelligencePage() {
               Critical
             </div>
             <div className="flex items-center gap-2">
-              <span className="h-3 w-3 rounded-full bg-muted-foreground" />
+              <span className="h-3 w-3 rounded-full bg-gray-500" />
               Idle
             </div>
           </div>
           
           {/* Megatron branding */}
-          <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-background/80 border border-border/50 backdrop-blur">
-            <Zap className="h-4 w-4 text-primary" />
-            <span className="text-xs font-bold tracking-wider">MEGATRON VISION</span>
+          <div className="absolute top-4 right-4 z-[1000] flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/70 border border-emerald-500/30 backdrop-blur">
+            <Zap className="h-4 w-4 text-emerald-500" />
+            <span className="text-xs font-bold tracking-wider text-white">MEGATRON VISION</span>
           </div>
         </div>
 
