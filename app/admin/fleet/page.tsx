@@ -40,11 +40,12 @@ const mockTractors = [
   {
     id: "JD-8R-410",
     name: "John Deere 8R 410",
-    model: "8R 410",
+    model: "JD 8R 410",
     serialNumber: "1RW8410KVPD012847",
     owner: "Agro Farm Ltd.",
+    location: "Sofia",
     position: { lat: 42.6977, lng: 23.3219 }, // Sofia
-    status: "active",
+    status: "active" as const,
     telematics: {
       fuelLevel: 72,
       engineHours: 4823,
@@ -56,17 +57,18 @@ const mockTractors = [
       batteryVoltage: 14.2,
       signalStrength: 95,
     },
-    dtcCodes: [],
+    dtcCodes: [] as Array<{ code: string; severity: string; description: string }>,
     lastUpdate: new Date(Date.now() - 30000),
   },
   {
     id: "JD-7R-350",
     name: "John Deere 7R 350",
-    model: "7R 350",
+    model: "JD 7R 350",
     serialNumber: "1RW7350KMPD008912",
     owner: "Golden Fields EOOD",
+    location: "Plovdiv",
     position: { lat: 42.1354, lng: 24.7453 }, // Plovdiv
-    status: "active",
+    status: "warning" as const,
     telematics: {
       fuelLevel: 45,
       engineHours: 6234,
@@ -86,11 +88,12 @@ const mockTractors = [
   {
     id: "JD-6M-195",
     name: "John Deere 6M 195",
-    model: "6M 195",
+    model: "JD 6M 195",
     serialNumber: "1RW6195VLND003421",
     owner: "Green Valley Farm",
-    position: { lat: 43.4170, lng: 24.6067 }, // Pleven
-    status: "idle",
+    location: "Pleven",
+    position: { lat: 43.4170, lng: 24.6167 }, // Pleven
+    status: "idle" as const,
     telematics: {
       fuelLevel: 28,
       engineHours: 2156,
@@ -102,32 +105,34 @@ const mockTractors = [
       batteryVoltage: 12.8,
       signalStrength: 78,
     },
-    dtcCodes: [
-      { code: "ECU 639.14", severity: "critical", description: "Transmission Fault" },
-      { code: "BCU 1569.0", severity: "warning", description: "Cab Air Filter Clogged" },
-    ],
+    dtcCodes: [] as Array<{ code: string; severity: string; description: string }>,
     lastUpdate: new Date(Date.now() - 120000),
   },
   {
     id: "JD-9RX-640",
     name: "John Deere 9RX 640",
-    model: "9RX 640",
+    model: "JD 9RX 640",
     serialNumber: "1RW9640KTRD001256",
     owner: "Big Harvest Corp.",
-    position: { lat: 43.2141, lng: 27.9147 }, // Varna
-    status: "active",
+    location: "Yambol",
+    position: { lat: 42.4833, lng: 26.5000 }, // Yambol
+    status: "critical" as const,
     telematics: {
-      fuelLevel: 89,
+      fuelLevel: 15,
       engineHours: 1847,
-      defLevel: 82,
-      engineTemp: 94,
-      hydraulicTemp: 85,
-      groundSpeed: 15.6,
-      engineRPM: 2100,
-      batteryVoltage: 14.3,
-      signalStrength: 92,
+      defLevel: 12,
+      engineTemp: 118,
+      hydraulicTemp: 95,
+      groundSpeed: 0,
+      engineRPM: 0,
+      batteryVoltage: 11.2,
+      signalStrength: 45,
     },
-    dtcCodes: [],
+    dtcCodes: [
+      { code: "ECU 639.14", severity: "critical", description: "Transmission Fault" },
+      { code: "ECU 524287.31", severity: "critical", description: "Engine Overheating" },
+      { code: "BCU 1569.0", severity: "warning", description: "Low Battery Voltage" },
+    ],
     lastUpdate: new Date(Date.now() - 15000),
   },
 ];
