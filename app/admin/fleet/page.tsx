@@ -684,7 +684,7 @@ function TelematicsSkeleton() {
 
 export default function FleetIntelligencePage() {
   const [selectedTractor, setSelectedTractor] = useState<Tractor | null>(mockTractors[0]);
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const { theme: currentTheme, setTheme: setNextTheme } = useTheme();
@@ -693,9 +693,10 @@ export default function FleetIntelligencePage() {
   // Derive our custom theme type from next-themes
   const theme: Theme = currentTheme === "presentation" ? "presentation" : currentTheme === "light" ? "light" : "dark";
 
-  // Ensure component is mounted before using theme
+  // Ensure component is mounted before using theme and set initial time
   useEffect(() => {
     setMounted(true);
+    setCurrentTime(new Date());
   }, []);
 
   // Simulate initial loading
@@ -875,7 +876,7 @@ export default function FleetIntelligencePage() {
             </div>
 
             {/* Time - Only render on client to avoid hydration mismatch */}
-            {mounted && (
+            {mounted && currentTime && (
               <span className={cn("text-sm font-mono", styles.text)}>
                 {currentTime.toLocaleTimeString()}
               </span>
