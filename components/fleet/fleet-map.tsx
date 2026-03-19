@@ -34,17 +34,17 @@ interface FleetMapProps {
   onSelectTractor: (id: string) => void;
 }
 
-// Tile layer URLs - reliable public tile servers
+// Tile layer URLs - reliable CartoDB servers for both themes
 const TILE_LAYERS = {
   dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-  light: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  presentation: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  light: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+  presentation: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
 };
 
 const TILE_ATTRIBUTIONS = {
   dark: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-  light: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  presentation: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  light: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  presentation: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
 };
 
 // Status colors
@@ -71,18 +71,26 @@ export default function FleetMap({ tractors, selectedTractorId, onSelectTractor 
   const currentTheme = mounted ? (theme as keyof typeof TILE_LAYERS) || "dark" : "dark";
   const isLightTheme = currentTheme === "light" || currentTheme === "presentation";
 
-  // Initialize map
+  // Initialize map - recreate when theme changes to force tile refresh
   useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return;
+    if (!mapRef.current || !mounted) return;
+
+    // Destroy existing map if present
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.remove();
+      mapInstanceRef.current = null;
+      tileLayerRef.current = null;
+      markersRef.current.clear();
+    }
 
     const map = L.map(mapRef.current, {
       center: [42.7339, 25.4858], // Center of Bulgaria
       zoom: 7,
       zoomControl: true,
-      attributionControl: false,
+      attributionControl: true,
     });
 
-    // Initial tile layer with proper attribution
+    // Tile layer with proper attribution based on current theme
     const themeKey = (currentTheme in TILE_LAYERS ? currentTheme : "dark") as keyof typeof TILE_LAYERS;
     const tileUrl = TILE_LAYERS[themeKey];
     const tileAttribution = TILE_ATTRIBUTIONS[themeKey];
@@ -97,16 +105,8 @@ export default function FleetMap({ tractors, selectedTractorId, onSelectTractor 
     return () => {
       map.remove();
       mapInstanceRef.current = null;
+      tileLayerRef.current = null;
     };
-  }, []);
-
-  // Update tile layer when theme changes
-  useEffect(() => {
-    if (!mapInstanceRef.current || !tileLayerRef.current || !mounted) return;
-
-    const themeKey = (currentTheme in TILE_LAYERS ? currentTheme : "dark") as keyof typeof TILE_LAYERS;
-    const tileUrl = TILE_LAYERS[themeKey];
-    tileLayerRef.current.setUrl(tileUrl);
   }, [currentTheme, mounted]);
 
   // Create/update markers
