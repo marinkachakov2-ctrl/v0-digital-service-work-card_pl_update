@@ -17,6 +17,7 @@ import {
   Settings,
   User,
   Zap,
+  Radar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -84,6 +85,13 @@ const primaryNavItems: NavItem[] = [
 ];
 
 const serviceManagementItems: NavItem[] = [
+  {
+    title: "Fleet Intelligence",
+    href: "/admin/fleet",
+    icon: Radar,
+    isLive: true,
+    roles: ["admin"],
+  },
   {
     title: "Pending Cards",
     href: "/admin/queue",
@@ -405,18 +413,13 @@ function MobileBottomNav({ userRole, pendingCardsCount }: { userRole: UserRole; 
     return pathname.startsWith(href);
   };
 
-  // Mobile nav items (limited set)
+// Mobile nav items (limited set)
   const mobileNavItems = [
-    { title: "Dashboard", href: "/admin/manager", icon: LayoutDashboard },
-    { title: "Planning", href: "/planning", icon: CalendarRange, isLive: true },
-    { title: "Work Card", href: "/technician", icon: Wrench },
-    ...(userRole === "admin" ? [{ 
-      title: "Pending", 
-      href: "/admin/queue", 
-      icon: FileClock, 
-      badge: pendingCardsCount || 1 
-    }] : []),
-    { title: "Profile", href: "#", icon: User },
+  { title: "Dashboard", href: "/admin/manager", icon: LayoutDashboard },
+  { title: "Planning", href: "/planning", icon: CalendarRange, isLive: true },
+  ...(userRole === "admin" ? [{ title: "Fleet", href: "/admin/fleet", icon: Radar, isLive: true }] : []),
+  { title: "Work Card", href: "/technician", icon: Wrench },
+  { title: "Profile", href: "#", icon: User },
   ];
 
   return (
