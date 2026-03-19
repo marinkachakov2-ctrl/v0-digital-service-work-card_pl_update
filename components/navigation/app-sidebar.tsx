@@ -414,12 +414,12 @@ function MobileBottomNav({ userRole, pendingCardsCount }: { userRole: UserRole; 
   };
 
 // Mobile nav items (limited set)
-  const mobileNavItems = [
-  { title: "Dashboard", href: "/admin/manager", icon: LayoutDashboard },
-  { title: "Planning", href: "/planning", icon: CalendarRange, isLive: true },
-  ...(userRole === "admin" ? [{ title: "Fleet", href: "/admin/fleet", icon: Radar, isLive: true }] : []),
-  { title: "Work Card", href: "/technician", icon: Wrench },
-  { title: "Profile", href: "#", icon: User },
+  const mobileNavItems: Array<{ title: string; href: string; icon: React.ElementType; isLive?: boolean; badge?: number }> = [
+    { title: "Dashboard", href: "/admin/manager", icon: LayoutDashboard },
+    { title: "Planning", href: "/planning", icon: CalendarRange, isLive: true },
+    ...(userRole === "admin" ? [{ title: "Fleet", href: "/admin/fleet", icon: Radar, isLive: true }] : []),
+    { title: "Work Card", href: "/technician", icon: Wrench },
+    { title: "Profile", href: "#", icon: User },
   ];
 
   return (
