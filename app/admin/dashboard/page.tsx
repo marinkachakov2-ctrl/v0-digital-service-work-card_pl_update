@@ -27,6 +27,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
@@ -736,6 +737,7 @@ export default function ServiceManagerDashboard() {
                 <X className="h-5 w-5" />
               </Button>
             </DialogTitle>
+            <DialogDescription className="sr-only">View photo in full size</DialogDescription>
           </DialogHeader>
           <div className="relative flex items-center justify-center p-4 min-h-[400px]">
             {viewingPhoto && (

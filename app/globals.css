@@ -113,3 +113,58 @@
   --foreground: oklch(1 0 0);
   --muted-foreground: oklch(0.8 0 0);
 }
+
+/* Light theme */
+.light {
+  --background: oklch(0.98 0.002 260);
+  --foreground: oklch(0.15 0.005 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.15 0.005 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0.005 260);
+  --primary: oklch(0.45 0.16 145);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.93 0.002 260);
+  --secondary-foreground: oklch(0.15 0.005 260);
+  --muted: oklch(0.93 0.002 260);
+  --muted-foreground: oklch(0.45 0.005 260);
+  --accent: oklch(0.45 0.16 145);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.88 0.003 260);
+  --input: oklch(0.88 0.003 260);
+  --ring: oklch(0.45 0.16 145);
+}
+
+/* Presentation theme - High contrast for projectors */
+.presentation {
+  --background: oklch(0.97 0 0);
+  --foreground: oklch(0.1 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.1 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.1 0 0);
+  --primary: oklch(0.45 0.18 145);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.92 0 0);
+  --secondary-foreground: oklch(0.1 0 0);
+  --muted: oklch(0.92 0 0);
+  --muted-foreground: oklch(0.35 0 0);
+  --accent: oklch(0.45 0.18 145);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.5 0.25 25);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.82 0 0);
+  --input: oklch(0.82 0 0);
+  --ring: oklch(0.45 0.18 145);
+}
+
+/* Presentation mode - larger fonts for readability */
+.presentation body {
+  font-size: 1.1rem;
+}
+
+.presentation h1, .presentation h2, .presentation h3 {
+  font-weight: 800;
+}

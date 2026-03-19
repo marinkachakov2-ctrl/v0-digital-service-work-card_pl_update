@@ -37,6 +37,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   ContextMenu,
@@ -1840,8 +1841,9 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">Нова Резервация</DialogTitle>
-          </DialogHeader>
+<DialogTitle className="text-lg font-semibold">Нова Резервация</DialogTitle>
+              <DialogDescription className="sr-only">Create new reservation form</DialogDescription>
+  </DialogHeader>
           
           <div className="space-y-5 py-2">
             {/* Description Input */}
@@ -1956,11 +1958,12 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+<DialogTitle className="flex items-center gap-2 text-lg font-semibold">
               <Pencil className="h-5 w-5" />
-              Редактиране на задача
-            </DialogTitle>
-          </DialogHeader>
+              Редактиране
+              </DialogTitle>
+              <DialogDescription className="sr-only">Edit reservation details</DialogDescription>
+  </DialogHeader>
           
           <div className="space-y-5 py-2">
             {/* Order ID (read-only) */}
@@ -2211,6 +2214,7 @@ export function DragDropScheduler({ selectedDate }: DragDropSchedulerProps) {
               <ArrowUpRight className="h-5 w-5" />
               Convert Note to Work Order
             </DialogTitle>
+            <DialogDescription className="sr-only">Convert note to work order form</DialogDescription>
           </DialogHeader>
           {convertNoteDialog && (
             <div className="space-y-4 py-2">

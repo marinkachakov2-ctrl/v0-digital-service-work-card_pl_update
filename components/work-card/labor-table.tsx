@@ -309,6 +309,7 @@ export function LaborTable({
               <Pencil className="h-4 w-4 text-amber-500" />
               Admin Edit: Labor Entry
             </DialogTitle>
+            <DialogDescription className="sr-only">Edit labor entry details</DialogDescription>
           </DialogHeader>
           {editingItem && (
             <div className="space-y-4">

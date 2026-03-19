@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Wrench, CalendarDays, ShieldCheck } from "lucide-react";
+import { Wrench, CalendarDays, ShieldCheck, Sun, Moon, MonitorPlay } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { NotificationCenter } from "@/components/notifications/notification-center";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useTheme } from "next-themes";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 
 interface WorkCardHeaderProps {
@@ -23,6 +26,12 @@ export function WorkCardHeader({
   onAdminToggle,
 }: WorkCardHeaderProps) {
   const [currentDate, setCurrentDate] = useState("--/--/----");
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     setCurrentDate(
@@ -67,6 +76,60 @@ export function WorkCardHeader({
         )}
 
         <div className="flex items-center gap-3">
+          {/* Theme Switcher */}
+          {mounted && (
+            <div className="flex items-center gap-0.5 p-1 rounded-lg bg-muted/30 border border-border/50">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setTheme("light")}
+                    className={cn(
+                      "p-1.5 rounded-md transition-all",
+                      theme === "light" 
+                        ? "bg-background shadow-sm text-amber-500" 
+                        : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                    )}
+                  >
+                    <Sun className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">Light Mode</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setTheme("dark")}
+                    className={cn(
+                      "p-1.5 rounded-md transition-all",
+                      theme === "dark" 
+                        ? "bg-background shadow-sm text-primary" 
+                        : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                    )}
+                  >
+                    <Moon className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">Dark Mode</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setTheme("presentation")}
+                    className={cn(
+                      "p-1.5 rounded-md transition-all",
+                      theme === "presentation" 
+                        ? "bg-background shadow-sm text-[#367C2B]" 
+                        : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                    )}
+                  >
+                    <MonitorPlay className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">Presentation Mode</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+
           {/* Admin Override Indicator */}
           {isAdmin && (
             <Badge variant="outline" className="gap-1 text-xs border-amber-500/30 text-amber-500">

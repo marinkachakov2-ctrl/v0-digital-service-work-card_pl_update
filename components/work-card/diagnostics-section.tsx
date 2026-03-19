@@ -25,6 +25,7 @@ import {
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -776,6 +777,10 @@ export function DiagnosticsSection({
             {selectedImageIndex !== null && photos[selectedImageIndex] && (
               <AlertDialog open={selectedImageIndex !== null} onOpenChange={() => setSelectedImageIndex(null)}>
                 <AlertDialogContent className="max-w-3xl p-0 overflow-hidden">
+                  <AlertDialogHeader className="sr-only">
+                    <AlertDialogTitle>Photo Preview</AlertDialogTitle>
+                    <AlertDialogDescription>View photo in full size</AlertDialogDescription>
+                  </AlertDialogHeader>
                   <div className="relative">
                     <img
                       src={photos[selectedImageIndex].url || "/placeholder.svg"}

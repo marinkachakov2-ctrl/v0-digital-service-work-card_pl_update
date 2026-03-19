@@ -17,7 +17,12 @@ import {
   Settings,
   User,
   Zap,
+  Radar,
+  Sun,
+  Moon,
+  MonitorPlay,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -85,6 +90,13 @@ const primaryNavItems: NavItem[] = [
 
 const serviceManagementItems: NavItem[] = [
   {
+    title: "Fleet Intelligence",
+    href: "/admin/fleet",
+    icon: Radar,
+    isLive: true,
+    roles: ["admin"],
+  },
+  {
     title: "Pending Cards",
     href: "/admin/queue",
     icon: FileClock,
@@ -132,6 +144,12 @@ function SidebarNavContent({
   const pathname = usePathname();
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Filter nav items based on role
   const filterByRole = (items: NavItem[]) =>
@@ -266,6 +284,65 @@ function SidebarNavContent({
                 {userRole === "admin" ? "Admin" : "Technician"}
               </Badge>
             </button>
+          </div>
+        )}
+
+        {/* Theme Switcher */}
+        {!isCollapsed && mounted && (
+          <div className="mt-3">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs text-muted-foreground">Theme:</span>
+              <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/30 border border-border/50">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setTheme("light")}
+                      className={cn(
+                        "p-1.5 rounded-md transition-all",
+                        theme === "light" 
+                          ? "bg-background shadow-sm text-amber-500" 
+                          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                      )}
+                    >
+                      <Sun className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs">Light Mode</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setTheme("dark")}
+                      className={cn(
+                        "p-1.5 rounded-md transition-all",
+                        theme === "dark" 
+                          ? "bg-background shadow-sm text-primary" 
+                          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                      )}
+                    >
+                      <Moon className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs">Dark Mode</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setTheme("presentation")}
+                      className={cn(
+                        "p-1.5 rounded-md transition-all",
+                        theme === "presentation" 
+                          ? "bg-background shadow-sm text-[#367C2B]" 
+                          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                      )}
+                    >
+                      <MonitorPlay className="h-3.5 w-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs">Presentation Mode</TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
           </div>
         )}
       </SidebarHeader>
@@ -405,17 +482,12 @@ function MobileBottomNav({ userRole, pendingCardsCount }: { userRole: UserRole; 
     return pathname.startsWith(href);
   };
 
-  // Mobile nav items (limited set)
-  const mobileNavItems = [
+// Mobile nav items (limited set)
+  const mobileNavItems: Array<{ title: string; href: string; icon: React.ElementType; isLive?: boolean; badge?: number }> = [
     { title: "Dashboard", href: "/admin/manager", icon: LayoutDashboard },
     { title: "Planning", href: "/planning", icon: CalendarRange, isLive: true },
+    ...(userRole === "admin" ? [{ title: "Fleet", href: "/admin/fleet", icon: Radar, isLive: true }] : []),
     { title: "Work Card", href: "/technician", icon: Wrench },
-    ...(userRole === "admin" ? [{ 
-      title: "Pending", 
-      href: "/admin/queue", 
-      icon: FileClock, 
-      badge: pendingCardsCount || 1 
-    }] : []),
     { title: "Profile", href: "#", icon: User },
   ];
 
