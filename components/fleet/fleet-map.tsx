@@ -34,11 +34,17 @@ interface FleetMapProps {
   onSelectTractor: (id: string) => void;
 }
 
-// Tile layer URLs
+// Tile layer URLs - reliable public tile servers
 const TILE_LAYERS = {
-  dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-  light: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-  presentation: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+  dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+  light: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  presentation: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+};
+
+const TILE_ATTRIBUTIONS = {
+  dark: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  light: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  presentation: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
 };
 
 // Status colors
@@ -76,18 +82,15 @@ export default function FleetMap({ tractors, selectedTractorId, onSelectTractor 
       attributionControl: false,
     });
 
-    // Initial tile layer
-    const tileUrl = TILE_LAYERS[currentTheme] || TILE_LAYERS.dark;
+    // Initial tile layer with proper attribution
+    const themeKey = (currentTheme in TILE_LAYERS ? currentTheme : "dark") as keyof typeof TILE_LAYERS;
+    const tileUrl = TILE_LAYERS[themeKey];
+    const tileAttribution = TILE_ATTRIBUTIONS[themeKey];
     const tileLayer = L.tileLayer(tileUrl, {
       maxZoom: 19,
+      attribution: tileAttribution,
     }).addTo(map);
     tileLayerRef.current = tileLayer;
-
-    // Attribution
-    L.control.attribution({ position: "bottomright" }).addTo(map);
-    map.attributionControl.addAttribution(
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
-    );
 
     mapInstanceRef.current = map;
 
@@ -101,7 +104,8 @@ export default function FleetMap({ tractors, selectedTractorId, onSelectTractor 
   useEffect(() => {
     if (!mapInstanceRef.current || !tileLayerRef.current || !mounted) return;
 
-    const tileUrl = TILE_LAYERS[currentTheme] || TILE_LAYERS.dark;
+    const themeKey = (currentTheme in TILE_LAYERS ? currentTheme : "dark") as keyof typeof TILE_LAYERS;
+    const tileUrl = TILE_LAYERS[themeKey];
     tileLayerRef.current.setUrl(tileUrl);
   }, [currentTheme, mounted]);
 
