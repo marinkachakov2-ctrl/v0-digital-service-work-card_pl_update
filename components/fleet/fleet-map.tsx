@@ -36,7 +36,7 @@ interface FleetMapProps {
 
 // Tile layer URLs - reliable public tile servers
 const TILE_LAYERS = {
-  dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+  dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
   light: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   presentation: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
 };
@@ -458,7 +458,15 @@ export default function FleetMap({ tractors, selectedTractorId, onSelectTractor 
           font-size: 10px;
         }
       `}</style>
-      <div ref={mapRef} className="w-full h-full" style={{ background: bgColor, zIndex: 1 }} />
+      <div 
+        ref={mapRef} 
+        className="w-full h-full" 
+        style={{ 
+          background: bgColor, 
+          zIndex: 1,
+          minHeight: "400px",
+        }} 
+      />
     </>
   );
 }
