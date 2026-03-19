@@ -25,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -576,7 +577,7 @@ const handleDragEnd = async (event: DragEndEvent) => {
     }
     const newStartTime = hoursToTimeStr(newStartHour);
 
-    // ───────────────────────���─────────────────────────────────────────────
+    // ───────────────���───────���─────────────────────────────────────────────
     // PAST TIME VALIDATION
     // ─────────────────────────────────────────────────────────────────────
     const now = new Date();
@@ -908,8 +909,9 @@ const handleDragEnd = async (event: DragEndEvent) => {
       <Dialog open={!!convertingNote} onOpenChange={(open) => !open && setConvertingNote(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Преобразувай в поръчка</DialogTitle>
-          </DialogHeader>
+<DialogTitle>Преобразувай в поръчка</DialogTitle>
+              <DialogDescription className="sr-only">Convert appointment to service order</DialogDescription>
+  </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="machine">Модел машина *</Label>

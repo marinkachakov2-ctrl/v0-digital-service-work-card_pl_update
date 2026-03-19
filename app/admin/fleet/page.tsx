@@ -875,9 +875,11 @@ export default function FleetIntelligencePage() {
             </div>
 
             {/* Time - Only render on client to avoid hydration mismatch */}
-            <span className={cn("text-sm font-mono", styles.text)} suppressHydrationWarning>
-              {mounted ? currentTime.toLocaleTimeString() : "--:--:--"}
-            </span>
+            {mounted && (
+              <span className={cn("text-sm font-mono", styles.text)}>
+                {currentTime.toLocaleTimeString()}
+              </span>
+            )}
 
             {/* Start Live Data / Halt Simulation Button - Futuristic Style */}
             <Button

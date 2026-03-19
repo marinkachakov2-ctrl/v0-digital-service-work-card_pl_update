@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
@@ -668,6 +669,7 @@ export default function JobCardsAdminPage() {
                                 <DialogContent className="max-w-2xl">
                                   <DialogHeader>
                                     <DialogTitle>Photos ({card.photo_urls?.length || 0})</DialogTitle>
+                                    <DialogDescription className="sr-only">View job card photos</DialogDescription>
                                   </DialogHeader>
                                   {viewingPhotos && viewingPhotos.length > 0 && (
                                     <div className="space-y-4">
@@ -754,6 +756,7 @@ export default function JobCardsAdminPage() {
                                 <DialogContent>
                                   <DialogHeader>
                                     <DialogTitle>Customer Signature</DialogTitle>
+                                    <DialogDescription className="sr-only">View customer signature</DialogDescription>
                                   </DialogHeader>
                                   {card.signature_data && (
                                     <div className="space-y-4">

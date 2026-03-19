@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -404,6 +405,7 @@ export default function OrderDetailPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Смяна на платец</DialogTitle>
+            <DialogDescription className="sr-only">Change the payer for this order</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">

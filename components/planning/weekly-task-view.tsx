@@ -32,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useClocking } from "@/lib/clocking-context";
@@ -437,6 +438,7 @@ export function WeeklyTaskView({
             <DialogTitle className="text-sm">
               Edit Task {editingTask?.orderNumber} / {editingTask?.jobCardNumber}
             </DialogTitle>
+            <DialogDescription className="sr-only">Edit task details form</DialogDescription>
           </DialogHeader>
           {editingTask && (
             <div className="space-y-4 py-2">
@@ -495,6 +497,7 @@ export function WeeklyTaskView({
               <StickyNote className="h-4 w-4" />
               Add Note - {addNoteDay !== null ? BG_DAYS_SHORT[addNoteDay] : ""}
             </DialogTitle>
+            <DialogDescription className="sr-only">Add a note for the selected day</DialogDescription>
           </DialogHeader>
           <div className="py-2">
             <Input
@@ -520,6 +523,7 @@ export function WeeklyTaskView({
               <ArrowUpRight className="h-4 w-4" />
               Convert Note to Order
             </DialogTitle>
+            <DialogDescription className="sr-only">Convert note to work order form</DialogDescription>
           </DialogHeader>
           {convertDialog && (
             <div className="space-y-4 py-2">

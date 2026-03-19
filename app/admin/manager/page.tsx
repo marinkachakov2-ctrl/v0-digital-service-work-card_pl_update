@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
@@ -312,6 +313,7 @@ export default function ManagerDashboard() {
               <Lock className="h-5 w-5 text-primary" />
               Manager Dashboard Access
             </DialogTitle>
+            <DialogDescription className="sr-only">Enter PIN to access manager dashboard</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <p className="text-sm text-muted-foreground">

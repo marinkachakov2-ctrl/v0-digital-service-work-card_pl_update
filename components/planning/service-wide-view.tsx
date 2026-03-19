@@ -30,6 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -470,6 +471,7 @@ export function ServiceWideView({
             <DialogTitle className="text-sm">
               Редактирай {editingTask?.orderNumber} / {editingTask?.jobCardNumber}
             </DialogTitle>
+            <DialogDescription className="sr-only">Edit task details form</DialogDescription>
           </DialogHeader>
           {editingTask && (
             <div className="space-y-4 py-2">
