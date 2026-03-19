@@ -19,13 +19,19 @@ import {
   Battery,
   Play,
   Radar,
+  Sun,
+  Moon,
+  Monitor,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+
+// Theme types
+type Theme = "dark" | "light" | "presentation";
 
 // Mock tractor data with real Bulgarian coordinates
 const mockTractors = [
@@ -130,25 +136,165 @@ type Tractor = (typeof mockTractors)[0];
 const FleetMap = dynamic(() => import("@/components/fleet/fleet-map"), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-full flex items-center justify-center rounded-2xl border border-gray-800 bg-[#0A0A0A]">
+    <div className="w-full h-full flex items-center justify-center rounded-xl border border-border bg-card">
       <div className="flex flex-col items-center gap-3">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#367C2B] border-t-transparent" />
-        <span className="text-sm text-gray-500">Loading map...</span>
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <span className="text-sm text-muted-foreground">Loading map...</span>
       </div>
     </div>
   ),
 });
 
-function TelematicsPanel({ tractor }: { tractor: Tractor }) {
+// Custom Progress Bar with gradient colors
+function FuelProgressBar({ value, theme }: { value: number; theme: Theme }) {
+  const getGradientColor = (level: number) => {
+    if (level > 50) return "from-[#367C2B] to-[#4a9c3d]";
+    if (level > 25) return "from-amber-500 to-yellow-400";
+    return "from-red-600 to-red-400";
+  };
+
+  return (
+    <div className={cn(
+      "relative h-3 w-full rounded-full overflow-hidden",
+      theme === "presentation" ? "bg-gray-300" : "bg-muted"
+    )}>
+      <div
+        className={cn(
+          "h-full rounded-full bg-gradient-to-r transition-all duration-500",
+          getGradientColor(value)
+        )}
+        style={{ width: `${value}%` }}
+      />
+      {/* Glow effect for presentation mode */}
+      {theme === "presentation" && value > 50 && (
+        <div
+          className="absolute inset-0 rounded-full bg-gradient-to-r from-[#367C2B]/30 to-transparent blur-sm"
+          style={{ width: `${value}%` }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Digital Readout Component
+function DigitalReadout({ 
+  value, 
+  unit, 
+  label, 
+  icon: Icon, 
+  theme 
+}: { 
+  value: string | number; 
+  unit?: string; 
+  label: string; 
+  icon: React.ElementType;
+  theme: Theme;
+}) {
+  return (
+    <div className={cn(
+      "flex flex-col gap-1 p-3 rounded-lg border",
+      theme === "presentation" 
+        ? "bg-white border-gray-200 shadow-lg" 
+        : theme === "light"
+        ? "bg-card border-border"
+        : "bg-card/50 border-border"
+    )}>
+      <div className="flex items-center gap-1.5">
+        <Icon className={cn(
+          "h-3.5 w-3.5",
+          theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+        )} />
+        <span className={cn(
+          "text-[10px] uppercase tracking-wider",
+          theme === "presentation" ? "text-gray-600" : "text-muted-foreground"
+        )}>
+          {label}
+        </span>
+      </div>
+      <div className={cn(
+        "font-mono text-2xl font-bold tracking-tight",
+        theme === "presentation" ? "text-gray-900" : "text-foreground"
+      )}>
+        {value}
+        {unit && (
+          <span className={cn(
+            "text-sm ml-1",
+            theme === "presentation" ? "text-gray-500" : "text-muted-foreground"
+          )}>
+            {unit}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Widget Header Component
+function WidgetHeader({ 
+  title, 
+  icon: Icon, 
+  badge, 
+  theme,
+  onSettingsClick 
+}: { 
+  title: string; 
+  icon: React.ElementType; 
+  badge?: string;
+  theme: Theme;
+  onSettingsClick?: () => void;
+}) {
+  return (
+    <div className={cn(
+      "flex items-center justify-between px-4 py-3 border-b",
+      theme === "presentation" 
+        ? "border-gray-200 bg-white" 
+        : "border-border"
+    )}>
+      <h2 className={cn(
+        "text-sm font-bold uppercase tracking-wider flex items-center gap-2",
+        theme === "presentation" ? "text-gray-900" : "text-foreground"
+      )}>
+        <Icon className={cn(
+          "h-4 w-4",
+          theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+        )} />
+        {title}
+      </h2>
+      <div className="flex items-center gap-2">
+        {badge && (
+          <Badge
+            variant="outline"
+            className={cn(
+              "text-[10px]",
+              theme === "presentation"
+                ? "border-[#367C2B] bg-[#367C2B]/10 text-[#367C2B]"
+                : "border-primary/50 bg-primary/10 text-primary"
+            )}
+          >
+            {badge}
+          </Badge>
+        )}
+        <button 
+          onClick={onSettingsClick}
+          className={cn(
+            "p-1.5 rounded-md transition-colors",
+            theme === "presentation"
+              ? "hover:bg-gray-100 text-gray-500"
+              : "hover:bg-muted text-muted-foreground"
+          )}
+        >
+          <Settings className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme }) {
   const { telematics } = tractor;
   const hasErrors = tractor.dtcCodes.some((d) => d.severity === "critical");
   const hasWarnings = tractor.dtcCodes.some((d) => d.severity === "warning");
-
-  const getFuelColor = (level: number) => {
-    if (level > 50) return "text-[#367C2B]";
-    if (level > 25) return "text-amber-500";
-    return "text-red-500";
-  };
+  const totalAlerts = tractor.dtcCodes.length;
 
   const timeSinceUpdate = Math.floor(
     (Date.now() - tractor.lastUpdate.getTime()) / 1000
@@ -159,74 +305,122 @@ function TelematicsPanel({ tractor }: { tractor: Tractor }) {
       {/* Machine Header */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-white">{tractor.name}</h3>
+          <h3 className={cn(
+            "text-lg font-bold",
+            theme === "presentation" ? "text-gray-900" : "text-foreground"
+          )}>
+            {tractor.name}
+          </h3>
           <Badge
             variant="outline"
             className={cn(
               "text-xs uppercase tracking-wider",
               tractor.status === "active"
-                ? "border-[#367C2B]/50 bg-[#367C2B]/10 text-[#367C2B]"
-                : "border-gray-600/50 bg-gray-700/30 text-gray-400"
+                ? theme === "presentation"
+                  ? "border-[#367C2B] bg-[#367C2B]/10 text-[#367C2B]"
+                  : "border-primary/50 bg-primary/10 text-primary"
+                : theme === "presentation"
+                ? "border-gray-400 bg-gray-100 text-gray-600"
+                : "border-muted-foreground/50 bg-muted text-muted-foreground"
             )}
           >
             {tractor.status === "active" ? "ACTIVE" : "IDLE"}
           </Badge>
         </div>
-        <div className="flex items-center gap-2 text-xs text-gray-500">
+        <div className={cn(
+          "flex items-center gap-2 text-xs",
+          theme === "presentation" ? "text-gray-600" : "text-muted-foreground"
+        )}>
           <MapPin className="h-3 w-3" />
           <span>{tractor.owner}</span>
         </div>
-        <div className="flex items-center gap-2 text-xs text-gray-600 font-mono">
+        <div className={cn(
+          "flex items-center gap-2 text-xs font-mono",
+          theme === "presentation" ? "text-gray-500" : "text-muted-foreground/70"
+        )}>
           <span>S/N: {tractor.serialNumber}</span>
         </div>
         <div className="flex items-center gap-2">
           <Signal
             className={cn(
               "h-3 w-3",
-              telematics.signalStrength > 80 ? "text-[#367C2B]" : "text-amber-500"
+              telematics.signalStrength > 80 
+                ? theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+                : "text-amber-500"
             )}
           />
-          <span className="text-xs text-gray-500">
+          <span className={cn(
+            "text-xs",
+            theme === "presentation" ? "text-gray-500" : "text-muted-foreground"
+          )}>
             Signal: {telematics.signalStrength}% | Updated {timeSinceUpdate}s ago
           </span>
         </div>
       </div>
 
-      {/* DTC Error Codes */}
-      {tractor.dtcCodes.length > 0 && (
+      {/* Active DTC Alerts - High Contrast Section */}
+      {totalAlerts > 0 && (
         <Card
           className={cn(
-            "border bg-transparent",
+            "border-2 shadow-lg relative overflow-hidden",
             hasErrors
-              ? "border-red-500/50 bg-red-500/5"
-              : "border-amber-500/50 bg-amber-500/5"
+              ? "border-red-500 bg-red-500/5"
+              : "border-amber-500 bg-amber-500/5",
+            theme === "presentation" && "shadow-xl"
           )}
         >
-          <CardHeader className="pb-2 pt-3 px-3">
-            <CardTitle
-              className={cn(
-                "flex items-center gap-2 text-sm font-semibold",
-                hasErrors ? "text-red-400" : "text-amber-400"
-              )}
-            >
-              <AlertTriangle className="h-4 w-4" />
-              Active DTC Codes ({tractor.dtcCodes.length})
+          {/* Pulsing background for critical alerts */}
+          {hasErrors && (
+            <div className="absolute inset-0 bg-red-500/10 animate-pulse" />
+          )}
+          
+          <CardHeader className="pb-2 pt-3 px-4 relative">
+            <CardTitle className="flex items-center justify-between">
+              <span className={cn(
+                "flex items-center gap-2 text-sm font-bold uppercase tracking-wider",
+                hasErrors ? "text-red-500" : "text-amber-500"
+              )}>
+                <AlertTriangle className="h-5 w-5" />
+                Active DTC Alerts
+              </span>
+              {/* Pulsing Badge */}
+              <span className={cn(
+                "relative flex items-center justify-center h-7 w-7 rounded-full text-xs font-bold text-white",
+                hasErrors ? "bg-red-500" : "bg-amber-500"
+              )}>
+                <span className={cn(
+                  "absolute inset-0 rounded-full animate-ping",
+                  hasErrors ? "bg-red-500/75" : "bg-amber-500/75"
+                )} />
+                <span className="relative">{totalAlerts}</span>
+              </span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="px-3 pb-3">
+          <CardContent className="px-4 pb-4 relative">
             <div className="space-y-2">
               {tractor.dtcCodes.map((dtc, i) => (
                 <div
                   key={i}
                   className={cn(
-                    "flex items-start gap-2 rounded-md px-2 py-1.5 text-xs",
+                    "flex items-start gap-3 rounded-lg px-3 py-2.5 border",
                     dtc.severity === "critical"
-                      ? "bg-red-500/10 text-red-300"
-                      : "bg-amber-500/10 text-amber-300"
+                      ? "bg-red-500/10 border-red-500/30"
+                      : "bg-amber-500/10 border-amber-500/30",
+                    theme === "presentation" && "shadow-sm"
                   )}
                 >
-                  <span className="font-mono font-bold shrink-0">{dtc.code}</span>
-                  <span className="text-gray-400">{dtc.description}</span>
+                  <span className={cn(
+                    "font-mono text-sm font-bold shrink-0",
+                    dtc.severity === "critical" ? "text-red-400" : "text-amber-400"
+                  )}>
+                    {dtc.code}
+                  </span>
+                  <span className={cn(
+                    "text-sm",
+                    theme === "presentation" ? "text-gray-700" : "text-foreground/80"
+                  )}>
+                    {dtc.description}
+                  </span>
                 </div>
               ))}
             </div>
@@ -236,105 +430,165 @@ function TelematicsPanel({ tractor }: { tractor: Tractor }) {
 
       {/* Live Telematics */}
       <div className="space-y-3">
-        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-          <Radio className="h-3 w-3 text-[#367C2B]" />
+        <h4 className={cn(
+          "text-xs font-semibold uppercase tracking-wider flex items-center gap-2",
+          theme === "presentation" ? "text-gray-500" : "text-muted-foreground"
+        )}>
+          <Radio className={cn(
+            "h-3 w-3",
+            theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+          )} />
           Live Telematics
         </h4>
 
-        {/* Fuel & DEF */}
-        <div className="grid grid-cols-2 gap-3">
-          <Card className="border-gray-800 bg-[#0A0A0A]">
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1.5">
-                  <Fuel className={cn("h-4 w-4", getFuelColor(telematics.fuelLevel))} />
-                  <span className="text-xs text-gray-500">Fuel</span>
-                </div>
-                <span className={cn("text-sm font-bold", getFuelColor(telematics.fuelLevel))}>
-                  {telematics.fuelLevel}%
+        {/* Fuel Level with Custom Progress Bar */}
+        <Card className={cn(
+          "border shadow-md",
+          theme === "presentation" ? "bg-white border-gray-200" : "border-border"
+        )}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Fuel className={cn(
+                  "h-5 w-5",
+                  telematics.fuelLevel > 50 
+                    ? theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+                    : telematics.fuelLevel > 25 
+                    ? "text-amber-500" 
+                    : "text-red-500"
+                )} />
+                <span className={cn(
+                  "text-sm font-semibold",
+                  theme === "presentation" ? "text-gray-700" : "text-foreground"
+                )}>
+                  Fuel Level
                 </span>
               </div>
-              <Progress value={telematics.fuelLevel} className="h-1.5 bg-gray-800" />
-            </CardContent>
-          </Card>
+              <span className={cn(
+                "text-xl font-bold font-mono",
+                telematics.fuelLevel > 50 
+                  ? theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+                  : telematics.fuelLevel > 25 
+                  ? "text-amber-500" 
+                  : "text-red-500"
+              )}>
+                {telematics.fuelLevel}%
+              </span>
+            </div>
+            <FuelProgressBar value={telematics.fuelLevel} theme={theme} />
+          </CardContent>
+        </Card>
 
-          <Card className="border-gray-800 bg-[#0A0A0A]">
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1.5">
-                  <Battery className="h-4 w-4 text-cyan-400" />
-                  <span className="text-xs text-gray-500">DEF</span>
-                </div>
-                <span className="text-sm font-bold text-cyan-400">
-                  {telematics.defLevel}%
+        {/* DEF Level */}
+        <Card className={cn(
+          "border shadow-md",
+          theme === "presentation" ? "bg-white border-gray-200" : "border-border"
+        )}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Battery className="h-5 w-5 text-cyan-500" />
+                <span className={cn(
+                  "text-sm font-semibold",
+                  theme === "presentation" ? "text-gray-700" : "text-foreground"
+                )}>
+                  DEF Level
                 </span>
               </div>
-              <Progress value={telematics.defLevel} className="h-1.5 bg-gray-800" />
-            </CardContent>
-          </Card>
-        </div>
+              <span className="text-xl font-bold font-mono text-cyan-500">
+                {telematics.defLevel}%
+              </span>
+            </div>
+            <div className={cn(
+              "relative h-3 w-full rounded-full overflow-hidden",
+              theme === "presentation" ? "bg-gray-300" : "bg-muted"
+            )}>
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-cyan-400 transition-all duration-500"
+                style={{ width: `${telematics.defLevel}%` }}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Engine Hours */}
-        <Card className="border-gray-800 bg-[#0A0A0A]">
-          <CardContent className="p-3">
+        <Card className={cn(
+          "border shadow-md",
+          theme === "presentation" ? "bg-white border-gray-200" : "border-border"
+        )}>
+          <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-[#367C2B]" />
-                <span className="text-xs text-gray-500">Engine Hours</span>
+                <Clock className={cn(
+                  "h-5 w-5",
+                  theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+                )} />
+                <span className={cn(
+                  "text-sm font-semibold",
+                  theme === "presentation" ? "text-gray-700" : "text-foreground"
+                )}>
+                  Engine Hours
+                </span>
               </div>
-              <span className="text-lg font-bold font-mono text-[#367C2B]">
-                {telematics.engineHours.toLocaleString()}h
+              <span className={cn(
+                "text-2xl font-bold font-mono",
+                theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+              )}>
+                {telematics.engineHours.toLocaleString()}
+                <span className={cn(
+                  "text-sm ml-1",
+                  theme === "presentation" ? "text-gray-500" : "text-muted-foreground"
+                )}>h</span>
               </span>
             </div>
           </CardContent>
         </Card>
 
-        {/* Performance Metrics */}
+        {/* Digital Readouts - RPM and Speed */}
         <div className="grid grid-cols-2 gap-3">
-          <Card className="border-gray-800 bg-[#0A0A0A]">
-            <CardContent className="p-3 space-y-2">
-              <div className="flex items-center gap-1.5">
-                <Gauge className="h-4 w-4 text-[#367C2B]" />
-                <span className="text-xs text-gray-500">Speed</span>
-              </div>
-              <div className="text-xl font-bold font-mono text-white">
-                {telematics.groundSpeed.toFixed(1)}
-                <span className="text-xs text-gray-500 ml-1">km/h</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-gray-800 bg-[#0A0A0A]">
-            <CardContent className="p-3 space-y-2">
-              <div className="flex items-center gap-1.5">
-                <Activity className="h-4 w-4 text-amber-400" />
-                <span className="text-xs text-gray-500">RPM</span>
-              </div>
-              <div className="text-xl font-bold font-mono text-white">
-                {telematics.engineRPM.toLocaleString()}
-              </div>
-            </CardContent>
-          </Card>
+          <DigitalReadout
+            icon={Activity}
+            label="Engine RPM"
+            value={telematics.engineRPM.toLocaleString()}
+            theme={theme}
+          />
+          <DigitalReadout
+            icon={Gauge}
+            label="Speed"
+            value={telematics.groundSpeed.toFixed(1)}
+            unit="km/h"
+            theme={theme}
+          />
         </div>
 
         {/* Temperatures */}
         <div className="grid grid-cols-2 gap-3">
-          <Card className="border-gray-800 bg-[#0A0A0A]">
+          <Card className={cn(
+            "border shadow-md",
+            theme === "presentation" ? "bg-white border-gray-200" : "border-border"
+          )}>
             <CardContent className="p-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <Thermometer
                     className={cn(
                       "h-4 w-4",
-                      telematics.engineTemp > 100 ? "text-red-500" : "text-[#367C2B]"
+                      telematics.engineTemp > 100 
+                        ? "text-red-500" 
+                        : theme === "presentation" ? "text-[#367C2B]" : "text-primary"
                     )}
                   />
-                  <span className="text-xs text-gray-500">Engine</span>
+                  <span className={cn(
+                    "text-xs",
+                    theme === "presentation" ? "text-gray-600" : "text-muted-foreground"
+                  )}>Engine</span>
                 </div>
                 <span
                   className={cn(
                     "font-bold font-mono",
-                    telematics.engineTemp > 100 ? "text-red-500" : "text-white"
+                    telematics.engineTemp > 100 
+                      ? "text-red-500" 
+                      : theme === "presentation" ? "text-gray-900" : "text-foreground"
                   )}
                 >
                   {telematics.engineTemp}°C
@@ -343,14 +597,23 @@ function TelematicsPanel({ tractor }: { tractor: Tractor }) {
             </CardContent>
           </Card>
 
-          <Card className="border-gray-800 bg-[#0A0A0A]">
+          <Card className={cn(
+            "border shadow-md",
+            theme === "presentation" ? "bg-white border-gray-200" : "border-border"
+          )}>
             <CardContent className="p-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                  <Thermometer className="h-4 w-4 text-cyan-400" />
-                  <span className="text-xs text-gray-500">Hydraulic</span>
+                  <Thermometer className="h-4 w-4 text-cyan-500" />
+                  <span className={cn(
+                    "text-xs",
+                    theme === "presentation" ? "text-gray-600" : "text-muted-foreground"
+                  )}>Hydraulic</span>
                 </div>
-                <span className="font-bold font-mono text-white">
+                <span className={cn(
+                  "font-bold font-mono",
+                  theme === "presentation" ? "text-gray-900" : "text-foreground"
+                )}>
                   {telematics.hydraulicTemp}°C
                 </span>
               </div>
@@ -359,19 +622,30 @@ function TelematicsPanel({ tractor }: { tractor: Tractor }) {
         </div>
 
         {/* Battery */}
-        <Card className="border-gray-800 bg-[#0A0A0A]">
+        <Card className={cn(
+          "border shadow-md",
+          theme === "presentation" ? "bg-white border-gray-200" : "border-border"
+        )}>
           <CardContent className="p-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Zap
                   className={cn(
                     "h-4 w-4",
-                    telematics.batteryVoltage > 13 ? "text-[#367C2B]" : "text-amber-500"
+                    telematics.batteryVoltage > 13 
+                      ? theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+                      : "text-amber-500"
                   )}
                 />
-                <span className="text-xs text-gray-500">Battery Voltage</span>
+                <span className={cn(
+                  "text-xs",
+                  theme === "presentation" ? "text-gray-600" : "text-muted-foreground"
+                )}>Battery Voltage</span>
               </div>
-              <span className="font-bold font-mono text-white">
+              <span className={cn(
+                "font-bold font-mono",
+                theme === "presentation" ? "text-gray-900" : "text-foreground"
+              )}>
                 {telematics.batteryVoltage.toFixed(1)}V
               </span>
             </div>
@@ -387,24 +661,21 @@ function TelematicsSkeleton() {
   return (
     <div className="space-y-4 animate-pulse">
       <div className="space-y-2">
-        <div className="h-6 w-48 bg-gray-800 rounded" />
-        <div className="h-4 w-32 bg-gray-800 rounded" />
-        <div className="h-3 w-56 bg-gray-800 rounded" />
+        <div className="h-6 w-48 bg-muted rounded" />
+        <div className="h-4 w-32 bg-muted rounded" />
+        <div className="h-3 w-56 bg-muted rounded" />
+      </div>
+      <div className="h-24 bg-muted rounded-lg" />
+      <div className="h-16 bg-muted rounded-lg" />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="h-20 bg-muted rounded-lg" />
+        <div className="h-20 bg-muted rounded-lg" />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <div className="h-20 bg-gray-800 rounded-lg" />
-        <div className="h-20 bg-gray-800 rounded-lg" />
+        <div className="h-12 bg-muted rounded-lg" />
+        <div className="h-12 bg-muted rounded-lg" />
       </div>
-      <div className="h-14 bg-gray-800 rounded-lg" />
-      <div className="grid grid-cols-2 gap-3">
-        <div className="h-20 bg-gray-800 rounded-lg" />
-        <div className="h-20 bg-gray-800 rounded-lg" />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="h-12 bg-gray-800 rounded-lg" />
-        <div className="h-12 bg-gray-800 rounded-lg" />
-      </div>
-      <div className="h-12 bg-gray-800 rounded-lg" />
+      <div className="h-12 bg-muted rounded-lg" />
     </div>
   );
 }
@@ -414,6 +685,7 @@ export default function FleetIntelligencePage() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isSimulating, setIsSimulating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [theme, setTheme] = useState<Theme>("dark");
 
   // Simulate initial loading
   useEffect(() => {
@@ -427,10 +699,52 @@ export default function FleetIntelligencePage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Apply theme class to document
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove("dark", "light");
+    if (theme === "dark") {
+      root.classList.add("dark");
+    } else if (theme === "light") {
+      root.classList.remove("dark");
+    }
+  }, [theme]);
+
+  const getThemeStyles = () => {
+    switch (theme) {
+      case "presentation":
+        return {
+          bg: "bg-gray-100",
+          header: "bg-white border-gray-200",
+          text: "text-gray-900",
+          muted: "text-gray-600",
+        };
+      case "light":
+        return {
+          bg: "bg-background",
+          header: "bg-background border-border",
+          text: "text-foreground",
+          muted: "text-muted-foreground",
+        };
+      default:
+        return {
+          bg: "bg-background",
+          header: "bg-background/95 border-border",
+          text: "text-foreground",
+          muted: "text-muted-foreground",
+        };
+    }
+  };
+
+  const styles = getThemeStyles();
+
   return (
-    <div className="flex min-h-screen flex-col bg-[#0A0A0A] text-white">
+    <div className={cn("flex min-h-screen flex-col", styles.bg)}>
       {/* Header - Futuristic Navigation Bar */}
-      <header className="sticky top-0 z-50 border-b border-gray-800 bg-[#0A0A0A]/95 backdrop-blur-sm">
+      <header className={cn(
+        "sticky top-0 z-50 border-b backdrop-blur-sm",
+        styles.header
+      )}>
         <div className="flex h-16 items-center justify-between px-6">
           {/* Left: Back button and Logo */}
           <div className="flex items-center gap-6">
@@ -438,45 +752,125 @@ export default function FleetIntelligencePage() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="gap-1.5 text-gray-400 hover:text-white hover:bg-gray-800"
+                className={cn("gap-1.5", styles.muted)}
               >
                 <ArrowLeft className="h-4 w-4" />
                 Back
               </Button>
             </Link>
 
-            <div className="h-8 w-px bg-gray-800" />
+            <div className={cn(
+              "h-8 w-px",
+              theme === "presentation" ? "bg-gray-300" : "bg-border"
+            )} />
 
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#367C2B]/10 border border-[#367C2B]/30">
-                <Radar className="h-6 w-6 text-[#367C2B]" />
+              <div className={cn(
+                "flex h-10 w-10 items-center justify-center rounded-lg border",
+                theme === "presentation"
+                  ? "bg-[#367C2B]/10 border-[#367C2B]/30"
+                  : "bg-primary/10 border-primary/30"
+              )}>
+                <Radar className={cn(
+                  "h-6 w-6",
+                  theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+                )} />
               </div>
               <div>
                 <h1 className="text-xl font-bold tracking-tight">
-                  <span className="text-white">Megatron</span>
-                  <span className="text-[#367C2B]">Vision</span>
+                  <span className={styles.text}>Megatron</span>
+                  <span className={cn(
+                    theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+                  )}>Vision</span>
                 </h1>
-                <p className="text-[10px] text-gray-500 uppercase tracking-widest">
+                <p className={cn(
+                  "text-[10px] uppercase tracking-widest",
+                  styles.muted
+                )}>
                   Fleet Intelligence System
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Right: Live indicator, time, and simulation button */}
-          <div className="flex items-center gap-6">
+          {/* Right: Theme switcher, Live indicator, time, and simulation button */}
+          <div className="flex items-center gap-4">
+            {/* Theme Switcher */}
+            <div className={cn(
+              "flex items-center gap-1 p-1 rounded-lg border",
+              theme === "presentation" ? "bg-gray-200 border-gray-300" : "bg-muted border-border"
+            )}>
+              <button
+                onClick={() => setTheme("light")}
+                className={cn(
+                  "p-2 rounded-md transition-all",
+                  theme === "light" 
+                    ? "bg-background shadow-sm" 
+                    : "hover:bg-background/50"
+                )}
+                title="Light Mode"
+              >
+                <Sun className={cn(
+                  "h-4 w-4",
+                  theme === "light" ? "text-amber-500" : styles.muted
+                )} />
+              </button>
+              <button
+                onClick={() => setTheme("dark")}
+                className={cn(
+                  "p-2 rounded-md transition-all",
+                  theme === "dark" 
+                    ? "bg-background shadow-sm" 
+                    : "hover:bg-background/50"
+                )}
+                title="Dark Mode"
+              >
+                <Moon className={cn(
+                  "h-4 w-4",
+                  theme === "dark" ? "text-primary" : styles.muted
+                )} />
+              </button>
+              <button
+                onClick={() => setTheme("presentation")}
+                className={cn(
+                  "p-2 rounded-md transition-all",
+                  theme === "presentation" 
+                    ? "bg-white shadow-sm" 
+                    : "hover:bg-background/50"
+                )}
+                title="Presentation Mode (High Contrast)"
+              >
+                <Monitor className={cn(
+                  "h-4 w-4",
+                  theme === "presentation" ? "text-[#367C2B]" : styles.muted
+                )} />
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div className={cn(
+              "h-8 w-px",
+              theme === "presentation" ? "bg-gray-300" : "bg-border"
+            )} />
+
             {/* Live Indicator */}
             <div className="flex items-center gap-2">
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#367C2B] opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#367C2B]" />
+                <span className={cn(
+                  "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
+                  theme === "presentation" ? "bg-[#367C2B]" : "bg-primary"
+                )} />
+                <span className={cn(
+                  "relative inline-flex rounded-full h-2 w-2",
+                  theme === "presentation" ? "bg-[#367C2B]" : "bg-primary"
+                )} />
               </span>
-              <span className="text-xs text-gray-400 uppercase tracking-wider">Live</span>
+              <span className={cn("text-xs uppercase tracking-wider", styles.muted)}>Live</span>
             </div>
 
             {/* Time */}
-            <span className="text-sm font-mono text-gray-300">
+            <span className={cn("text-sm font-mono", styles.text)}>
               {currentTime.toLocaleTimeString()}
             </span>
 
@@ -498,8 +892,6 @@ export default function FleetIntelligencePage() {
                 )}
               />
               {isSimulating ? "Simulating..." : "Start Live Simulation"}
-              {/* Glow effect */}
-              <span className="absolute inset-0 rounded-md bg-[#367C2B]/5 blur-sm" />
             </Button>
           </div>
         </div>
@@ -507,67 +899,80 @@ export default function FleetIntelligencePage() {
 
       {/* Main Content - Two Column Layout */}
       <div className="flex flex-1 gap-4 p-4 overflow-hidden">
-        {/* Left Column - Map (75%) */}
+        {/* Left Column - Map Widget (75%) */}
         <div className="w-3/4 h-[calc(100vh-8rem)]">
-          <div className="relative w-full h-full rounded-2xl border border-gray-800 overflow-hidden bg-[#0A0A0A]">
-            <FleetMap
-              tractors={mockTractors}
-              selectedTractorId={selectedTractor?.id || null}
-              onSelectTractor={(id) => {
-                const tractor = mockTractors.find((t) => t.id === id);
-                setSelectedTractor(tractor || null);
-              }}
+          <Card className={cn(
+            "relative w-full h-full rounded-xl border shadow-md overflow-hidden",
+            theme === "presentation" ? "bg-white border-gray-200" : "border-border"
+          )}>
+            {/* Widget Header */}
+            <WidgetHeader
+              icon={MapPin}
+              title="Fleet Map"
+              badge={`${mockTractors.filter((t) => t.status === "active").length}/${mockTractors.length} Active`}
+              theme={theme}
+              onSettingsClick={() => {}}
             />
+            
+            {/* Map Content */}
+            <div className="h-[calc(100%-49px)]">
+              <FleetMap
+                tractors={mockTractors}
+                selectedTractorId={selectedTractor?.id || null}
+                onSelectTractor={(id) => {
+                  const tractor = mockTractors.find((t) => t.id === id);
+                  setSelectedTractor(tractor || null);
+                }}
+              />
 
-            {/* Map overlay legend */}
-            <div className="absolute bottom-4 left-4 z-[1000] flex items-center gap-4 text-xs text-white bg-black/70 px-4 py-2.5 rounded-lg border border-gray-800 backdrop-blur">
-              <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full bg-[#367C2B]" />
-                Active
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-                Warning
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                Critical
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full bg-gray-500" />
-                Idle
+              {/* Map overlay legend */}
+              <div className={cn(
+                "absolute bottom-4 left-4 z-[1000] flex items-center gap-4 text-xs px-4 py-2.5 rounded-lg border backdrop-blur",
+                theme === "presentation" 
+                  ? "bg-white/90 border-gray-200 text-gray-700" 
+                  : "bg-background/70 border-border text-foreground"
+              )}>
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#367C2B]" />
+                  Active
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                  Warning
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                  Critical
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-gray-500" />
+                  Idle
+                </div>
               </div>
             </div>
-
-            {/* Fleet count badge */}
-            <div className="absolute top-4 left-4 z-[1000] flex items-center gap-2 px-3 py-2 rounded-lg bg-black/70 border border-gray-800 backdrop-blur">
-              <TrendingUp className="h-4 w-4 text-[#367C2B]" />
-              <span className="text-sm font-semibold text-white">
-                {mockTractors.filter((t) => t.status === "active").length}/{mockTractors.length} Active
-              </span>
-            </div>
-          </div>
+          </Card>
         </div>
 
-        {/* Right Column - Telematics Panel (25%) */}
+        {/* Right Column - Telematics Widget (25%) */}
         <div className="w-1/4 h-[calc(100vh-8rem)]">
-          <div className="flex flex-col h-full rounded-2xl border border-gray-800 bg-[#161616] overflow-hidden">
-            {/* Panel Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <Radio className="h-4 w-4 text-[#367C2B]" />
-                Live Telematics
-              </h2>
-              <Badge
-                variant="outline"
-                className="border-[#367C2B]/50 bg-[#367C2B]/10 text-[#367C2B] text-[10px]"
-              >
-                Real-time
-              </Badge>
-            </div>
+          <Card className={cn(
+            "flex flex-col h-full rounded-xl border shadow-md overflow-hidden",
+            theme === "presentation" ? "bg-gray-50 border-gray-200" : "border-border"
+          )}>
+            {/* Widget Header */}
+            <WidgetHeader
+              icon={Radio}
+              title="Live Telematics"
+              badge="Real-time"
+              theme={theme}
+              onSettingsClick={() => {}}
+            />
 
             {/* Fleet List */}
-            <div className="border-b border-gray-800">
+            <div className={cn(
+              "border-b",
+              theme === "presentation" ? "border-gray-200" : "border-border"
+            )}>
               <ScrollArea className="h-[120px]">
                 <div className="p-2 space-y-1">
                   {mockTractors.map((tractor) => {
@@ -582,8 +987,12 @@ export default function FleetIntelligencePage() {
                         className={cn(
                           "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all",
                           isSelected
-                            ? "bg-[#367C2B]/20 border border-[#367C2B]/50"
-                            : "hover:bg-gray-800/50 border border-transparent"
+                            ? theme === "presentation"
+                              ? "bg-[#367C2B]/10 border border-[#367C2B]/50"
+                              : "bg-primary/20 border border-primary/50"
+                            : theme === "presentation"
+                            ? "hover:bg-gray-200 border border-transparent"
+                            : "hover:bg-muted/50 border border-transparent"
                         )}
                       >
                         <span
@@ -599,12 +1008,23 @@ export default function FleetIntelligencePage() {
                           )}
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-white truncate">
+                          <p className={cn(
+                            "text-xs font-semibold truncate",
+                            theme === "presentation" ? "text-gray-900" : "text-foreground"
+                          )}>
                             {tractor.id}
                           </p>
-                          <p className="text-[10px] text-gray-500 truncate">{tractor.model}</p>
+                          <p className={cn(
+                            "text-[10px] truncate",
+                            theme === "presentation" ? "text-gray-500" : "text-muted-foreground"
+                          )}>
+                            {tractor.model}
+                          </p>
                         </div>
-                        <span className="text-[10px] text-gray-500 font-mono">
+                        <span className={cn(
+                          "text-[10px] font-mono",
+                          theme === "presentation" ? "text-gray-500" : "text-muted-foreground"
+                        )}>
                           {tractor.telematics.fuelLevel}%
                         </span>
                       </button>
@@ -619,15 +1039,23 @@ export default function FleetIntelligencePage() {
               {isLoading ? (
                 <TelematicsSkeleton />
               ) : selectedTractor ? (
-                <TelematicsPanel tractor={selectedTractor} />
+                <TelematicsPanel tractor={selectedTractor} theme={theme} />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-center">
-                  <MapPin className="h-12 w-12 text-gray-700 mb-3" />
-                  <p className="text-sm text-gray-500">Select a tractor to view telematics</p>
+                  <MapPin className={cn(
+                    "h-12 w-12 mb-3",
+                    theme === "presentation" ? "text-gray-400" : "text-muted-foreground/50"
+                  )} />
+                  <p className={cn(
+                    "text-sm",
+                    theme === "presentation" ? "text-gray-500" : "text-muted-foreground"
+                  )}>
+                    Select a tractor to view telematics
+                  </p>
                 </div>
               )}
             </ScrollArea>
-          </div>
+          </Card>
         </div>
       </div>
     </div>
