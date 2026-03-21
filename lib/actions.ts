@@ -1054,133 +1054,155 @@ export async function masterSearch(
     return [];
   }
 
-  const supabase = await createClient();
-  const searchTerm = query?.trim() || "";
+  const searchTerm = query?.trim().toLowerCase() || "";
   const results: MasterSearchResult[] = [];
 
-  // Skip order search in wildcard mode - only search machines
-  if (!isWildcardMode) {
-    // Search service orders - use ilike for case-insensitive search
-    try {
-      let orderQuery = supabase
-        .from("service_orders")
-        .select(`
-          *,
-          machines:machine_id (id, model, serial_number, brand),
-          clients:client_id (id, name, is_blocked)
-        `)
-        .or(`order_number.ilike.%${searchTerm}%,job_card_number.ilike.%${searchTerm}%`)
-        .order("created_at", { ascending: false })
-        .limit(10);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MOCK DATA - Simulated Supabase response for v0 sandbox testing
+  // In production, this would be replaced with real Supabase queries
+  // ═══════════════════════════════════════════════════════════════════════════
+  const simulatedSupabaseResponse = [
+    {
+      id: "1",
+      serial_number: "1L06155MCHJ100042",
+      model_name: "John Deere 6M 195",
+      brand: "John Deere",
+      model: "6M 195",
+      clients: { id: "c1", name: "Агроинвест ООД", is_blocked: false, location: "Пловдив" },
+      machine_telematics: [
+        {
+          engine_hours: 2156,
+          fuel_level_percent: 28,
+          def_level_percent: 45,
+          battery_voltage: 13.8,
+          engine_temp: 88,
+          coolant_temp: 85,
+          hydraulic_temp: 72,
+          engine_load: 42,
+          hydraulic_pressure: 185,
+          active_dtcs: 1,
+        },
+      ],
+      dtc_codes: [
+        { code: "ECU 524287.31", description: "Engine Oil Pressure Low", severity: "warning" as const },
+      ],
+    },
+    {
+      id: "2",
+      serial_number: "1RW7350KMPD008912",
+      model_name: "John Deere 7R 350",
+      brand: "John Deere",
+      model: "7R 350",
+      clients: { id: "c2", name: "Golden Fields EOOD", is_blocked: false, location: "Стара Загора" },
+      machine_telematics: [
+        {
+          engine_hours: 4320,
+          fuel_level_percent: 65,
+          def_level_percent: 78,
+          battery_voltage: 14.1,
+          engine_temp: 92,
+          coolant_temp: 88,
+          hydraulic_temp: 68,
+          engine_load: 68,
+          hydraulic_pressure: 210,
+          active_dtcs: 0,
+        },
+      ],
+      dtc_codes: [],
+    },
+    {
+      id: "3",
+      serial_number: "1RW8400RTNE002847",
+      model_name: "John Deere 8R 410",
+      brand: "John Deere",
+      model: "8R 410",
+      clients: { id: "c3", name: "Мегатрон Демо ЕООД", is_blocked: false, location: "София" },
+      machine_telematics: [
+        {
+          engine_hours: 1245,
+          fuel_level_percent: 82,
+          def_level_percent: 91,
+          battery_voltage: 14.2,
+          engine_temp: 78,
+          coolant_temp: 75,
+          hydraulic_temp: 62,
+          engine_load: 35,
+          hydraulic_pressure: 175,
+          active_dtcs: 0,
+        },
+      ],
+      dtc_codes: [],
+    },
+    {
+      id: "4",
+      serial_number: "1L09620STPK004521",
+      model_name: "John Deere 9620 RX",
+      brand: "John Deere",
+      model: "9620 RX",
+      clients: { id: "c4", name: "Зърнени Храни АД", is_blocked: true, location: "Добрич" },
+      machine_telematics: [
+        {
+          engine_hours: 6789,
+          fuel_level_percent: 15,
+          def_level_percent: 22,
+          battery_voltage: 11.8,
+          engine_temp: 105,
+          coolant_temp: 98,
+          hydraulic_temp: 88,
+          engine_load: 0,
+          hydraulic_pressure: 0,
+          active_dtcs: 2,
+        },
+      ],
+      dtc_codes: [
+        { code: "ECU 524287.31", description: "Engine Oil Pressure Low", severity: "critical" as const },
+        { code: "ECU 641.14", description: "Battery Voltage Low", severity: "warning" as const },
+      ],
+    },
+  ];
 
-      // Filter by order type if specified
-      if (orderType && orderType !== "all" && orderType !== "repair") {
-        orderQuery = orderQuery.eq("service_type", orderType);
-      }
+  // Filter mock data based on search term
+  const filteredMachines = isWildcardMode
+    ? simulatedSupabaseResponse
+    : simulatedSupabaseResponse.filter(
+        (m) =>
+          m.serial_number.toLowerCase().includes(searchTerm) ||
+          m.model_name.toLowerCase().includes(searchTerm) ||
+          m.clients.name.toLowerCase().includes(searchTerm)
+      );
 
-      const { data: orders, error: orderError } = await orderQuery;
-
-      if (orderError) {
-        console.error("masterSearch orders error:", orderError);
-      }
-
-      if (!orderError && orders) {
-        for (const o of orders) {
-          const machine = o.machines as Record<string, unknown> | null;
-          const client = o.clients as Record<string, unknown> | null;
-          results.push({
-            type: "order",
-            id: o.id as string,
-            orderNumber: o.order_number as string || "",
-            jobCardNumber: o.job_card_number as string || "",
-            serviceType: o.service_type as MasterSearchResult["serviceType"],
-            machineId: (machine?.id as string) || undefined,
-            machineSerial: (machine?.serial_number as string) || "",
-            machineModel: `${machine?.brand || ""} ${machine?.model || ""}`.trim(),
-            clientId: (client?.id as string) || undefined,
-            clientName: (client?.name as string) || "",
-            isBlocked: (client?.is_blocked as boolean) || false,
-            // Include Navision description from service order
-            navisionDescription: (o.description as string) || (o.fault_description as string) || "",
-          });
-        }
-      }
-    } catch (err) {
-      console.error("masterSearch orders catch:", err);
-    }
+  // Convert mock data to MasterSearchResult format
+  for (const m of filteredMachines) {
+    const telematics = m.machine_telematics[0];
+    
+    results.push({
+      type: "machine",
+      id: m.id,
+      machineId: m.id,
+      machineSerial: m.serial_number,
+      machineModel: `${m.brand} ${m.model}`,
+      clientId: m.clients.id,
+      clientName: m.clients.name,
+      clientLocation: m.clients.location,
+      isBlocked: m.clients.is_blocked,
+      telematics: {
+        engineHours: telematics.engine_hours,
+        batteryVoltage: telematics.battery_voltage,
+        fuelLevel: telematics.fuel_level_percent,
+        defLevel: telematics.def_level_percent,
+        engineTemp: telematics.engine_temp,
+        coolantTemp: telematics.coolant_temp,
+        hydraulicTemp: telematics.hydraulic_temp,
+        engineLoad: telematics.engine_load,
+        hydraulicPressure: telematics.hydraulic_pressure,
+        lastUpdated: new Date().toISOString(),
+      },
+      dtcCodes: m.dtc_codes,
+    });
   }
 
-  // Search machines directly - in wildcard mode, get a general list (limit 50)
-  try {
-    let machineQuery = supabase
-      .from("machines")
-      .select(`
-        *,
-        clients:client_id (id, name, is_blocked, location)
-      `);
-    
-    // Apply search filter only if not in wildcard mode
-    if (!isWildcardMode && searchTerm) {
-      machineQuery = machineQuery.or(`serial_number.ilike.%${searchTerm}%,model.ilike.%${searchTerm}%,brand.ilike.%${searchTerm}%`);
-    }
-    
-    // Use higher limit for wildcard mode
-    machineQuery = machineQuery.limit(isWildcardMode ? 50 : 10);
-    
-    const { data: machines, error: machineError } = await machineQuery;
-
-    if (machineError) {
-      console.error("masterSearch machines error:", machineError);
-    }
-
-    if (!machineError && machines) {
-      for (const m of machines) {
-        const client = m.clients as Record<string, unknown> | null;
-        // Don't add duplicates (machines already in orders)
-        const alreadyInResults = results.some(
-          r => r.machineSerial === m.serial_number
-        );
-        if (!alreadyInResults) {
-          // Generate mock telematics data (simulating JDLink API response)
-          // In production, this would come from: supabase.from('machine_telematics').select('*')
-          const mockTelematics: MachineTelematics = {
-            engineHours: Math.floor(Math.random() * 5000) + 500,
-            batteryVoltage: 12.8 + Math.random() * 2,
-            fuelLevel: Math.floor(Math.random() * 100),
-            defLevel: Math.floor(Math.random() * 100),
-            engineTemp: 75 + Math.floor(Math.random() * 30),
-            coolantTemp: 80 + Math.floor(Math.random() * 20),
-            hydraulicTemp: 60 + Math.floor(Math.random() * 30),
-            engineLoad: Math.floor(Math.random() * 100),
-            hydraulicPressure: 150 + Math.floor(Math.random() * 100),
-            lastUpdated: new Date().toISOString(),
-          };
-
-          // Mock DTC codes (some machines have active faults)
-          const mockDtcCodes = Math.random() > 0.6 ? [
-            { code: "ECU 524287.31", description: "Engine Oil Pressure Low", severity: "warning" as const },
-          ] : [];
-
-          results.push({
-            type: "machine",
-            id: m.id as string,
-            machineId: m.id as string,
-            machineSerial: (m.serial_number as string) || "",
-            machineModel: `${m.brand || ""} ${m.model || ""}`.trim(),
-            engineSerial: (m.engine_serial as string) || "",
-            clientId: (client?.id as string) || undefined,
-            clientName: (client?.name as string) || m.client_name as string || "",
-            clientLocation: (client?.location as string) || "",
-            isBlocked: (client?.is_blocked as boolean) || false,
-            telematics: mockTelematics,
-            dtcCodes: mockDtcCodes,
-          });
-        }
-      }
-    }
-  } catch (err) {
-    console.error("masterSearch machines catch:", err);
-  }
+  // Simulate async delay to mimic real database query
+  await new Promise((resolve) => setTimeout(resolve, 150));
 
   return results;
 }
