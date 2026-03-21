@@ -932,8 +932,13 @@ function WorkCardPageContent() {
               // Reset payer change state when selecting new order
               setIsPayerChanged(false);
               setPayerChangeReason("");
-              // Reset engine hours inputs and photo
-              setCurrentEngineHours(null);
+              
+              // Auto-fill engine hours from JDLink telematics if available
+              if (order.telematics?.engineHours) {
+                setCurrentEngineHours(order.telematics.engineHours);
+              } else {
+                setCurrentEngineHours(null);
+              }
               setIsHoursWarningConfirmed(false);
               setHoursPhotoUrl(null);
               setSkipPhoto(false);
