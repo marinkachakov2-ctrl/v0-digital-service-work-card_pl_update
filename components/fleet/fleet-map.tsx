@@ -134,39 +134,21 @@ export default function FleetMap({ tractors, selectedTractorId, onSelectTractor 
     baseMarkersRef.current.forEach((marker) => marker.remove());
     baseMarkersRef.current = [];
 
-    // Create custom Megatron "M" icon
-    const baseIconHtml = `
-      <div style="
-        width: 30px;
-        height: 30px;
-        background: #367C2B;
-        border: 2px solid #ffffff;
-        border-radius: 6px;
-        box-shadow: 0 2px 8px rgba(54, 124, 43, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 16px;
-        font-weight: 900;
-        color: #ffffff;
-        font-family: system-ui, -apple-system, sans-serif;
-        cursor: pointer;
-      ">M</div>
-    `;
+    // Create custom Megatron logo icon using official corporate logo
+    const baseIconHtml = '<div style="background: white; padding: 2px; border-radius: 4px; box-shadow: 0 0 10px rgba(54,124,43,0.5);"><img src="https://megatron.bg/wp-content/uploads/2018/02/logo.png" style="width: 35px; height: auto;" /></div>';
 
     const baseIcon = L.divIcon({
       html: baseIconHtml,
       className: "megatron-base-marker",
-      iconSize: [30, 30],
-      iconAnchor: [15, 15],
+      iconSize: [40, 24],
+      iconAnchor: [20, 12],
     });
 
     MEGATRON_SERVICE_BASES.forEach((base) => {
       const popupContent = `
         <div class="base-popup ${isLightTheme ? 'light-theme' : 'dark-theme'}">
           <div class="base-header">
-            <span class="base-logo">M</span>
-            <span class="base-title">Мегатрон ЕАД</span>
+            <img src="https://megatron.bg/wp-content/uploads/2018/02/logo.png" class="base-logo-img" alt="Megatron" />
           </div>
           <div class="base-city">${base.city}</div>
           <div class="base-desc">Търговско-сервизен комплекс</div>
@@ -571,25 +553,12 @@ export default function FleetMap({ tractors, selectedTractorId, onSelectTractor 
         .base-header {
           display: flex;
           align-items: center;
-          gap: 8px;
-          margin-bottom: 6px;
-        }
-        .base-logo {
-          width: 24px;
-          height: 24px;
-          background: #367C2B;
-          border-radius: 4px;
-          display: flex;
-          align-items: center;
           justify-content: center;
-          font-size: 14px;
-          font-weight: 900;
-          color: #fff;
+          margin-bottom: 8px;
         }
-        .base-title {
-          font-weight: 700;
-          font-size: 14px;
-          color: #367C2B;
+        .base-logo-img {
+          width: 100px;
+          height: auto;
         }
         .base-city {
           font-size: 13px;
