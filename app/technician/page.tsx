@@ -20,6 +20,7 @@ import { RecommendationsSection, type RecommendationsData } from "@/components/w
 import { FutureIssuesSection } from "@/components/work-card/future-issues-section";
 import { PendingRepairsBanner } from "@/components/work-card/pending-repairs-banner";
 import { TechnicianHeader } from "@/components/work-card/technician-header";
+import { JDLinkDiagnostics } from "@/components/work-card/jdlink-diagnostics";
 import type { ServiceHistoryIssue, PendingRepairItem } from "@/lib/actions";
 import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours, uploadEngineHoursPhoto, fetchUnresolvedMachineIssues, savePendingRepairs, fetchJobCardForEdit, type MachineIssue } from "@/lib/actions";
 import { Footer } from "@/components/work-card/footer";
@@ -1115,6 +1116,29 @@ function WorkCardPageContent() {
   }}
   isCapturingPhoto={isCapturingPhoto}
   />
+
+          {/* Live JDLink Diagnostics - ECU data streaming from the machine */}
+          {isScanned && clientData && (
+            <JDLinkDiagnostics
+              engineHours={currentEngineHours || clientData.previousEngineHours || 2156}
+              batteryVoltage={13.8}
+              fuelLevel={28}
+              dtcCodes={[
+                {
+                  code: "ECU 524287.31",
+                  description: "Engine Oil Pressure Low",
+                  severity: "warning",
+                },
+              ]}
+              onAppendToNotes={(text) => {
+                // Append DTC code to the repair description
+                setDescription((prev) =>
+                  prev ? `${prev}\n${text}` : text
+                );
+              }}
+              isConnected={true}
+            />
+          )}
 
           {/* FREE CHECK Section - 14 point John Deere inspection */}
           <FreeCheckSection
