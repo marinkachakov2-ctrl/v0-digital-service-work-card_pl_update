@@ -134,18 +134,18 @@ export default function FleetMap({ tractors, selectedTractorId, onSelectTractor 
     baseMarkersRef.current.forEach((marker) => marker.remove());
     baseMarkersRef.current = [];
 
-    // Create custom Megatron logo icon using inline SVG (avoids CORS/hotlink issues)
-    const baseIconHtml = '<div style="background: white; border-radius: 6px; padding: 4px; box-shadow: 0 4px 10px rgba(54,124,43,0.6); display: flex; justify-content: center; align-items: center;"><svg viewBox="0 0 100 100" width="28" height="28" xmlns="http://www.w3.org/2000/svg"><path d="M15,85 L15,15 L50,55 L85,15 L85,85" stroke="#367c2b" stroke-width="18" stroke-linejoin="miter" fill="none" /><path d="M50,10 L50,90" stroke="#ffde00" stroke-width="10" stroke-linecap="round" stroke-dasharray="10 6" /></svg></div>';
+    // Create custom Megatron logo icon using inline SVG that matches official corporate logo
+    const baseIconHtml = '<div style="background: white; border-radius: 6px; padding: 6px; box-shadow: 0 4px 10px rgba(54,124,43,0.6); display: flex; justify-content: center; align-items: center;"><svg viewBox="0 0 130 115" width="48" height="42" xmlns="http://www.w3.org/2000/svg"><rect x="15" y="5" width="26" height="75" fill="#367c2b" /><rect x="89" y="5" width="26" height="75" fill="#367c2b" /><polygon points="15,5 47,5 70,80 38,80" fill="#367c2b" /><g stroke="#f2c808"><line x1="53" y1="78" x2="87" y2="8" stroke-width="10" stroke-dasharray="10 4" stroke-linecap="round"/><line x1="59" y1="80" x2="93" y2="10" stroke-width="10" stroke-dasharray="10 4" stroke-linecap="round"/></g><line x1="56" y1="79" x2="90" y2="9" stroke="#fff" stroke-width="2" /><text x="65" y="105" font-family="Arial, sans-serif" font-weight="900" font-size="19" fill="#1a1a1a" text-anchor="middle" letter-spacing="1">МЕГАТРОН<tspan font-size="10" dy="-8">®</tspan></text></svg></div>';
 
     const baseIcon = L.divIcon({
       html: baseIconHtml,
       className: "megatron-base-marker",
-      iconSize: [36, 36],
-      iconAnchor: [18, 18],
+      iconSize: [54, 48],
+      iconAnchor: [27, 24],
     });
 
-    // SVG logo for popup (larger version)
-    const popupLogoSvg = '<svg viewBox="0 0 100 100" width="60" height="60" xmlns="http://www.w3.org/2000/svg"><path d="M15,85 L15,15 L50,55 L85,15 L85,85" stroke="#367c2b" stroke-width="18" stroke-linejoin="miter" fill="none" /><path d="M50,10 L50,90" stroke="#ffde00" stroke-width="10" stroke-linecap="round" stroke-dasharray="10 6" /></svg>';
+    // SVG logo for popup (larger version with full branding)
+    const popupLogoSvg = '<svg viewBox="0 0 130 115" width="90" height="78" xmlns="http://www.w3.org/2000/svg"><rect x="15" y="5" width="26" height="75" fill="#367c2b" /><rect x="89" y="5" width="26" height="75" fill="#367c2b" /><polygon points="15,5 47,5 70,80 38,80" fill="#367c2b" /><g stroke="#f2c808"><line x1="53" y1="78" x2="87" y2="8" stroke-width="10" stroke-dasharray="10 4" stroke-linecap="round"/><line x1="59" y1="80" x2="93" y2="10" stroke-width="10" stroke-dasharray="10 4" stroke-linecap="round"/></g><line x1="56" y1="79" x2="90" y2="9" stroke="#fff" stroke-width="2" /><text x="65" y="105" font-family="Arial, sans-serif" font-weight="900" font-size="19" fill="#1a1a1a" text-anchor="middle" letter-spacing="1">МЕГАТРОН<tspan font-size="10" dy="-8">®</tspan></text></svg>';
 
     MEGATRON_SERVICE_BASES.forEach((base) => {
       const popupContent = `
