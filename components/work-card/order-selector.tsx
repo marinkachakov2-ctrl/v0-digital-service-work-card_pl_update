@@ -91,9 +91,15 @@ export function OrderSelector({
     setShowResults(false);
   }, [onOrderTypeChange]);
 
-  // Debounced master search - searches both orders and machines
+  // Debounced master search with "Power User" wildcard (%) support
+  // - If user types just "%", fetch a general list of machines (limit 50)
+  // - If they type "%1L" or "1L", filter based on the input
   useEffect(() => {
-    if (searchQuery.length < 2) {
+    const isWildcardOnly = searchQuery.trim() === "%";
+    const cleanQuery = searchQuery.replace(/%/g, "").trim();
+    const shouldSearch = isWildcardOnly || cleanQuery.length >= 2;
+
+    if (!shouldSearch) {
       setSearchResults([]);
       setShowResults(false);
       return;
@@ -102,13 +108,14 @@ export function OrderSelector({
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const results = await masterSearch(searchQuery, orderType);
+        // Pass empty string for wildcard-only to get general list
+        const results = await masterSearch(isWildcardOnly ? "" : cleanQuery, orderType);
         setSearchResults(results);
         setShowResults(true);
       } catch (error) {
         console.error("OrderSelector search error:", error);
         setSearchResults([]);
-        setShowResults(true); // Still show dropdown with "no results" message
+        setShowResults(true);
       } finally {
         setIsSearching(false);
       }
@@ -179,8 +186,14 @@ export function OrderSelector({
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => searchQuery.length >= 2 && setShowResults(true)}
-                placeholder="Търсене по РК, Поръчка, Сериен номер или Клиент..."
+                onFocus={() => {
+                  const isWildcard = searchQuery.trim() === "%";
+                  const cleanQuery = searchQuery.replace(/%/g, "").trim();
+                  if (isWildcard || cleanQuery.length >= 2) {
+                    setShowResults(true);
+                  }
+                }}
+                placeholder="Търсене (напиши % за всички машини)..."
                 className="pl-10 pr-4 h-12 text-base bg-background border-border/50 focus:border-[#007A33]"
                 disabled={!!selectedOrder}
               />
@@ -259,10 +272,12 @@ export function OrderSelector({
           )}
 
           {/* No results message */}
-          {showResults && searchResults.length === 0 && !isSearching && searchQuery.length >= 2 && (
-            <div className="absolute z-50 mt-2 w-full rounded-lg border border-border bg-popover p-4 shadow-xl">
-              <p className="text-sm text-muted-foreground text-center">
-                Няма намерени резултати за "{searchQuery}"
+          {showResults && searchResults.length === 0 && !isSearching && (searchQuery.trim() === "%" || searchQuery.replace(/%/g, "").trim().length >= 2) && (
+            <div className="absolute z-50 mt-2 w-full rounded-xl border border-[#007A33]/30 bg-[#0a0f0a] p-4 shadow-2xl">
+              <p className="text-sm text-gray-400 text-center">
+                {searchQuery.trim() === "%" 
+                  ? "Няма регистрирани машини в системата" 
+                  : `Няма намерени резултати за "${searchQuery}"`}
               </p>
             </div>
           )}

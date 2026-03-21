@@ -1047,73 +1047,87 @@ export async function masterSearch(
   query: string,
   orderType?: string
 ): Promise<MasterSearchResult[]> {
-  if (!query || query.trim().length < 2) {
+  // Allow empty query for wildcard (%) mode - returns general machine list
+  const isWildcardMode = !query || query.trim().length === 0;
+  
+  if (!isWildcardMode && query.trim().length < 2) {
     return [];
   }
 
   const supabase = await createClient();
-  const searchTerm = query.trim();
+  const searchTerm = query?.trim() || "";
   const results: MasterSearchResult[] = [];
 
-  // Search service orders - use ilike for case-insensitive search
-  try {
-    let orderQuery = supabase
-      .from("service_orders")
-      .select(`
-        *,
-        machines:machine_id (id, model, serial_number, brand),
-        clients:client_id (id, name, is_blocked)
-      `)
-      .or(`order_number.ilike.%${searchTerm}%,job_card_number.ilike.%${searchTerm}%`)
-      .order("created_at", { ascending: false })
-      .limit(10);
+  // Skip order search in wildcard mode - only search machines
+  if (!isWildcardMode) {
+    // Search service orders - use ilike for case-insensitive search
+    try {
+      let orderQuery = supabase
+        .from("service_orders")
+        .select(`
+          *,
+          machines:machine_id (id, model, serial_number, brand),
+          clients:client_id (id, name, is_blocked)
+        `)
+        .or(`order_number.ilike.%${searchTerm}%,job_card_number.ilike.%${searchTerm}%`)
+        .order("created_at", { ascending: false })
+        .limit(10);
 
-    // Filter by order type if specified
-    if (orderType && orderType !== "all" && orderType !== "repair") {
-      orderQuery = orderQuery.eq("service_type", orderType);
-    }
-
-    const { data: orders, error: orderError } = await orderQuery;
-
-    if (orderError) {
-      console.error("masterSearch orders error:", orderError);
-    }
-
-    if (!orderError && orders) {
-      for (const o of orders) {
-        const machine = o.machines as Record<string, unknown> | null;
-        const client = o.clients as Record<string, unknown> | null;
-        results.push({
-          type: "order",
-          id: o.id as string,
-          orderNumber: o.order_number as string || "",
-          jobCardNumber: o.job_card_number as string || "",
-          serviceType: o.service_type as MasterSearchResult["serviceType"],
-          machineId: (machine?.id as string) || undefined,
-          machineSerial: (machine?.serial_number as string) || "",
-          machineModel: `${machine?.brand || ""} ${machine?.model || ""}`.trim(),
-          clientId: (client?.id as string) || undefined,
-          clientName: (client?.name as string) || "",
-          isBlocked: (client?.is_blocked as boolean) || false,
-          // Include Navision description from service order
-          navisionDescription: (o.description as string) || (o.fault_description as string) || "",
-        });
+      // Filter by order type if specified
+      if (orderType && orderType !== "all" && orderType !== "repair") {
+        orderQuery = orderQuery.eq("service_type", orderType);
       }
+
+      const { data: orders, error: orderError } = await orderQuery;
+
+      if (orderError) {
+        console.error("masterSearch orders error:", orderError);
+      }
+
+      if (!orderError && orders) {
+        for (const o of orders) {
+          const machine = o.machines as Record<string, unknown> | null;
+          const client = o.clients as Record<string, unknown> | null;
+          results.push({
+            type: "order",
+            id: o.id as string,
+            orderNumber: o.order_number as string || "",
+            jobCardNumber: o.job_card_number as string || "",
+            serviceType: o.service_type as MasterSearchResult["serviceType"],
+            machineId: (machine?.id as string) || undefined,
+            machineSerial: (machine?.serial_number as string) || "",
+            machineModel: `${machine?.brand || ""} ${machine?.model || ""}`.trim(),
+            clientId: (client?.id as string) || undefined,
+            clientName: (client?.name as string) || "",
+            isBlocked: (client?.is_blocked as boolean) || false,
+            // Include Navision description from service order
+            navisionDescription: (o.description as string) || (o.fault_description as string) || "",
+          });
+        }
+      }
+    } catch (err) {
+      console.error("masterSearch orders catch:", err);
     }
-  } catch (err) {
-    console.error("masterSearch orders catch:", err);
   }
 
-  // Search machines directly
+  // Search machines directly - in wildcard mode, get a general list (limit 50)
   try {
-    const { data: machines, error: machineError } = await supabase
+    let machineQuery = supabase
       .from("machines")
       .select(`
         *,
         clients:client_id (id, name, is_blocked, location)
-      `)
-      .or(`serial_number.ilike.%${searchTerm}%,model.ilike.%${searchTerm}%,brand.ilike.%${searchTerm}%`)
-      .limit(10);
+      `);
+    
+    // Apply search filter only if not in wildcard mode
+    if (!isWildcardMode && searchTerm) {
+      machineQuery = machineQuery.or(`serial_number.ilike.%${searchTerm}%,model.ilike.%${searchTerm}%,brand.ilike.%${searchTerm}%`);
+    }
+    
+    // Use higher limit for wildcard mode
+    machineQuery = machineQuery.limit(isWildcardMode ? 50 : 10);
+    
+    const { data: machines, error: machineError } = await machineQuery;
 
     if (machineError) {
       console.error("masterSearch machines error:", machineError);
@@ -1705,7 +1719,7 @@ export async function updateMissingPhotoReason(
   }
 }
 
-// ────────────────────────────── Machine Issues ──────────────────────────────
+// ────────────────────────────── Machine Issues ───────────────────────────��──
 
 export interface MachineIssue {
   id: string;
