@@ -55,11 +55,26 @@ const STATUS_COLORS = {
   critical: "#FF3B30", // Red
 };
 
+// Megatron Service Bases in Bulgaria
+const MEGATRON_SERVICE_BASES = [
+  { id: "sofia", city: "София (Божурище)", position: { lat: 42.7539, lng: 23.1932 } },
+  { id: "plovdiv", city: "Пловдив (Войводиново)", position: { lat: 42.1950, lng: 24.7891 } },
+  { id: "stara-zagora", city: "Стара Загора", position: { lat: 42.4048, lng: 25.6450 } },
+  { id: "yambol", city: "Ямбол", position: { lat: 42.5015, lng: 26.5055 } },
+  { id: "burgas", city: "Бургас (Българово)", position: { lat: 42.5858, lng: 27.3551 } },
+  { id: "dobrich", city: "Добрич", position: { lat: 43.5558, lng: 27.8080 } },
+  { id: "ruse", city: "Русе", position: { lat: 43.8188, lng: 25.9866 } },
+  { id: "pleven", city: "Плевен", position: { lat: 43.4328, lng: 24.6306 } },
+  { id: "montana", city: "Монтана", position: { lat: 43.4182, lng: 23.2384 } },
+  { id: "silistra", city: "Силистра", position: { lat: 44.0950, lng: 27.2432 } },
+];
+
 export default function FleetMap({ tractors, selectedTractorId, onSelectTractor }: FleetMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
+  const baseMarkersRef = useRef<L.Marker[]>([]);
   const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -81,6 +96,7 @@ export default function FleetMap({ tractors, selectedTractorId, onSelectTractor 
       mapInstanceRef.current = null;
       tileLayerRef.current = null;
       markersRef.current.clear();
+      baseMarkersRef.current = [];
     }
 
     const map = L.map(mapRef.current, {
@@ -108,6 +124,66 @@ export default function FleetMap({ tractors, selectedTractorId, onSelectTractor 
       tileLayerRef.current = null;
     };
   }, [currentTheme, mounted]);
+
+  // Create Megatron service base markers
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mounted) return;
+
+    // Clear existing base markers
+    baseMarkersRef.current.forEach((marker) => marker.remove());
+    baseMarkersRef.current = [];
+
+    // Create custom Megatron "M" icon
+    const baseIconHtml = `
+      <div style="
+        width: 30px;
+        height: 30px;
+        background: #367C2B;
+        border: 2px solid #ffffff;
+        border-radius: 6px;
+        box-shadow: 0 2px 8px rgba(54, 124, 43, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        font-weight: 900;
+        color: #ffffff;
+        font-family: system-ui, -apple-system, sans-serif;
+        cursor: pointer;
+      ">M</div>
+    `;
+
+    const baseIcon = L.divIcon({
+      html: baseIconHtml,
+      className: "megatron-base-marker",
+      iconSize: [30, 30],
+      iconAnchor: [15, 15],
+    });
+
+    MEGATRON_SERVICE_BASES.forEach((base) => {
+      const popupContent = `
+        <div class="base-popup ${isLightTheme ? 'light-theme' : 'dark-theme'}">
+          <div class="base-header">
+            <span class="base-logo">M</span>
+            <span class="base-title">Мегатрон ЕАД</span>
+          </div>
+          <div class="base-city">${base.city}</div>
+          <div class="base-desc">Търговско-сервизен комплекс</div>
+        </div>
+      `;
+
+      const marker = L.marker([base.position.lat, base.position.lng], { icon: baseIcon })
+        .bindPopup(popupContent, {
+          className: `base-popup-container ${isLightTheme ? 'light' : 'dark'}`,
+          closeButton: false,
+          offset: [0, -10],
+        })
+        .addTo(map);
+
+      baseMarkersRef.current.push(marker);
+    });
+  }, [mounted, isLightTheme]);
 
   // Create/update markers
   useEffect(() => {
@@ -456,6 +532,73 @@ export default function FleetMap({ tractors, selectedTractorId, onSelectTractor 
         .dtc-code {
           font-family: 'SF Mono', 'Fira Code', monospace;
           font-size: 10px;
+        }
+
+        /* Megatron Base Marker Styles */
+        .megatron-base-marker {
+          background: transparent !important;
+          border: none !important;
+        }
+
+        /* Base Popup Styling */
+        .base-popup-container .leaflet-popup-content-wrapper {
+          background: ${isLightTheme ? "#ffffff" : "#1a1a1a"} !important;
+          border: 1px solid ${isLightTheme ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.1)"} !important;
+          border-radius: 12px !important;
+          box-shadow: 0 8px 32px rgba(0,0,0,${isLightTheme ? "0.15" : "0.5"}) !important;
+          padding: 0 !important;
+        }
+        .base-popup-container .leaflet-popup-tip {
+          background: ${isLightTheme ? "#ffffff" : "#1a1a1a"} !important;
+          border: 1px solid ${isLightTheme ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.1)"} !important;
+        }
+        .base-popup-container .leaflet-popup-content {
+          margin: 0 !important;
+          width: auto !important;
+        }
+
+        .base-popup {
+          padding: 12px 14px;
+          min-width: 180px;
+          font-family: system-ui, -apple-system, sans-serif;
+        }
+        .base-popup.dark-theme {
+          color: #fff;
+        }
+        .base-popup.light-theme {
+          color: #1a1a1a;
+        }
+        .base-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 6px;
+        }
+        .base-logo {
+          width: 24px;
+          height: 24px;
+          background: #367C2B;
+          border-radius: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 14px;
+          font-weight: 900;
+          color: #fff;
+        }
+        .base-title {
+          font-weight: 700;
+          font-size: 14px;
+          color: #367C2B;
+        }
+        .base-city {
+          font-size: 13px;
+          font-weight: 600;
+          margin-bottom: 4px;
+        }
+        .base-desc {
+          font-size: 11px;
+          opacity: 0.7;
         }
       `}</style>
       <div 
