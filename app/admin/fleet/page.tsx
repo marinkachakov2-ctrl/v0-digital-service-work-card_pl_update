@@ -24,6 +24,8 @@ import {
   Moon,
   MonitorPlay,
   Settings,
+  Droplets,
+  Cog,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -51,10 +53,13 @@ const mockTractors = [
       engineHours: 4823,
       defLevel: 68,
       engineTemp: 92,
+      coolantTemp: 88,
       hydraulicTemp: 78,
       groundSpeed: 12.4,
       engineRPM: 1850,
+      engineLoad: 68,
       batteryVoltage: 14.2,
+      hydraulicPressure: 185,
       signalStrength: 95,
     },
     dtcCodes: [] as Array<{ code: string; severity: string; description: string }>,
@@ -74,10 +79,13 @@ const mockTractors = [
       engineHours: 6234,
       defLevel: 52,
       engineTemp: 88,
+      coolantTemp: 84,
       hydraulicTemp: 72,
       groundSpeed: 8.2,
       engineRPM: 1650,
+      engineLoad: 54,
       batteryVoltage: 14.1,
+      hydraulicPressure: 172,
       signalStrength: 87,
     },
     dtcCodes: [
@@ -99,10 +107,13 @@ const mockTractors = [
       engineHours: 2156,
       defLevel: 35,
       engineTemp: 45,
+      coolantTemp: 42,
       hydraulicTemp: 42,
       groundSpeed: 0,
       engineRPM: 0,
+      engineLoad: 0,
       batteryVoltage: 12.8,
+      hydraulicPressure: 0,
       signalStrength: 78,
     },
     dtcCodes: [] as Array<{ code: string; severity: string; description: string }>,
@@ -122,10 +133,13 @@ const mockTractors = [
       engineHours: 1847,
       defLevel: 12,
       engineTemp: 118,
+      coolantTemp: 112,
       hydraulicTemp: 95,
       groundSpeed: 0,
       engineRPM: 0,
+      engineLoad: 0,
       batteryVoltage: 11.2,
+      hydraulicPressure: 45,
       signalStrength: 45,
     },
     dtcCodes: [
@@ -435,17 +449,19 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
         </Card>
       )}
 
-      {/* Live Telematics */}
+      {/* ═══════════════════════════════════════════════════════════════════
+          SECTION 1: PRIMARY STATS (Fuel & DEF)
+          ═══════════════════════════════════════════════════════════════════ */}
       <div className="space-y-3">
         <h4 className={cn(
           "text-xs font-semibold uppercase tracking-wider flex items-center gap-2",
           theme === "presentation" ? "text-gray-500" : "text-muted-foreground"
         )}>
-          <Radio className={cn(
+          <Fuel className={cn(
             "h-3 w-3",
             theme === "presentation" ? "text-[#367C2B]" : "text-primary"
           )} />
-          Live Telematics
+          Primary Stats
         </h4>
 
         {/* Fuel Level with Custom Progress Bar */}
@@ -494,7 +510,7 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <Battery className="h-5 w-5 text-cyan-500" />
+                <Droplets className="h-5 w-5 text-cyan-500" />
                 <span className={cn(
                   "text-sm font-semibold",
                   theme === "presentation" ? "text-gray-700" : "text-foreground"
@@ -517,13 +533,33 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
             </div>
           </CardContent>
         </Card>
+      </div>
 
-        {/* Engine Hours */}
+      {/* ═══════════════════════════════════════════════════════════════════
+          SECTION 2: ENGINE & PERFORMANCE
+          ═══════════════════════════════════════════════════════════════════ */}
+      <div className="space-y-3">
+        <h4 className={cn(
+          "text-xs font-semibold uppercase tracking-wider flex items-center gap-2",
+          theme === "presentation" ? "text-gray-500" : "text-muted-foreground"
+        )}>
+          <Cog className={cn(
+            "h-3 w-3",
+            theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+          )} />
+          Engine & Performance
+        </h4>
+
+        {/* Engine Hours - Large Digital Display */}
         <Card className={cn(
-          "border shadow-md",
+          "border shadow-md relative overflow-hidden",
           theme === "presentation" ? "bg-white border-gray-200" : "border-border"
         )}>
-          <CardContent className="p-4">
+          <div className={cn(
+            "absolute inset-0 opacity-5",
+            theme === "presentation" ? "bg-[#367C2B]" : "bg-primary"
+          )} />
+          <CardContent className="p-4 relative">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Clock className={cn(
@@ -551,6 +587,121 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
           </CardContent>
         </Card>
 
+        {/* Engine Load Progress Bar */}
+        <Card className={cn(
+          "border shadow-md",
+          theme === "presentation" ? "bg-white border-gray-200" : "border-border"
+        )}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <TrendingUp className={cn(
+                  "h-5 w-5",
+                  telematics.engineLoad > 85 
+                    ? "text-red-500" 
+                    : telematics.engineLoad > 70 
+                    ? "text-amber-500"
+                    : theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+                )} />
+                <span className={cn(
+                  "text-sm font-semibold",
+                  theme === "presentation" ? "text-gray-700" : "text-foreground"
+                )}>
+                  Engine Load
+                </span>
+              </div>
+              <span className={cn(
+                "text-xl font-bold font-mono",
+                telematics.engineLoad > 85 
+                  ? "text-red-500" 
+                  : telematics.engineLoad > 70 
+                  ? "text-amber-500"
+                  : theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+              )}>
+                {telematics.engineLoad}%
+              </span>
+            </div>
+            <div className={cn(
+              "relative h-3 w-full rounded-full overflow-hidden",
+              theme === "presentation" ? "bg-gray-300" : "bg-muted"
+            )}>
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all duration-500",
+                  telematics.engineLoad > 85 
+                    ? "bg-gradient-to-r from-red-600 to-red-400" 
+                    : telematics.engineLoad > 70 
+                    ? "bg-gradient-to-r from-amber-500 to-yellow-400"
+                    : "bg-gradient-to-r from-[#367C2B] to-[#4a9c3d]"
+                )}
+                style={{ width: `${telematics.engineLoad}%` }}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Coolant Temperature */}
+        <Card className={cn(
+          "border shadow-md",
+          theme === "presentation" ? "bg-white border-gray-200" : "border-border"
+        )}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Thermometer
+                  className={cn(
+                    "h-5 w-5",
+                    telematics.coolantTemp > 100 
+                      ? "text-red-500" 
+                      : telematics.coolantTemp > 90 
+                      ? "text-amber-500"
+                      : theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+                  )}
+                />
+                <span className={cn(
+                  "text-sm font-semibold",
+                  theme === "presentation" ? "text-gray-700" : "text-foreground"
+                )}>
+                  Coolant Temp
+                </span>
+              </div>
+              <span
+                className={cn(
+                  "text-xl font-bold font-mono",
+                  telematics.coolantTemp > 100 
+                    ? "text-red-500" 
+                    : telematics.coolantTemp > 90 
+                    ? "text-amber-500"
+                    : theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+                )}
+              >
+                {telematics.coolantTemp}°C
+              </span>
+            </div>
+            {/* Mini temperature gauge visualization */}
+            <div className="mt-3 flex items-center gap-2">
+              <span className={cn("text-[10px]", theme === "presentation" ? "text-gray-400" : "text-muted-foreground")}>Cold</span>
+              <div className={cn(
+                "flex-1 h-1.5 rounded-full overflow-hidden",
+                theme === "presentation" ? "bg-gray-200" : "bg-muted"
+              )}>
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all",
+                    telematics.coolantTemp > 100 
+                      ? "bg-red-500" 
+                      : telematics.coolantTemp > 90 
+                      ? "bg-amber-500"
+                      : "bg-[#367C2B]"
+                  )}
+                  style={{ width: `${Math.min((telematics.coolantTemp / 120) * 100, 100)}%` }}
+                />
+              </div>
+              <span className={cn("text-[10px]", theme === "presentation" ? "text-gray-400" : "text-muted-foreground")}>Hot</span>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Digital Readouts - RPM and Speed */}
         <div className="grid grid-cols-2 gap-3">
           <DigitalReadout
@@ -567,8 +718,152 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
             theme={theme}
           />
         </div>
+      </div>
 
-        {/* Temperatures */}
+      {/* ═══════════════════════════════════════════════════════════════════
+          SECTION 3: ELECTRICAL & HYDRAULICS
+          ═══════════════════════════════════════════════════════════════════ */}
+      <div className="space-y-3">
+        <h4 className={cn(
+          "text-xs font-semibold uppercase tracking-wider flex items-center gap-2",
+          theme === "presentation" ? "text-gray-500" : "text-muted-foreground"
+        )}>
+          <Zap className={cn(
+            "h-3 w-3",
+            theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+          )} />
+          Electrical & Hydraulics
+        </h4>
+
+        {/* Battery Voltage - With Status Indicator */}
+        <Card className={cn(
+          "border shadow-md",
+          theme === "presentation" ? "bg-white border-gray-200" : "border-border"
+        )}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className={cn(
+                  "p-1.5 rounded-lg",
+                  telematics.batteryVoltage > 13 
+                    ? theme === "presentation" ? "bg-[#367C2B]/10" : "bg-primary/10"
+                    : telematics.batteryVoltage > 12
+                    ? "bg-amber-500/10"
+                    : "bg-red-500/10"
+                )}>
+                  <Battery
+                    className={cn(
+                      "h-5 w-5",
+                      telematics.batteryVoltage > 13 
+                        ? theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+                        : telematics.batteryVoltage > 12
+                        ? "text-amber-500"
+                        : "text-red-500"
+                    )}
+                  />
+                </div>
+                <div>
+                  <span className={cn(
+                    "text-sm font-semibold block",
+                    theme === "presentation" ? "text-gray-700" : "text-foreground"
+                  )}>
+                    Battery Voltage
+                  </span>
+                  <span className={cn(
+                    "text-[10px] uppercase tracking-wider",
+                    telematics.batteryVoltage > 13 
+                      ? theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+                      : telematics.batteryVoltage > 12
+                      ? "text-amber-500"
+                      : "text-red-500"
+                  )}>
+                    {telematics.batteryVoltage > 13 ? "Normal" : telematics.batteryVoltage > 12 ? "Low" : "Critical"}
+                  </span>
+                </div>
+              </div>
+              <span className={cn(
+                "text-2xl font-bold font-mono",
+                telematics.batteryVoltage > 13 
+                  ? theme === "presentation" ? "text-[#367C2B]" : "text-primary"
+                  : telematics.batteryVoltage > 12
+                  ? "text-amber-500"
+                  : "text-red-500"
+              )}>
+                {telematics.batteryVoltage.toFixed(1)}
+                <span className={cn(
+                  "text-sm ml-0.5",
+                  theme === "presentation" ? "text-gray-500" : "text-muted-foreground"
+                )}>V</span>
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Hydraulic Pressure - With Gauge Style */}
+        <Card className={cn(
+          "border shadow-md",
+          theme === "presentation" ? "bg-white border-gray-200" : "border-border"
+        )}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className={cn(
+                  "p-1.5 rounded-lg",
+                  telematics.hydraulicPressure > 200 
+                    ? "bg-red-500/10"
+                    : telematics.hydraulicPressure > 0
+                    ? "bg-cyan-500/10"
+                    : theme === "presentation" ? "bg-gray-100" : "bg-muted"
+                )}>
+                  <Gauge
+                    className={cn(
+                      "h-5 w-5",
+                      telematics.hydraulicPressure > 200 
+                        ? "text-red-500"
+                        : telematics.hydraulicPressure > 0
+                        ? "text-cyan-500"
+                        : theme === "presentation" ? "text-gray-400" : "text-muted-foreground"
+                    )}
+                  />
+                </div>
+                <div>
+                  <span className={cn(
+                    "text-sm font-semibold block",
+                    theme === "presentation" ? "text-gray-700" : "text-foreground"
+                  )}>
+                    Hydraulic Pressure
+                  </span>
+                  <span className={cn(
+                    "text-[10px] uppercase tracking-wider",
+                    telematics.hydraulicPressure > 200 
+                      ? "text-red-500"
+                      : telematics.hydraulicPressure > 0
+                      ? "text-cyan-500"
+                      : theme === "presentation" ? "text-gray-400" : "text-muted-foreground"
+                  )}>
+                    {telematics.hydraulicPressure > 200 ? "High" : telematics.hydraulicPressure > 0 ? "Normal" : "Off"}
+                  </span>
+                </div>
+              </div>
+              <span className={cn(
+                "text-2xl font-bold font-mono",
+                telematics.hydraulicPressure > 200 
+                  ? "text-red-500"
+                  : telematics.hydraulicPressure > 0
+                  ? "text-cyan-500"
+                  : theme === "presentation" ? "text-gray-400" : "text-muted-foreground"
+              )}>
+                {telematics.hydraulicPressure}
+                <span className={cn(
+                  "text-sm ml-0.5",
+                  theme === "presentation" ? "text-gray-500" : "text-muted-foreground"
+                )}>bar</span>
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Temperatures Row */}
         <div className="grid grid-cols-2 gap-3">
           <Card className={cn(
             "border shadow-md",
@@ -627,37 +922,6 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
             </CardContent>
           </Card>
         </div>
-
-        {/* Battery */}
-        <Card className={cn(
-          "border shadow-md",
-          theme === "presentation" ? "bg-white border-gray-200" : "border-border"
-        )}>
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Zap
-                  className={cn(
-                    "h-4 w-4",
-                    telematics.batteryVoltage > 13 
-                      ? theme === "presentation" ? "text-[#367C2B]" : "text-primary"
-                      : "text-amber-500"
-                  )}
-                />
-                <span className={cn(
-                  "text-xs",
-                  theme === "presentation" ? "text-gray-600" : "text-muted-foreground"
-                )}>Battery Voltage</span>
-              </div>
-              <span className={cn(
-                "font-bold font-mono",
-                theme === "presentation" ? "text-gray-900" : "text-foreground"
-              )}>
-                {telematics.batteryVoltage.toFixed(1)}V
-              </span>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
