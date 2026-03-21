@@ -134,21 +134,24 @@ export default function FleetMap({ tractors, selectedTractorId, onSelectTractor 
     baseMarkersRef.current.forEach((marker) => marker.remove());
     baseMarkersRef.current = [];
 
-    // Create custom Megatron logo icon using official corporate logo
-    const baseIconHtml = '<div style="background: white; padding: 2px; border-radius: 4px; box-shadow: 0 0 10px rgba(54,124,43,0.5);"><img src="https://megatron.bg/wp-content/uploads/2018/02/logo.png" style="width: 35px; height: auto;" /></div>';
+    // Create custom Megatron logo icon using inline SVG (avoids CORS/hotlink issues)
+    const baseIconHtml = '<div style="background: white; border-radius: 6px; padding: 4px; box-shadow: 0 4px 10px rgba(54,124,43,0.6); display: flex; justify-content: center; align-items: center;"><svg viewBox="0 0 100 100" width="28" height="28" xmlns="http://www.w3.org/2000/svg"><path d="M15,85 L15,15 L50,55 L85,15 L85,85" stroke="#367c2b" stroke-width="18" stroke-linejoin="miter" fill="none" /><path d="M50,10 L50,90" stroke="#ffde00" stroke-width="10" stroke-linecap="round" stroke-dasharray="10 6" /></svg></div>';
 
     const baseIcon = L.divIcon({
       html: baseIconHtml,
       className: "megatron-base-marker",
-      iconSize: [40, 24],
-      iconAnchor: [20, 12],
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
     });
+
+    // SVG logo for popup (larger version)
+    const popupLogoSvg = '<svg viewBox="0 0 100 100" width="60" height="60" xmlns="http://www.w3.org/2000/svg"><path d="M15,85 L15,15 L50,55 L85,15 L85,85" stroke="#367c2b" stroke-width="18" stroke-linejoin="miter" fill="none" /><path d="M50,10 L50,90" stroke="#ffde00" stroke-width="10" stroke-linecap="round" stroke-dasharray="10 6" /></svg>';
 
     MEGATRON_SERVICE_BASES.forEach((base) => {
       const popupContent = `
         <div class="base-popup ${isLightTheme ? 'light-theme' : 'dark-theme'}">
           <div class="base-header">
-            <img src="https://megatron.bg/wp-content/uploads/2018/02/logo.png" class="base-logo-img" alt="Megatron" />
+            ${popupLogoSvg}
           </div>
           <div class="base-city">${base.city}</div>
           <div class="base-desc">Търговско-сервизен комплекс</div>
@@ -556,9 +559,8 @@ export default function FleetMap({ tractors, selectedTractorId, onSelectTractor 
           justify-content: center;
           margin-bottom: 8px;
         }
-        .base-logo-img {
-          width: 100px;
-          height: auto;
+        .base-header svg {
+          display: block;
         }
         .base-city {
           font-size: 13px;
