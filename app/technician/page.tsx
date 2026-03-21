@@ -1118,18 +1118,18 @@ function WorkCardPageContent() {
   />
 
           {/* Live JDLink Diagnostics - ECU data streaming from the machine */}
-          {isScanned && clientData && (
+          {isScanned && selectedOrder?.telematics && (
             <JDLinkDiagnostics
-              engineHours={currentEngineHours || clientData.previousEngineHours || 2156}
-              batteryVoltage={13.8}
-              fuelLevel={28}
-              dtcCodes={[
-                {
-                  code: "ECU 524287.31",
-                  description: "Engine Oil Pressure Low",
-                  severity: "warning",
-                },
-              ]}
+              engineHours={selectedOrder.telematics.engineHours}
+              batteryVoltage={selectedOrder.telematics.batteryVoltage}
+              fuelLevel={selectedOrder.telematics.fuelLevel}
+              defLevel={selectedOrder.telematics.defLevel}
+              engineTemp={selectedOrder.telematics.engineTemp}
+              coolantTemp={selectedOrder.telematics.coolantTemp}
+              hydraulicTemp={selectedOrder.telematics.hydraulicTemp}
+              engineLoad={selectedOrder.telematics.engineLoad}
+              hydraulicPressure={selectedOrder.telematics.hydraulicPressure}
+              dtcCodes={selectedOrder.dtcCodes || []}
               onAppendToNotes={(text) => {
                 // Append DTC code to the repair description
                 setDescription((prev) =>

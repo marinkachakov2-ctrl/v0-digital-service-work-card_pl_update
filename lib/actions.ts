@@ -1002,6 +1002,20 @@ export async function fetchPayerStatus(clientId: string): Promise<PayerStatus | 
  * Combined search for the Master Search bar
  * Searches both service_orders and machines, returning unified results
  */
+// Machine telematics data from JDLink
+export interface MachineTelematics {
+  engineHours: number;
+  batteryVoltage: number;
+  fuelLevel: number;
+  defLevel?: number;
+  engineTemp?: number;
+  coolantTemp?: number;
+  hydraulicTemp?: number;
+  engineLoad?: number;
+  hydraulicPressure?: number;
+  lastUpdated?: string;
+}
+
 export interface MasterSearchResult {
   type: "order" | "machine";
   id: string;
@@ -1016,10 +1030,17 @@ export interface MasterSearchResult {
   // Client fields
   clientId?: string;
   clientName: string;
+  clientLocation?: string;
+  // Engine serial number
+  engineSerial?: string;
   // Payer status
   isBlocked?: boolean;
   // Navision description from service order
   navisionDescription?: string;
+  // JDLink telematics data
+  telematics?: MachineTelematics;
+  // Active DTC codes from machine
+  dtcCodes?: Array<{ code: string; description: string; severity: "warning" | "critical" }>;
 }
 
 export async function masterSearch(
@@ -1089,7 +1110,7 @@ export async function masterSearch(
       .from("machines")
       .select(`
         *,
-        clients:client_id (id, name, is_blocked)
+        clients:client_id (id, name, is_blocked, location)
       `)
       .or(`serial_number.ilike.%${searchTerm}%,model.ilike.%${searchTerm}%,brand.ilike.%${searchTerm}%`)
       .limit(10);
@@ -1106,15 +1127,39 @@ export async function masterSearch(
           r => r.machineSerial === m.serial_number
         );
         if (!alreadyInResults) {
+          // Generate mock telematics data (simulating JDLink API response)
+          // In production, this would come from: supabase.from('machine_telematics').select('*')
+          const mockTelematics: MachineTelematics = {
+            engineHours: Math.floor(Math.random() * 5000) + 500,
+            batteryVoltage: 12.8 + Math.random() * 2,
+            fuelLevel: Math.floor(Math.random() * 100),
+            defLevel: Math.floor(Math.random() * 100),
+            engineTemp: 75 + Math.floor(Math.random() * 30),
+            coolantTemp: 80 + Math.floor(Math.random() * 20),
+            hydraulicTemp: 60 + Math.floor(Math.random() * 30),
+            engineLoad: Math.floor(Math.random() * 100),
+            hydraulicPressure: 150 + Math.floor(Math.random() * 100),
+            lastUpdated: new Date().toISOString(),
+          };
+
+          // Mock DTC codes (some machines have active faults)
+          const mockDtcCodes = Math.random() > 0.6 ? [
+            { code: "ECU 524287.31", description: "Engine Oil Pressure Low", severity: "warning" as const },
+          ] : [];
+
           results.push({
             type: "machine",
             id: m.id as string,
             machineId: m.id as string,
             machineSerial: (m.serial_number as string) || "",
             machineModel: `${m.brand || ""} ${m.model || ""}`.trim(),
+            engineSerial: (m.engine_serial as string) || "",
             clientId: (client?.id as string) || undefined,
             clientName: (client?.name as string) || m.client_name as string || "",
+            clientLocation: (client?.location as string) || "",
             isBlocked: (client?.is_blocked as boolean) || false,
+            telematics: mockTelematics,
+            dtcCodes: mockDtcCodes,
           });
         }
       }

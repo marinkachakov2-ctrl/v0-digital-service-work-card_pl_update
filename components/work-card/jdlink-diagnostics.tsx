@@ -21,6 +21,12 @@ interface JDLinkDiagnosticsProps {
   engineHours?: number;
   batteryVoltage?: number;
   fuelLevel?: number;
+  defLevel?: number;
+  engineTemp?: number;
+  coolantTemp?: number;
+  hydraulicTemp?: number;
+  engineLoad?: number;
+  hydraulicPressure?: number;
   dtcCodes?: Array<{
     code: string;
     description: string;
@@ -34,13 +40,13 @@ export function JDLinkDiagnostics({
   engineHours = 2156,
   batteryVoltage = 13.8,
   fuelLevel = 28,
-  dtcCodes = [
-    {
-      code: "ECU 524287.31",
-      description: "Engine Oil Pressure Low",
-      severity: "warning" as const,
-    },
-  ],
+  defLevel,
+  engineTemp,
+  coolantTemp,
+  hydraulicTemp,
+  engineLoad,
+  hydraulicPressure,
+  dtcCodes = [],
   onAppendToNotes,
   isConnected = true,
 }: JDLinkDiagnosticsProps) {
