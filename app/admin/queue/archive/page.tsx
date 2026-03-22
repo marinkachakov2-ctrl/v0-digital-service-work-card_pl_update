@@ -162,7 +162,7 @@ export default function ServiceHistoryArchivePage() {
 
         if (laborData) {
           laborData.forEach((l) => {
-            const total = (l.actual_hours || 0) * 50; // 50 BGN/hour
+            const total = (l.actual_hours || 0) * 50; // 50 EUR/hour
             laborMap.set(l.job_card_id, (laborMap.get(l.job_card_id) || 0) + total);
           });
         }
@@ -237,7 +237,7 @@ export default function ServiceHistoryArchivePage() {
   // Format currency
   const formatCurrency = (amount: number | null) => {
     if (amount === null || amount === 0) return "—";
-    return `${amount.toLocaleString("bg-BG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BGN`;
+    return `${amount.toLocaleString("bg-BG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
   };
 
   // Clear all filters

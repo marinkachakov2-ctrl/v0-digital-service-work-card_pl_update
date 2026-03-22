@@ -177,7 +177,7 @@ export function ReopenJobModal({
             operation_code: l.labor_catalog?.operation_code || "N/A",
             description: l.labor_catalog?.description || "Labor Operation",
             hours: l.actual_hours || l.labor_catalog?.standard_hours || 0,
-            rate: 50, // Default rate 50 BGN/hour
+            rate: 50, // Default rate 50 EUR/hour
           }));
           setHistoricalLabor(labor);
         }
@@ -518,10 +518,10 @@ export function ReopenJobModal({
                           </div>
                           <div className="text-right ml-4">
                             <p className="font-medium text-foreground">
-                              {part.quantity} x {part.price.toFixed(2)} BGN
+                              {part.quantity} x {part.price.toFixed(2)} €
                             </p>
                             <p className="text-xs text-emerald-500">
-                              {(part.quantity * part.price).toFixed(2)} BGN
+                              {(part.quantity * part.price).toFixed(2)} €
                             </p>
                           </div>
                         </div>
@@ -564,10 +564,10 @@ export function ReopenJobModal({
                           </div>
                           <div className="text-right ml-4">
                             <p className="font-medium text-foreground">
-                              {labor.hours}h @ {labor.rate} BGN
+                              {labor.hours}h @ {labor.rate} €
                             </p>
                             <p className="text-xs text-emerald-500">
-                              {(labor.hours * labor.rate).toFixed(2)} BGN
+                              {(labor.hours * labor.rate).toFixed(2)} €
                             </p>
                           </div>
                         </div>
@@ -597,7 +597,7 @@ export function ReopenJobModal({
                       </div>
                       <div className="text-right">
                         <p className="text-xl font-bold text-emerald-500">
-                          {totalEstimate.toLocaleString()} BGN
+                          {totalEstimate.toLocaleString()} €
                         </p>
                         <p className="text-xs text-muted-foreground">
                           Parts: {totalPartsValue.toLocaleString()} + Labor: {totalLaborValue.toLocaleString()}

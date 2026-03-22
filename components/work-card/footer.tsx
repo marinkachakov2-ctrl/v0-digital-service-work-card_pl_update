@@ -567,7 +567,7 @@ export function Footer({
                   <RadioGroupItem value="cash" id="cash" />
                   <Label htmlFor="cash" className="flex flex-1 cursor-pointer items-center gap-2 text-foreground">
                     <Banknote className="h-4 w-4 text-muted-foreground" />
-                    В брой (Cash)
+                    В брой
                   </Label>
                 </div>
               </RadioGroup>
@@ -578,25 +578,25 @@ export function Footer({
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Service Total:</span>
-                  <span className="font-mono text-foreground">{laborTotal.toFixed(2)} лв.</span>
+                  <span className="font-mono text-foreground">{laborTotal.toFixed(2)} €</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Parts Total:</span>
-                  <span className="font-mono text-foreground">{partsTotal.toFixed(2)} лв.</span>
+                  <span className="font-mono text-foreground">{partsTotal.toFixed(2)} €</span>
                 </div>
                 <Separator className="bg-border" />
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal:</span>
-                  <span className="font-mono text-foreground">{(laborTotal + partsTotal).toFixed(2)} лв.</span>
+                  <span className="font-mono text-foreground">{(laborTotal + partsTotal).toFixed(2)} €</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">VAT (20%):</span>
-                  <span className="font-mono text-foreground">{vat.toFixed(2)} лв.</span>
+                  <span className="font-mono text-foreground">{vat.toFixed(2)} €</span>
                 </div>
                 <Separator className="bg-border" />
                 <div className="flex justify-between">
                   <span className="text-lg font-semibold text-foreground">Grand Total:</span>
-                  <span className="font-mono text-xl font-bold text-primary">{grandTotal.toFixed(2)} лв.</span>
+                  <span className="font-mono text-xl font-bold text-primary">{grandTotal.toFixed(2)} €</span>
                 </div>
               </div>
             </div>

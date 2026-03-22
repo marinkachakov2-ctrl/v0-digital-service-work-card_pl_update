@@ -261,7 +261,7 @@ export function ClientSection({
                           )}
                           {!payer.isBlocked && payer.creditLimit > 0 && (
                             <p className="text-[10px] text-muted-foreground mt-0.5">
-                              Лимит: {payer.creditLimit.toLocaleString()} лв | Баланс: {payer.currentBalance.toLocaleString()} лв
+                              Лимит: {payer.creditLimit.toLocaleString()} € | Баланс: {payer.currentBalance.toLocaleString()} €
                             </p>
                           )}
                         </button>

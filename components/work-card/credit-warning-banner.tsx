@@ -17,7 +17,7 @@ export function CreditWarningBanner({ payerStatus, onDismiss }: CreditWarningBan
   const warningMessage = payerStatus.creditWarningMessage 
     || (isBlocked 
       ? "Клиентът е блокиран поради неплатени задължения!" 
-      : `Превишен кредитен лимит: ${payerStatus.currentBalance.toLocaleString()} лв. / ${payerStatus.creditLimit.toLocaleString()} лв.`);
+      : `Превишен кредитен лимит: ${payerStatus.currentBalance.toLocaleString()} € / ${payerStatus.creditLimit.toLocaleString()} €`);
 
   return (
     <div className="fixed top-0 left-0 right-0 z-[100] animate-in slide-in-from-top-2 duration-300">

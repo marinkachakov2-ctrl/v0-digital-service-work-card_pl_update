@@ -266,7 +266,7 @@ export default function AdminPendingRepairsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground">Total Est. Value</p>
-                    <p className="text-2xl font-bold text-emerald-500">{totalValue.toLocaleString()} лв.</p>
+                    <p className="text-2xl font-bold text-emerald-500">{totalValue.toLocaleString()} €</p>
                   </div>
                   <div className="h-10 w-10 rounded-lg bg-emerald-500/15 flex items-center justify-center">
                     <DollarSign className="h-5 w-5 text-emerald-500" />
@@ -418,7 +418,7 @@ export default function AdminPendingRepairsPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <span className="font-semibold text-foreground">
-                            {repair.estimatedCost.toLocaleString()} лв.
+                            {repair.estimatedCost.toLocaleString()} €
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
@@ -511,7 +511,7 @@ export default function AdminPendingRepairsPage() {
                       {selectedRepair.daysSinceDiscovery} days ago
                     </Badge>
                     <span className="font-semibold text-emerald-500">
-                      {selectedRepair.estimatedCost.toLocaleString()} лв.
+                      {selectedRepair.estimatedCost.toLocaleString()} €
                     </span>
                   </div>
                 </div>
@@ -631,7 +631,7 @@ export default function AdminPendingRepairsPage() {
                 <div className="flex justify-between pt-2 border-t border-border">
                   <span className="text-muted-foreground">Estimated:</span>
                   <span className="font-semibold text-emerald-500">
-                    {quoteRepair.estimatedCost.toLocaleString()} лв.
+                    {quoteRepair.estimatedCost.toLocaleString()} €
                   </span>
                 </div>
               </div>

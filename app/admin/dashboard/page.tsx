@@ -431,7 +431,7 @@ export default function ServiceManagerDashboard() {
                 <div>
                   <p className="text-sm text-muted-foreground">Total Value</p>
                   <p className="text-3xl font-bold text-emerald-500">
-                    {stats.totalValue.toLocaleString("bg-BG", { minimumFractionDigits: 2 })} лв
+                    {stats.totalValue.toLocaleString("bg-BG", { minimumFractionDigits: 2 })} €
                   </p>
                 </div>
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20">
@@ -527,7 +527,7 @@ export default function ServiceManagerDashboard() {
                         <TableCell className="text-right font-mono">
                           {(card.total_parts_cost || 0).toLocaleString("bg-BG", {
                             minimumFractionDigits: 2,
-                          })} лв
+                          })} €
                         </TableCell>
                         <TableCell>
                           {getStatusBadge(card.status, card.payer_blocked)}

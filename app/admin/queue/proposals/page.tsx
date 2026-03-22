@@ -237,7 +237,7 @@ export default function ProposalsQueuePage() {
     const unitPrice = edited?.unit_price ?? p.unit_price ?? 0;
     const laborHours = edited?.labor_hours ?? p.labor_hours ?? 0;
     const qty = p.quantity || 1;
-    const laborRate = 50; // BGN per hour
+    const laborRate = 50; // EUR per hour
     return sum + (unitPrice * qty) + (laborHours * laborRate);
   }, 0);
 
@@ -502,7 +502,7 @@ export default function ProposalsQueuePage() {
                     <div>
                       <p className="text-sm text-muted-foreground">Total Estimated Revenue</p>
                       <p className="text-3xl font-bold text-foreground">
-                        {totalRevenue.toLocaleString("bg-BG", { minimumFractionDigits: 2 })} <span className="text-lg font-normal text-muted-foreground">BGN</span>
+                        {totalRevenue.toLocaleString("bg-BG", { minimumFractionDigits: 2 })} <span className="text-lg font-normal text-muted-foreground">€</span>
                       </p>
                     </div>
                   </div>
@@ -621,7 +621,7 @@ export default function ProposalsQueuePage() {
                                 <div className="space-y-1.5">
                                   <Label className="text-xs text-muted-foreground flex items-center gap-1">
                                     <DollarSign className="h-3 w-3" />
-                                    Unit Price (BGN)
+                                    Unit Price (€)
                                   </Label>
                                   <Input
                                     type="number"
@@ -657,7 +657,7 @@ export default function ProposalsQueuePage() {
                                     {(
                                       ((edited.unit_price ?? proposal.unit_price ?? 0) * (proposal.quantity || 1)) +
                                       ((edited.labor_hours ?? proposal.labor_hours ?? 0) * 50)
-                                    ).toLocaleString("bg-BG", { minimumFractionDigits: 2 })} BGN
+                                    ).toLocaleString("bg-BG", { minimumFractionDigits: 2 })} €
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-2">

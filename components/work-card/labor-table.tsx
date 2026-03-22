@@ -253,7 +253,7 @@ export function LaborTable({
                     Tech Count
                   </TableHead>
                   <TableHead className="text-right text-muted-foreground">
-                    Price (lv.)
+                    Price (€)
                   </TableHead>
                   <TableHead className="text-right text-muted-foreground">
                     Total
@@ -294,7 +294,7 @@ export function LaborTable({
                 Labor Subtotal:
               </span>
               <span className="font-mono text-lg font-semibold text-foreground">
-                {subtotal.toFixed(2)} lv.
+                {subtotal.toFixed(2)} €
               </span>
             </div>
           </div>
@@ -343,7 +343,7 @@ export function LaborTable({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm">{"Price (lv.)"}</Label>
+                  <Label className="text-sm">{"Price (€)"}</Label>
                   <Input
                     type="number"
                     min="0"
@@ -450,7 +450,7 @@ export function LaborTable({
                           <p className="text-sm text-foreground">{op.description}</p>
                           <p className="text-xs text-muted-foreground">
                             Стандартни часове: {op.standardHours}h | 
-                            Ориентировъчна цена: {(op.standardHours * 50).toFixed(2)} лв.
+                            Ориентировъчна цена: {(op.standardHours * 50).toFixed(2)} €
                           </p>
                         </div>
                       );
@@ -545,7 +545,7 @@ function LaborRow({
           />
         </TableCell>
         <TableCell className="text-right font-mono text-foreground">
-          {(item.techCount * item.price).toFixed(2)} lv.
+          {(item.techCount * item.price).toFixed(2)} €
         </TableCell>
         <TableCell>
           <div className="flex items-center gap-1">

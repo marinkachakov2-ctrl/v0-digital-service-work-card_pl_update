@@ -176,12 +176,12 @@ export default function PortalSelectionPage() {
   // Format currency
   const formatCurrency = (value: number) => {
     if (value >= 1000000) {
-      return `${(value / 1000000).toFixed(1)}M BGN`;
+      return `${(value / 1000000).toFixed(1)}M €`;
     }
     if (value >= 1000) {
-      return `${(value / 1000).toFixed(0)}K BGN`;
+      return `${(value / 1000).toFixed(0)}K €`;
     }
-    return `${value.toLocaleString()} BGN`;
+    return `${value.toLocaleString()} €`;
   };
 
   return (

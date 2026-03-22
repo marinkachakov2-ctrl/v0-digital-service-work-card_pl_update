@@ -517,25 +517,25 @@ export default function ServiceCompletionReportPage() {
                       <tr className="border-b border-slate-200 dark:border-slate-700">
                         <td className="p-3 text-slate-600 dark:text-slate-400">Total Parts</td>
                         <td className="p-3 text-right font-medium text-slate-900 dark:text-slate-100">
-                          {reportData.partsTotal.toLocaleString("bg-BG", { minimumFractionDigits: 2 })} BGN
+                          {reportData.partsTotal.toLocaleString("bg-BG", { minimumFractionDigits: 2 })} €
                         </td>
                       </tr>
                       <tr className="border-b border-slate-200 dark:border-slate-700">
                         <td className="p-3 text-slate-600 dark:text-slate-400">Total Labor</td>
                         <td className="p-3 text-right font-medium text-slate-900 dark:text-slate-100">
-                          {reportData.laborTotal.toLocaleString("bg-BG", { minimumFractionDigits: 2 })} BGN
+                          {reportData.laborTotal.toLocaleString("bg-BG", { minimumFractionDigits: 2 })} €
                         </td>
                       </tr>
                       <tr className="border-b border-slate-200 dark:border-slate-700">
                         <td className="p-3 text-slate-600 dark:text-slate-400">VAT (20%)</td>
                         <td className="p-3 text-right font-medium text-slate-900 dark:text-slate-100">
-                          {reportData.vat.toLocaleString("bg-BG", { minimumFractionDigits: 2 })} BGN
+                          {reportData.vat.toLocaleString("bg-BG", { minimumFractionDigits: 2 })} €
                         </td>
                       </tr>
                       <tr className="bg-green-50 dark:bg-green-900/20">
                         <td className="p-3 font-semibold text-green-800 dark:text-green-300">Grand Total</td>
                         <td className="p-3 text-right font-bold text-lg text-green-800 dark:text-green-300">
-                          {reportData.grandTotal.toLocaleString("bg-BG", { minimumFractionDigits: 2 })} BGN
+                          {reportData.grandTotal.toLocaleString("bg-BG", { minimumFractionDigits: 2 })} €
                         </td>
                       </tr>
                     </tbody>

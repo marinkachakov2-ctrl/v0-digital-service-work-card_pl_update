@@ -196,7 +196,7 @@ export default function ManagerDashboard() {
       const pendingProposals = (proposals || []).filter(p => p.status === "pending");
       const potentialRevenue = pendingProposals.reduce((sum, p) => {
         const partsCost = (p.unit_price || 0) * (p.quantity || 1);
-        const laborCost = (p.labor_hours || 0) * 50; // 50 BGN/hour
+        const laborCost = (p.labor_hours || 0) * 50; // 50 EUR/hour
         return sum + partsCost + laborCost + (p.estimated_price || 0);
       }, 0);
 
@@ -213,7 +213,7 @@ export default function ManagerDashboard() {
       }, 0);
 
       const totalLaborValue = (laborData || []).reduce((sum: number, labor: { actual_hours?: number }) => {
-        return sum + ((labor.actual_hours || 0) * 50); // 50 BGN/hour
+        return sum + ((labor.actual_hours || 0) * 50); // 50 EUR/hour
       }, 0);
 
       setKpiData({
@@ -252,7 +252,7 @@ export default function ManagerDashboard() {
         techRevenueMap[techName].parts += (part.price_at_submission || 0) * (part.quantity || 1);
       });
 
-      // Add labor revenue (assuming 50 BGN/hour)
+      // Add labor revenue (assuming 50 EUR/hour)
       (laborData || []).forEach((labor: any) => {
         const techName = labor.technician_name || "Unknown";
         if (!techRevenueMap[techName]) {
@@ -402,17 +402,17 @@ export default function ManagerDashboard() {
                 {isLoading ? (
                   <Loader2 className="h-8 w-8 animate-spin" />
                 ) : (
-                  `${kpiData.totalRevenue.toLocaleString()} BGN`
+                  `${kpiData.totalRevenue.toLocaleString()} €`
                 )}
               </div>
               <div className="flex flex-col gap-1 mt-2 text-xs">
                 <div className="flex items-center justify-between text-muted-foreground">
                   <span>Parts Value:</span>
-                  <span className="font-medium text-amber-400">{kpiData.partsValue.toLocaleString()} BGN</span>
+                  <span className="font-medium text-amber-400">{kpiData.partsValue.toLocaleString()} €</span>
                 </div>
                 <div className="flex items-center justify-between text-muted-foreground">
                   <span>Labor Value:</span>
-                  <span className="font-medium text-emerald-400">{kpiData.laborValue.toLocaleString()} BGN</span>
+                  <span className="font-medium text-emerald-400">{kpiData.laborValue.toLocaleString()} €</span>
                 </div>
               </div>
             </CardContent>
@@ -449,7 +449,7 @@ export default function ManagerDashboard() {
                 {isLoading ? (
                   <Loader2 className="h-8 w-8 animate-spin" />
                 ) : (
-                  `${kpiData.potentialRevenue.toLocaleString()} BGN`
+                  `${kpiData.potentialRevenue.toLocaleString()} €`
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
@@ -508,7 +508,7 @@ export default function ManagerDashboard() {
                 <Users className="h-5 w-5 text-primary" />
                 <CardTitle className="text-lg font-semibold">Revenue by Technician</CardTitle>
               </div>
-              <CardDescription className="text-sm">Stacked breakdown: Labor vs Parts (BGN)</CardDescription>
+              <CardDescription className="text-sm">Stacked breakdown: Labor vs Parts (EUR)</CardDescription>
             </CardHeader>
             <CardContent className="pt-6">
               {isLoading ? (
@@ -544,7 +544,7 @@ export default function ManagerDashboard() {
                         boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
                       }}
                       formatter={(value: number, name: string) => [
-                        `${value.toLocaleString()} BGN`,
+                        `${value.toLocaleString()} €`,
                         name
                       ]}
                       labelStyle={{ fontWeight: "bold", marginBottom: "4px" }}
