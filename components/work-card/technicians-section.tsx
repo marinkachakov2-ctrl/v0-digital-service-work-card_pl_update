@@ -29,6 +29,7 @@ interface TechniciansSectionProps {
   onAssignedTechniciansChange: (techs: string[]) => void;
   leadTechnicianId: string | null;
   onLeadTechnicianIdChange: (id: string | null) => void;
+  onLeadTechnicianNameChange?: (name: string) => void;
   clockAtJobLevel: boolean;
   onClockAtJobLevelChange: (val: boolean) => void;
   // Timer props (for compatibility - total time)
@@ -58,6 +59,7 @@ export function TechniciansSection({
   onAssignedTechniciansChange,
   leadTechnicianId,
   onLeadTechnicianIdChange,
+  onLeadTechnicianNameChange,
   isJobSelected,
   isHoursValid,
   currentOrderType,
@@ -177,10 +179,11 @@ export function TechniciansSection({
       // Set first selected as lead if none
       if (!leadTechnicianId) {
         onLeadTechnicianIdChange(tech.id);
+        onLeadTechnicianNameChange?.(tech.name);
       }
       setOpenDropdownId(null);
     },
-    [leadTechnicianId, onLeadTechnicianIdChange]
+    [leadTechnicianId, onLeadTechnicianIdChange, onLeadTechnicianNameChange]
   );
 
   // Timer controls for individual rows

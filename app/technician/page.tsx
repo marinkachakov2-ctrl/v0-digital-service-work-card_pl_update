@@ -93,6 +93,7 @@ function WorkCardPageContent() {
   // Technicians — dynamic list
   const [assignedTechnicians, setAssignedTechnicians] = useState<string[]>([""]);
   const [leadTechnicianId, setLeadTechnicianId] = useState<string | null>(null);
+  const [leadTechnicianName, setLeadTechnicianName] = useState<string>("");
   const [clockAtJobLevel, setClockAtJobLevel] = useState(false);
 
   // Signature
@@ -983,6 +984,7 @@ function WorkCardPageContent() {
           onAssignedTechniciansChange={setAssignedTechnicians}
           leadTechnicianId={leadTechnicianId}
           onLeadTechnicianIdChange={setLeadTechnicianId}
+          onLeadTechnicianNameChange={setLeadTechnicianName}
           clockAtJobLevel={clockAtJobLevel}
           onClockAtJobLevelChange={setClockAtJobLevel}
           timerStatus={timerStatus}
@@ -1250,7 +1252,7 @@ function WorkCardPageContent() {
               jobType,
               date: new Date().toLocaleDateString("bg-BG"),
               technicians: assignedTechnicians.filter(t => t),
-              leadTechnician: leadTechnicianId || undefined,
+              leadTechnician: leadTechnicianName || undefined,
               machineOwner: clientData?.machineOwner || "",
               billingEntity: clientData?.billingEntity || "",
               location: clientData?.location || "",

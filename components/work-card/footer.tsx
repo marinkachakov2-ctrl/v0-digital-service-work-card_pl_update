@@ -598,18 +598,21 @@ export function Footer({
         </CardContent>
       </Card>
 
-      {/* Technician Signature Pad - Required for PDF export */}
-      <TechnicianSignaturePad
-        onSignatureChange={handleTechSignatureChange}
-        disabled={isReadOnly}
-        leadTechnician={pdfData?.leadTechnician}
-      />
+      {/* Signature Pads - Side by Side */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Technician Signature Pad - Required for PDF export */}
+        <TechnicianSignaturePad
+          onSignatureChange={handleTechSignatureChange}
+          disabled={isReadOnly}
+          leadTechnician={pdfData?.leadTechnician}
+        />
 
-      {/* Client Signature Pad */}
-      <SignaturePad
-        onSignatureChange={handleSignatureChange}
-        disabled={isReadOnly}
-      />
+        {/* Client Signature Pad */}
+        <SignaturePad
+          onSignatureChange={handleSignatureChange}
+          disabled={isReadOnly}
+        />
+      </div>
 
       {/* Warning: signing auto-stops clocking */}
       {hasActiveTimer && (
