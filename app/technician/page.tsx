@@ -122,6 +122,10 @@ function WorkCardPageContent() {
   const [missingPhotoReason, setMissingPhotoReason] = useState("");
   const [isCapturingPhoto, setIsCapturingPhoto] = useState(false);
 
+  // Service location with GPS auto-fill
+  const [serviceLocation, setServiceLocation] = useState<string>("");
+  const [isGpsAutoFilled, setIsGpsAutoFilled] = useState(false);
+
   // Historical issues from previous job cards
   const [historicalIssues, setHistoricalIssues] = useState<ServiceHistoryIssue[]>([]);
   
@@ -950,6 +954,31 @@ function WorkCardPageContent() {
               if (order.navisionDescription) {
                 setDescription(order.navisionDescription);
               }
+              
+              // Auto-fill GPS location from telematics if available
+              if (order.telematics) {
+                // Simulate GPS coordinates from JDLink telematics
+                const gpsLocations = [
+                  "GPS: 43.417, 24.616 (с. Долна Митрополия)",
+                  "GPS: 42.697, 23.322 (гр. София, Витоша)",
+                  "GPS: 42.150, 24.750 (гр. Пловдив)",
+                  "GPS: 43.204, 27.911 (гр. Варна)",
+                  "GPS: 42.435, 25.617 (гр. Стара Загора)",
+                ];
+                const randomLocation = gpsLocations[Math.floor(Math.random() * gpsLocations.length)];
+                setServiceLocation(order.clientLocation 
+                  ? `${randomLocation} - ${order.clientLocation}` 
+                  : randomLocation);
+                setIsGpsAutoFilled(true);
+                // Reset GPS pulse after 3 seconds
+                setTimeout(() => setIsGpsAutoFilled(false), 3000);
+              } else if (order.clientLocation) {
+                setServiceLocation(order.clientLocation);
+                setIsGpsAutoFilled(false);
+              } else {
+                setServiceLocation("");
+                setIsGpsAutoFilled(false);
+              }
             } else {
               setOrderNumber("");
               setJobCardNumber("");
@@ -963,9 +992,11 @@ function WorkCardPageContent() {
   setIsHoursWarningConfirmed(false);
   setHoursPhotoUrl(null);
   setSkipPhoto(false);
-  setMissingPhotoReason("");
+setMissingPhotoReason("");
   setDescription("");
-  setMachineIssues([]);
+  setMachineIssues("");
+  setServiceLocation("");
+  setIsGpsAutoFilled(false);
   }
   }}
           onOrderTypeChange={(type) => {
@@ -1124,6 +1155,9 @@ function WorkCardPageContent() {
     }
   }}
   isCapturingPhoto={isCapturingPhoto}
+  serviceLocation={serviceLocation}
+  onServiceLocationChange={setServiceLocation}
+  isGpsAutoFilled={isGpsAutoFilled}
   />
 
           {/* Live JDLink Diagnostics - ECU data streaming from the machine */}
