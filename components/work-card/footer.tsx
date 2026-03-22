@@ -563,13 +563,7 @@ export function Footer({
                     По банков път (Bank Transfer)
                   </Label>
                 </div>
-                <div className="flex items-center space-x-3 rounded-md border border-border bg-secondary p-3">
-                  <RadioGroupItem value="cash" id="cash" />
-                  <Label htmlFor="cash" className="flex flex-1 cursor-pointer items-center gap-2 text-foreground">
-                    <Banknote className="h-4 w-4 text-muted-foreground" />
-                    В брой
-                  </Label>
-                </div>
+                
               </RadioGroup>
             </div>
 
@@ -789,7 +783,7 @@ export function Footer({
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="phone">Телефонен номер</Label>
+              <Label htmlFor="phone">Т��лефонен номер</Label>
               <div className="flex gap-2">
                 <span className="flex items-center px-3 bg-muted rounded-l-md border border-r-0 text-sm text-muted-foreground">
                   +359
