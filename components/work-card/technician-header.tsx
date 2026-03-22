@@ -376,8 +376,13 @@ export function TechnicianHeader({
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Job Card
                 </p>
-                <p className="text-xl md:text-2xl font-bold text-foreground truncate">
-                  {jobCard.orderNo || jobCard.id.slice(0, 8)}
+                <p className={cn(
+                    "text-xl md:text-2xl font-bold truncate",
+                    (!jobCard.orderNo && (jobCard.id === "NEW" || jobCard.id === "DRAFT" || !jobCard.id))
+                      ? "text-[#00FF88] animate-pulse"
+                      : "text-foreground"
+                  )}>
+                  {jobCard.orderNo || (jobCard.id === "NEW" || jobCard.id === "DRAFT" || !jobCard.id ? "DRAFT" : jobCard.id.slice(0, 8))}
                 </p>
               </div>
             </div>
@@ -424,12 +429,21 @@ export function TechnicianHeader({
             <div className="md:ml-auto shrink-0">
               <Badge
                 variant="outline"
-                className="h-12 px-4 text-base font-semibold border-2 border-foreground/30 bg-secondary"
+                className={cn(
+                  "h-12 px-4 text-base font-semibold border-2 bg-secondary",
+                  (!jobCard.machineModel || jobCard.machineModel === "N/A")
+                    ? "border-muted-foreground/30 text-muted-foreground"
+                    : "border-[#007A33]/50 text-foreground"
+                )}
               >
-                {jobCard.machineModel}
+                {jobCard.machineModel && jobCard.machineModel !== "N/A" 
+                  ? jobCard.machineModel 
+                  : "Изберете машина"}
               </Badge>
               <p className="text-xs text-muted-foreground text-center mt-1">
-                SN: {jobCard.serialNumber}
+                {jobCard.serialNumber 
+                  ? `SN: ${jobCard.serialNumber}` 
+                  : "Сканирайте QR код"}
               </p>
             </div>
           </div>

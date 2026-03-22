@@ -812,7 +812,7 @@ function WorkCardPageContent() {
             orderNo: orderNumber || "N/A",
             customerName: clientData?.machineOwner || "Сканирайте машина",
             location: clientData?.ownerAddress || "",
-            machineModel: clientData?.machineType ? `${clientData.machineBrand || ""} ${clientData.machineType}`.trim() : "N/A",
+            machineModel: clientData?.machineModel || (clientData?.machineType ? `${clientData.machineBrand || ""} ${clientData.machineType}`.trim() : "N/A"),
             serialNumber: clientData?.serialNo || "",
           }}
           isEnabled={isScanned}
