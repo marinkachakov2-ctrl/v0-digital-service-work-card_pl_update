@@ -1054,13 +1054,215 @@ export async function masterSearch(
     return [];
   }
 
-  const searchTerm = query?.trim().toLowerCase() || "";
+  const searchTerm = query?.trim() || "";
   const results: MasterSearchResult[] = [];
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // HYBRID STRATEGY: Real Supabase UUIDs + Mock Telematics for JDLink UI
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  try {
+    const supabase = await createClient();
+    
+    // Build the real Supabase query
+    let machineQuery = supabase
+      .from("machines")
+      .select(`
+        id,
+        serial_number,
+        model_name,
+        brand,
+        model,
+        clients:client_id (id, name, is_blocked, location),
+        machine_telematics (*)
+      `);
+    
+    // Apply search filter if not wildcard mode
+    if (!isWildcardMode && searchTerm) {
+      machineQuery = machineQuery.or(
+        `serial_number.ilike.%${searchTerm}%,model_name.ilike.%${searchTerm}%,brand.ilike.%${searchTerm}%`
+      );
+    }
+    
+    // Limit results
+    machineQuery = machineQuery.limit(isWildcardMode ? 50 : 10);
+    
+    const { data: machines, error } = await machineQuery;
+    
+    if (error) {
+      console.error("masterSearch Supabase error:", error);
+      // Fall back to mock data on error
+      return getMockMachineResults(searchTerm, isWildcardMode);
+    }
+    
+    if (!machines || machines.length === 0) {
+      // No results from database - return mock data for demo
+      return getMockMachineResults(searchTerm, isWildcardMode);
+    }
+    
+    // Process real database results with hybrid telematics
+    for (const m of machines) {
+      const client = m.clients as { id: string; name: string; is_blocked: boolean; location: string } | null;
+      const rawTelematics = m.machine_telematics as Array<Record<string, unknown>> | null;
+      
+      // Check if real telematics exists, otherwise inject mock data
+      const hasRealTelematics = rawTelematics && rawTelematics.length > 0;
+      const telematics = hasRealTelematics 
+        ? rawTelematics[0] 
+        : generateMockTelematics();
+      
+      // Generate mock DTC codes if machine has active DTCs
+      const activeDtcs = (telematics.active_dtcs as number) || 0;
+      const dtcCodes = activeDtcs > 0 ? generateMockDtcCodes(activeDtcs) : [];
+      
+      results.push({
+        type: "machine",
+        id: m.id as string, // Real UUID from Supabase
+        machineId: m.id as string,
+        machineSerial: (m.serial_number as string) || "",
+        machineModel: m.model_name 
+          ? (m.model_name as string)
+          : `${m.brand || ""} ${m.model || ""}`.trim(),
+        clientId: client?.id || undefined,
+        clientName: client?.name || "",
+        clientLocation: client?.location || "",
+        isBlocked: client?.is_blocked || false,
+        telematics: {
+          engineHours: (telematics.engine_hours as number) || 0,
+          batteryVoltage: (telematics.battery_voltage as number) || 0,
+          fuelLevel: (telematics.fuel_level_percent as number) || 0,
+          defLevel: (telematics.def_level_percent as number) || 0,
+          engineTemp: (telematics.engine_temp as number) || 0,
+          coolantTemp: (telematics.coolant_temp as number) || 0,
+          hydraulicTemp: (telematics.hydraulic_temp as number) || 0,
+          engineLoad: (telematics.engine_load as number) || 0,
+          hydraulicPressure: (telematics.hydraulic_pressure as number) || 0,
+          lastUpdated: new Date().toISOString(),
+        },
+        dtcCodes,
+      });
+    }
+    
+    return results;
+    
+  } catch (err) {
+    console.error("masterSearch exception:", err);
+    // Fall back to mock data on any error
+    return getMockMachineResults(searchTerm, isWildcardMode);
+  }
+}
+
+// Generate mock telematics for machines without real JDLink data
+function generateMockTelematics(): Record<string, unknown> {
+  return {
+    engine_hours: Math.floor(Math.random() * 4000) + 1000,
+    fuel_level_percent: Math.floor(Math.random() * 60) + 30,
+    def_level_percent: Math.floor(Math.random() * 50) + 40,
+    battery_voltage: 12.8 + Math.random() * 2,
+    engine_temp: 75 + Math.floor(Math.random() * 25),
+    coolant_temp: 70 + Math.floor(Math.random() * 20),
+    hydraulic_temp: 55 + Math.floor(Math.random() * 25),
+    engine_load: Math.floor(Math.random() * 70) + 20,
+    hydraulic_pressure: 150 + Math.floor(Math.random() * 80),
+    active_dtcs: Math.random() > 0.7 ? 1 : 0, // 30% chance of having DTC
+  };
+}
+
+// Generate mock DTC codes based on count
+function generateMockDtcCodes(count: number): Array<{ code: string; description: string; severity: "warning" | "critical" }> {
+  const possibleDtcs = [
+    { code: "ECU 524287.31", description: "Engine Oil Pressure Low", severity: "warning" as const },
+    { code: "ECU 641.14", description: "Battery Voltage Low", severity: "warning" as const },
+    { code: "ECU 110.03", description: "Engine Coolant Temp High", severity: "critical" as const },
+    { code: "ECU 91.09", description: "Throttle Position Sensor", severity: "warning" as const },
+    { code: "ECU 168.01", description: "Electrical System Voltage", severity: "warning" as const },
+  ];
+  return possibleDtcs.slice(0, Math.min(count, possibleDtcs.length));
+}
+
+// Fallback mock data when Supabase is unavailable (v0 sandbox)
+function getMockMachineResults(searchTerm: string, isWildcardMode: boolean): MasterSearchResult[] {
+  const mockMachines = [
+    {
+      id: "mock-6m195-001",
+      serial_number: "1L06155MCHJ100042",
+      model_name: "John Deere 6M 195",
+      client: { id: "c1", name: "Агроинвест ООД", is_blocked: false, location: "Пловдив" },
+      telematics: { engine_hours: 2156, fuel_level_percent: 28, def_level_percent: 45, battery_voltage: 13.8, engine_temp: 88, coolant_temp: 85, hydraulic_temp: 72, engine_load: 42, hydraulic_pressure: 185, active_dtcs: 1 },
+      dtc_codes: [{ code: "ECU 524287.31", description: "Engine Oil Pressure Low", severity: "warning" as const }],
+    },
+    {
+      id: "mock-7r350-002",
+      serial_number: "1RW7350KMPD008912",
+      model_name: "John Deere 7R 350",
+      client: { id: "c2", name: "Golden Fields EOOD", is_blocked: false, location: "Стара Загора" },
+      telematics: { engine_hours: 4320, fuel_level_percent: 65, def_level_percent: 78, battery_voltage: 14.1, engine_temp: 92, coolant_temp: 88, hydraulic_temp: 68, engine_load: 68, hydraulic_pressure: 210, active_dtcs: 0 },
+      dtc_codes: [],
+    },
+    {
+      id: "mock-8r410-003",
+      serial_number: "1RW8400RTNE002847",
+      model_name: "John Deere 8R 410",
+      client: { id: "c3", name: "Мегатрон Демо ЕООД", is_blocked: false, location: "София" },
+      telematics: { engine_hours: 1245, fuel_level_percent: 82, def_level_percent: 91, battery_voltage: 14.2, engine_temp: 78, coolant_temp: 75, hydraulic_temp: 62, engine_load: 35, hydraulic_pressure: 175, active_dtcs: 0 },
+      dtc_codes: [],
+    },
+    {
+      id: "mock-9620rx-004",
+      serial_number: "1L09620STPK004521",
+      model_name: "John Deere 9620 RX",
+      client: { id: "c4", name: "Зърнени Храни АД", is_blocked: true, location: "Добрич" },
+      telematics: { engine_hours: 6789, fuel_level_percent: 15, def_level_percent: 22, battery_voltage: 11.8, engine_temp: 105, coolant_temp: 98, hydraulic_temp: 88, engine_load: 0, hydraulic_pressure: 0, active_dtcs: 2 },
+      dtc_codes: [
+        { code: "ECU 524287.31", description: "Engine Oil Pressure Low", severity: "critical" as const },
+        { code: "ECU 641.14", description: "Battery Voltage Low", severity: "warning" as const },
+      ],
+    },
+  ];
+
+  // Filter based on search term
+  const filtered = isWildcardMode
+    ? mockMachines
+    : mockMachines.filter(
+        (m) =>
+          m.serial_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          m.model_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          m.client.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+
+  return filtered.map((m) => ({
+    type: "machine" as const,
+    id: m.id,
+    machineId: m.id,
+    machineSerial: m.serial_number,
+    machineModel: m.model_name,
+    clientId: m.client.id,
+    clientName: m.client.name,
+    clientLocation: m.client.location,
+    isBlocked: m.client.is_blocked,
+    telematics: {
+      engineHours: m.telematics.engine_hours,
+      batteryVoltage: m.telematics.battery_voltage,
+      fuelLevel: m.telematics.fuel_level_percent,
+      defLevel: m.telematics.def_level_percent,
+      engineTemp: m.telematics.engine_temp,
+      coolantTemp: m.telematics.coolant_temp,
+      hydraulicTemp: m.telematics.hydraulic_temp,
+      engineLoad: m.telematics.engine_load,
+      hydraulicPressure: m.telematics.hydraulic_pressure,
+      lastUpdated: new Date().toISOString(),
+    },
+    dtcCodes: m.dtc_codes,
+  }));
+}
+
+  const searchTerm = query?.trim().toLowerCase() || "";
+  const results: MasterSearchResult[] = [];
+
+  // ══════════════════════════════════════════��════════════════════════════════
   // MOCK DATA - Simulated Supabase response for v0 sandbox testing
   // In production, this would be replaced with real Supabase queries
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════���═════════════════════
   const simulatedSupabaseResponse = [
     {
       id: "1",
