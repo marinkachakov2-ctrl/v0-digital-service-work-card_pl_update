@@ -333,16 +333,8 @@ export function TechnicianHeader({
             </TabsTrigger>
           </TabsList>
 
-          {/* Current Task Tab */}
-          <TabsContent value="current" className="p-4 m-0">
-            <div className="text-center py-8 text-muted-foreground">
-              <Wrench className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p className="text-lg font-medium">Работна зона</p>
-              <p className="text-sm">
-                Продължете с попълването на работната карта по-долу
-              </p>
-            </div>
-          </TabsContent>
+          {/* Current Task Tab - Empty, content is rendered in parent page */}
+          <TabsContent value="current" className="hidden" />
 
           {/* Machine History Tab - Vertical Timeline */}
           <TabsContent value="history" className="p-4 m-0">
