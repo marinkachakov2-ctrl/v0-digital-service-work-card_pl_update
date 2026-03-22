@@ -816,6 +816,8 @@ function WorkCardPageContent() {
             serialNumber: clientData?.serialNo || "",
           }}
           isEnabled={isScanned}
+          telematics={selectedOrder?.telematics}
+          dtcCodes={selectedOrder?.dtcCodes}
           onImportRepairs={(repairs) => {
             const newParts: PartItem[] = repairs.map((r) => ({
               id: crypto.randomUUID(),
