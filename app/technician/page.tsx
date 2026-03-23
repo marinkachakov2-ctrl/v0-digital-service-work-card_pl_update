@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef, useCallback, Suspense } from "rea
 import { useSearchParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Lock, FileEdit, Loader2 } from "lucide-react";
-import { WorkCardHeader } from "@/components/work-card/header";
+import { TechnicalPortalLayout } from "@/components/layout/technical-portal-layout";
 import { OrderSelector, type SelectedOrder } from "@/components/work-card/order-selector";
 import { TechniciansSection } from "@/components/work-card/technicians-section";
 import { ClientSection } from "@/components/work-card/client-section";
@@ -807,35 +807,42 @@ function WorkCardPageContent() {
   const isReadOnly = cardStatus === "completed";
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      {/* Technician Mobile Header - High contrast interface for outdoor use */}
-      {isScanned && clientData?.serialNo && (
-        <TechnicianHeader
-          jobCard={{
-            id: savedJobCardId || jobCardNumber || "NEW",
-            orderNo: orderNumber || "N/A",
-            customerName: clientData?.machineOwner || "Сканирайте машина",
-            location: clientData?.ownerAddress || "",
-            machineModel: clientData?.machineModel || (clientData?.machineType ? `${clientData.machineBrand || ""} ${clientData.machineType}`.trim() : "N/A"),
-            serialNumber: clientData?.serialNo || "",
-          }}
-          isEnabled={isScanned}
-          telematics={selectedOrder?.telematics}
-          dtcCodes={selectedOrder?.dtcCodes}
-          onImportRepairs={(repairs) => {
-            const newParts: PartItem[] = repairs.map((r) => ({
-              id: crypto.randomUUID(),
-              partId: r.partId || undefined,
-              partNo: "IMPORTED",
-              description: r.description,
-              qty: 1,
-              price: r.estimatedCost,
-              status: "deferred" as const,
-            }));
-            setParts((prev) => [...prev, ...newParts]);
-          }}
-        />
-      )}
+    <TechnicalPortalLayout
+      subtitle="Работна Карта"
+      onNewJobCard={handleFormReset}
+      onSelectJobCard={(jobCardId) => {
+        router.push(`/technician?editId=${jobCardId}`);
+      }}
+    >
+      <main className="min-h-screen bg-background text-foreground">
+        {/* Technician Mobile Header - High contrast interface for outdoor use */}
+        {isScanned && clientData?.serialNo && (
+          <TechnicianHeader
+            jobCard={{
+              id: savedJobCardId || jobCardNumber || "NEW",
+              orderNo: orderNumber || "N/A",
+              customerName: clientData?.machineOwner || "Сканирайте машина",
+              location: clientData?.ownerAddress || "",
+              machineModel: clientData?.machineModel || (clientData?.machineType ? `${clientData.machineBrand || ""} ${clientData.machineType}`.trim() : "N/A"),
+              serialNumber: clientData?.serialNo || "",
+            }}
+            isEnabled={isScanned}
+            telematics={selectedOrder?.telematics}
+            dtcCodes={selectedOrder?.dtcCodes}
+            onImportRepairs={(repairs) => {
+              const newParts: PartItem[] = repairs.map((r) => ({
+                id: crypto.randomUUID(),
+                partId: r.partId || undefined,
+                partNo: "IMPORTED",
+                description: r.description,
+                qty: 1,
+                price: r.estimatedCost,
+                status: "deferred" as const,
+              }));
+              setParts((prev) => [...prev, ...newParts]);
+            }}
+          />
+        )}
 
       {/* Loading overlay for edit mode */}
       {isLoadingEditCard && (
@@ -887,18 +894,7 @@ function WorkCardPageContent() {
           <div className="h-20" />
         )}
 
-        {/* Header with Megatron branding */}
-        <WorkCardHeader
-          orderNumber={selectedOrder?.orderNumber || orderNumber}
-          jobCardNumber={selectedOrder?.jobCardNumber || jobCardNumber}
-          isAdmin={isAdmin}
-          onAdminToggle={setIsAdmin}
-          onNewJobCard={handleFormReset}
-          onSelectJobCard={(jobCardId) => {
-            // Navigate to edit the selected job card
-            router.push(`/technician?editId=${jobCardId}`);
-          }}
-        />
+
 
         {/* Order Type Selector & Unified Search - Right below header */}
         <OrderSelector
@@ -1323,7 +1319,8 @@ setMissingPhotoReason("");
           />
         </div>
       </div>
-    </main>
+      </main>
+    </TechnicalPortalLayout>
   );
 }
 

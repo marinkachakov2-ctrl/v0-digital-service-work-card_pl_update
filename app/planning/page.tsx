@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, Component, type ReactNode } from "react";
-import { Wrench, ChevronRight, Home, Calendar, Users, Clock, ArrowLeft, LayoutGrid, GanttChart, CalendarRange, AlertTriangle, Columns3 } from "lucide-react";
+import { ChevronRight, Home, Calendar, Users, ArrowLeft, LayoutGrid, GanttChart, CalendarRange, AlertTriangle, Columns3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { TechnicalPortalLayout } from "@/components/layout/technical-portal-layout";
 import { WorkshopDiary } from "@/components/planning/workshop-diary";
 import { TechnicianRoster } from "@/components/planning/technician-roster";
 import { DragDropScheduler } from "@/components/planning/drag-drop-scheduler";
@@ -252,70 +252,39 @@ export default function PlanningBoardPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-card px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary">
-              <Wrench className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold tracking-tight text-foreground">
-                Megatron EAD
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                Планиране на работилница
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button 
-              variant={navigation.level === "dispatcher" ? "default" : "outline"} 
-              size="sm" 
-              className={navigation.level === "dispatcher" ? "" : "bg-transparent"}
-              onClick={() => setNavigation({ level: "dispatcher", selectedDate: new Date(), selectedTechnicianId: null, selectedTechnicianName: null })}
-            >
-              <Users className="h-4 w-4 mr-1.5" />
-              Gantt
-            </Button>
-            <Button 
-              variant={navigation.level === "calendar" ? "default" : "outline"} 
-              size="sm" 
-              className={navigation.level === "calendar" ? "" : "bg-transparent"}
-              onClick={() => setNavigation({ level: "calendar", selectedDate: null, selectedTechnicianId: null, selectedTechnicianName: null })}
-            >
-              <CalendarRange className="h-4 w-4 mr-1.5" />
-              Calendar
-            </Button>
-            <Button 
-              variant={navigation.level === "kanban" ? "default" : "outline"} 
-              size="sm" 
-              className={navigation.level === "kanban" ? "" : "bg-transparent"}
-              onClick={() => setNavigation({ level: "kanban", selectedDate: null, selectedTechnicianId: null, selectedTechnicianName: null })}
-            >
-              <Columns3 className="h-4 w-4 mr-1.5" />
-              Kanban
-            </Button>
-            <Link href="/admin">
-              <Button variant="outline" size="sm" className="bg-transparent">
-                Admin
-              </Button>
-            </Link>
-            <Link href="/technician">
-              <Button variant="outline" size="sm" className="bg-transparent">
-                Работна Карта
-              </Button>
-            </Link>
-            <Link href="/">
-              <Button variant="outline" size="sm" className="bg-transparent">
-                Portal
-              </Button>
-            </Link>
-          </div>
+    <TechnicalPortalLayout subtitle="Планиране на работилница">
+      {/* Sub-header with view toggles */}
+      <div className="border-b border-border bg-card/50 px-4 py-2">
+        <div className="flex items-center justify-end gap-2">
+          <Button 
+            variant={navigation.level === "dispatcher" ? "default" : "outline"} 
+            size="sm" 
+            className={navigation.level === "dispatcher" ? "" : "bg-transparent"}
+            onClick={() => setNavigation({ level: "dispatcher", selectedDate: new Date(), selectedTechnicianId: null, selectedTechnicianName: null })}
+          >
+            <Users className="h-4 w-4 mr-1.5" />
+            Gantt
+          </Button>
+          <Button 
+            variant={navigation.level === "calendar" ? "default" : "outline"} 
+            size="sm" 
+            className={navigation.level === "calendar" ? "" : "bg-transparent"}
+            onClick={() => setNavigation({ level: "calendar", selectedDate: null, selectedTechnicianId: null, selectedTechnicianName: null })}
+          >
+            <CalendarRange className="h-4 w-4 mr-1.5" />
+            Calendar
+          </Button>
+          <Button 
+            variant={navigation.level === "kanban" ? "default" : "outline"} 
+            size="sm" 
+            className={navigation.level === "kanban" ? "" : "bg-transparent"}
+            onClick={() => setNavigation({ level: "kanban", selectedDate: null, selectedTechnicianId: null, selectedTechnicianName: null })}
+          >
+            <Columns3 className="h-4 w-4 mr-1.5" />
+            Kanban
+          </Button>
         </div>
-      </header>
+      </div>
 
       {/* Breadcrumbs */}
       <div className="border-b border-border bg-secondary/30 px-4 py-2">
@@ -547,6 +516,6 @@ export default function PlanningBoardPage() {
           </div>
         </div>
       </footer>
-    </div>
+    </TechnicalPortalLayout>
   );
 }
