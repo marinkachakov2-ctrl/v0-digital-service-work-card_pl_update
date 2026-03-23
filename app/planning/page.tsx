@@ -203,9 +203,10 @@ export default function PlanningBoardPage() {
   const [weeklyNotes, setWeeklyNotes] = useState<WeeklyNote[]>(initialWeeklyNotes);
   const [serviceTasks, setServiceTasks] = useState<ServiceTask[]>(initialServiceTasks);
 
+  // Default to dispatcher view (Interactive Gantt) on page load
   const [navigation, setNavigation] = useState<NavigationState>({
-    level: "diary",
-    selectedDate: null,
+    level: "dispatcher",
+    selectedDate: new Date(),
     selectedTechnicianId: null,
     selectedTechnicianName: null,
   });
@@ -235,20 +236,6 @@ export default function PlanningBoardPage() {
       selectedTechnicianId: null,
       selectedTechnicianName: null,
     });
-  };
-
-  const navigateToRoster = () => {
-    setNavigation((prev) => ({
-      ...prev,
-      level: "roster",
-      selectedTechnicianId: null,
-      selectedTechnicianName: null,
-    }));
-  };
-
-  // Format date for breadcrumb (deterministic to avoid hydration issues)
-  const formatBreadcrumbDate = (date: Date) => {
-    return `${BG_WEEKDAYS[date.getDay()]}, ${date.getDate()} ${BG_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
   };
 
   return (
@@ -286,49 +273,52 @@ export default function PlanningBoardPage() {
         </div>
       </div>
 
-      {/* Breadcrumbs */}
+      {/* Breadcrumbs - Simplified for main views */}
       <div className="border-b border-border bg-secondary/30 px-4 py-2">
         <nav className="flex items-center gap-1 text-sm">
-          <button
-            type="button"
-            onClick={navigateToDiary}
-            className="flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
-          >
+          <span className="flex items-center gap-1 text-muted-foreground">
             <Home className="h-4 w-4" />
-            <span>Табло</span>
-          </button>
-
-          {navigation.level !== "diary" && (
-            <>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              <button
-                type="button"
-                onClick={navigation.level === "gantt" ? navigateToRoster : undefined}
-                className={`flex items-center gap-1 transition-colors ${
-                  navigation.level === "roster"
-                    ? "font-medium text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Calendar className="h-4 w-4" />
-                <span className="capitalize">
-                  {navigation.selectedDate
-                    ? formatBreadcrumbDate(navigation.selectedDate)
-                    : ""}
-                </span>
-              </button>
-            </>
-          )}
-
-          {navigation.level === "gantt" && (
-            <>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              <span className="flex items-center gap-1 font-medium text-foreground">
+            <span>Планиране</span>
+          </span>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          <span className="flex items-center gap-1 font-medium text-foreground">
+            {navigation.level === "dispatcher" && (
+              <>
                 <Users className="h-4 w-4" />
-                {navigation.selectedTechnicianName}
-              </span>
-            </>
-          )}
+                <span>Gantt диаграма</span>
+              </>
+            )}
+            {navigation.level === "calendar" && (
+              <>
+                <CalendarRange className="h-4 w-4" />
+                <span>Календар</span>
+              </>
+            )}
+            {navigation.level === "kanban" && (
+              <>
+                <Columns3 className="h-4 w-4" />
+                <span>Kanban дъска</span>
+              </>
+            )}
+            {navigation.level === "diary" && (
+              <>
+                <Calendar className="h-4 w-4" />
+                <span>Дневник</span>
+              </>
+            )}
+            {navigation.level === "roster" && (
+              <>
+                <Users className="h-4 w-4" />
+                <span>Наличност на техници</span>
+              </>
+            )}
+            {navigation.level === "gantt" && (
+              <>
+                <GanttChart className="h-4 w-4" />
+                <span>{navigation.selectedTechnicianName}</span>
+              </>
+            )}
+          </span>
         </nav>
       </div>
 
@@ -463,59 +453,6 @@ export default function PlanningBoardPage() {
           )}
       </main>
 
-      {/* Level Indicator */}
-      <footer className="border-t border-border bg-card px-4 py-2">
-        <div className="flex items-center justify-center gap-6 text-xs text-muted-foreground">
-          <div
-            className={`flex items-center gap-1.5 ${navigation.level === "dispatcher" ? "text-primary" : ""}`}
-          >
-            <div
-              className={`h-2 w-2 rounded-full ${navigation.level === "dispatcher" ? "bg-primary" : "bg-muted"}`}
-            />
-            <span>Dispatcher</span>
-          </div>
-          <div
-            className={`flex items-center gap-1.5 ${navigation.level === "calendar" ? "text-primary" : ""}`}
-          >
-            <div
-              className={`h-2 w-2 rounded-full ${navigation.level === "calendar" ? "bg-primary" : "bg-muted"}`}
-            />
-            <span>Calendar</span>
-          </div>
-          <div
-            className={`flex items-center gap-1.5 ${navigation.level === "kanban" ? "text-primary" : ""}`}
-          >
-            <div
-              className={`h-2 w-2 rounded-full ${navigation.level === "kanban" ? "bg-primary" : "bg-muted"}`}
-            />
-            <span>Kanban</span>
-          </div>
-          <div
-            className={`flex items-center gap-1.5 ${navigation.level === "diary" ? "text-primary" : ""}`}
-          >
-            <div
-              className={`h-2 w-2 rounded-full ${navigation.level === "diary" ? "bg-primary" : "bg-muted"}`}
-            />
-            <span>Дневник</span>
-          </div>
-          <div
-            className={`flex items-center gap-1.5 ${navigation.level === "roster" ? "text-primary" : ""}`}
-          >
-            <div
-              className={`h-2 w-2 rounded-full ${navigation.level === "roster" ? "bg-primary" : "bg-muted"}`}
-            />
-            <span>Техници</span>
-          </div>
-          <div
-            className={`flex items-center gap-1.5 ${navigation.level === "gantt" ? "text-primary" : ""}`}
-          >
-            <div
-              className={`h-2 w-2 rounded-full ${navigation.level === "gantt" ? "bg-primary" : "bg-muted"}`}
-            />
-            <span>{navigation.level === "gantt" ? (planView === "service" ? "Всички техници" : planView === "task" ? "Седмичен план" : "Часова схема") : "Часова схема"}</span>
-          </div>
-        </div>
-      </footer>
     </ManagerLayout>
   );
 }

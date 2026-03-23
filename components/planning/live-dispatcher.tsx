@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -402,6 +402,9 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
   const [dropWarning, setDropWarning] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   
+  // Demo jobs from MegatronVision localStorage integration
+  const [demoJobs, setDemoJobs] = useState<ServiceAppointment[]>([]);
+  
   // Quick notes state
   const [quickNoteText, setQuickNoteText] = useState("");
   const [addingNote, setAddingNote] = useState(false);
@@ -466,6 +469,58 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
     }, 60000); // Update every minute
     
     return () => clearInterval(interval);
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // LOAD DEMO JOBS FROM LOCALSTORAGE (MegatronVision Hero Flow)
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const loadDemoJobs = () => {
+      try {
+        const stored = localStorage.getItem("pendingDemoJobs");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            // Transform demo jobs to ServiceAppointment format
+            const transformed: ServiceAppointment[] = parsed.map((job: Record<string, unknown>, index: number) => ({
+              id: `demo-${Date.now()}-${index}`,
+              client_name: (job.clientName as string) || (job.client_name as string) || "Demo Client",
+              machine_model: (job.machineModel as string) || (job.machine_model as string) || "Demo Machine",
+              serial_number: (job.serialNumber as string) || (job.serial_number as string) || null,
+              technician_name: null, // Unassigned - will appear in Чакащи
+              work_date: (job.workDate as string) || (job.work_date as string) || formatDate(new Date()),
+              start_time: null,
+              end_time: null,
+              planned_hours: (job.estimatedHours as number) || (job.planned_hours as number) || 2,
+              status: "scheduled",
+              priority: (job.priority as string) || "normal",
+              notes: (job.description as string) || (job.notes as string) || "Demo job from MegatronVision",
+              task_type: "demo",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }));
+            setDemoJobs(transformed);
+          }
+        }
+      } catch (e) {
+        console.error("[v0] Error loading pendingDemoJobs from localStorage:", e);
+      }
+    };
+
+    // Load on mount
+    loadDemoJobs();
+
+    // Also listen for storage events (in case another tab updates it)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "pendingDemoJobs") {
+        loadDemoJobs();
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+    };
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -559,8 +614,8 @@ const handleDragEnd = async (event: DragEndEvent) => {
     if (!over) return;
 
     const appointmentId = active.id as string;
-    // Check both assignedAppointments (timeline) and sidebarBacklog (waiting list + notes)
-    const appointment = assignedAppointments.find((a) => a.id === appointmentId) || sidebarBacklog.find((a) => a.id === appointmentId);
+    // Check assignedAppointments (timeline), sidebarBacklog (waiting list + notes), and demo jobs
+    const appointment = assignedAppointments.find((a) => a.id === appointmentId) || sidebarBacklog.find((a) => a.id === appointmentId) || demoJobs.find((a) => a.id === appointmentId);
     if (!appointment) return;
 
     // Extract technician info from drop target
@@ -577,7 +632,7 @@ const handleDragEnd = async (event: DragEndEvent) => {
     }
     const newStartTime = hoursToTimeStr(newStartHour);
 
-    // ───────────────���───────���─────────────────────────────────────────────
+    // ──────────��────���───────���─────────────────────────────────────────────
     // PAST TIME VALIDATION
     // ─────────────────────────────────────────────────────────────────────
     const now = new Date();
@@ -627,15 +682,18 @@ const handleDragEnd = async (event: DragEndEvent) => {
     setSaving(false);
   };
 
-// ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
   // DERIVED DATA
   // ─────────────────────────────────────────────────────────────────────────
-  // Waiting list: combined waiting orders + notes from shared hook
-  const waitingAppointments = sidebarBacklog;
+  // Waiting list: combined waiting orders + notes from shared hook + demo jobs from localStorage
+  const waitingAppointments = useMemo(() => {
+    // Prepend demo jobs to the beginning of the list (Hero Flow requirement)
+    return [...demoJobs, ...sidebarBacklog];
+  }, [demoJobs, sidebarBacklog]);
 
-  // Active appointment for drag overlay (check both lists)
-  const activeAppointment = activeId 
-    ? (assignedAppointments.find((a) => a.id === activeId) || sidebarBacklog.find((a) => a.id === activeId)) 
+  // Active appointment for drag overlay (check all lists including demo jobs)
+  const activeAppointment = activeId
+    ? (assignedAppointments.find((a) => a.id === activeId) || waitingAppointments.find((a) => a.id === activeId))
     : null;
 
   // Current time line position (only show on today)
