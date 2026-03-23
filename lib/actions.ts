@@ -472,6 +472,18 @@ export async function fetchLaborCatalog(): Promise<LaborCatalogItem[]> {
 }
 
 /**
+ * Helper to detect mock IDs (used when Supabase is unavailable in v0 sandbox)
+ */
+function isMockId(id: string | undefined | null): boolean {
+  if (!id) return false;
+  // Check for mock prefix or non-UUID format
+  if (id.startsWith("mock-")) return true;
+  // Check for valid UUID format (8-4-4-4-12 hex pattern)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return !uuidRegex.test(id);
+}
+
+/**
  * Save labor items to job_card_labor table
  */
 export async function saveJobCardLabor(
@@ -484,6 +496,14 @@ export async function saveJobCardLabor(
     endTime?: string | null;
   }>
 ): Promise<{ success: boolean; error?: string }> {
+  // Sandbox simulation: if using mock IDs, skip real database call
+  if (isMockId(jobCardId)) {
+    console.log("[Sandbox] Simulating saveJobCardLabor for mock job card:", jobCardId);
+    console.log("[Sandbox] Labor items:", laborItems);
+    await new Promise((resolve) => setTimeout(resolve, 500)); // Simulate network delay
+    return { success: true };
+  }
+
   const supabase = await createClient();
 
   // First delete existing labor items for this job card
@@ -1387,8 +1407,6 @@ export async function submitJobCard(data: {
   status?: string;
   totalSeconds?: number;
 }): Promise<{ success: boolean; jobCardId?: string; pendingOrder?: boolean; error?: string }> {
-  const supabase = await createClient();
-
   // Validation - only jobCardNumber and technicians are required
   if (!data.jobCardNumber) {
     return { success: false, error: "Job Card number is required" };
@@ -1403,6 +1421,44 @@ export async function submitJobCard(data: {
 
   // Determine if this is a "pending order" submission
   const hasPendingOrder = !data.orderNumber || data.orderNumber.trim() === "";
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SANDBOX SIMULATION: If using mock IDs, skip real database call
+  // This allows testing in v0 sandbox without valid Supabase connection
+  // ═══════════════════════════════════════════════════════════════════════════
+  const hasMockData = isMockId(data.machineId) || isMockId(primaryTechnicianId);
+  
+  if (hasMockData) {
+    console.log("[Sandbox] Simulating submitJobCard - mock data detected");
+    console.log("[Sandbox] Payload:", {
+      orderNumber: data.orderNumber,
+      jobCardNumber: data.jobCardNumber,
+      machineId: data.machineId,
+      technicianIds: data.technicianIds,
+      notes: data.notes,
+      status: data.status,
+      totalSeconds: data.totalSeconds,
+    });
+    
+    // Simulate network delay
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    
+    // Generate a mock job card ID
+    const mockJobCardId = `JC-${Date.now().toString(36).toUpperCase()}`;
+    
+    console.log("[Sandbox] Simulated save successful. Mock Job Card ID:", mockJobCardId);
+    
+    return {
+      success: true,
+      jobCardId: mockJobCardId,
+      pendingOrder: hasPendingOrder,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REAL DATABASE SAVE: Valid UUIDs detected, proceed with Supabase insert
+  // ═══════════════════════════════════════════════════════════════════════════
+  const supabase = await createClient();
 
   // Insert job card into Supabase - order_no can be null
   const { data: insertedData, error } = await supabase
