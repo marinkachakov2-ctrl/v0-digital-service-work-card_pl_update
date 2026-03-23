@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Wrench, CalendarDays, ShieldCheck, Sun, Moon, MonitorPlay } from "lucide-react";
+import { Wrench, CalendarDays, ShieldCheck, Sun, Moon, MonitorPlay, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -53,13 +53,24 @@ export function WorkCardHeader({
       {/* Top Bar */}
       <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary">
-            <Wrench className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-foreground">Megatron EAD</h1>
-            <p className="text-xs text-muted-foreground">Работна Карта</p>
-          </div>
+          {/* Home/Portal Button */}
+          <Link href="/">
+            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground">
+              <Home className="h-4 w-4" />
+              <span className="hidden sm:inline">Портал</span>
+            </Button>
+          </Link>
+
+          {/* Logo - Also links to home */}
+          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary">
+              <Wrench className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold tracking-tight text-foreground">Megatron EAD</h1>
+              <p className="text-xs text-muted-foreground">Работна Карта</p>
+            </div>
+          </Link>
         </div>
 
         {/* Order / JCN Display */}
