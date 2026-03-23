@@ -19,6 +19,7 @@ import {
   Tractor,
   User,
   Hash,
+  Calendar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +31,7 @@ interface JobCardItem {
   clientName: string;
   status: "draft" | "in_progress" | "assigned";
   createdAt: string;
+  scheduledAt?: string; // For assigned tasks - when they are scheduled
 }
 
 // Mock data for demonstration
@@ -68,6 +70,7 @@ const mockAssignedCards: JobCardItem[] = [
     clientName: "Мега Агро ЕООД",
     status: "assigned",
     createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    scheduledAt: "Утре, 08:30",
   },
   {
     id: "assigned-002",
@@ -76,6 +79,7 @@ const mockAssignedCards: JobCardItem[] = [
     clientName: "Агрохолдинг България",
     status: "assigned",
     createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    scheduledAt: "24.03.2026, 13:00",
   },
 ];
 
@@ -170,9 +174,10 @@ export function MyJobCardsPanel({ onNewJobCard, onSelectJobCard }: MyJobCardsPan
             </Button>
           </div>
 
-          {/* Job Cards List */}
-          <ScrollArea className="flex-1">
-            <div className="p-4 space-y-6">
+          {/* Job Cards List - Scrollable container */}
+          <div className="flex-1 overflow-hidden">
+            <ScrollArea className="h-full">
+              <div className="p-4 space-y-6 pb-8">
               {/* In Progress / Drafts Section */}
               <section>
                 <div className="flex items-center gap-2 mb-3 px-1">
@@ -230,14 +235,16 @@ export function MyJobCardsPanel({ onNewJobCard, onSelectJobCard }: MyJobCardsPan
                           card={card}
                           indicatorColor="blue"
                           onClick={() => handleSelectCard(card)}
+                          showSchedule={true}
                         />
                       </motion.div>
                     ))}
                   </AnimatePresence>
                 </div>
               </section>
-            </div>
-          </ScrollArea>
+              </div>
+            </ScrollArea>
+          </div>
         </SheetContent>
       </Sheet>
     </>
@@ -249,9 +256,10 @@ interface JobCardListItemProps {
   card: JobCardItem;
   indicatorColor: "amber" | "blue";
   onClick: () => void;
+  showSchedule?: boolean;
 }
 
-function JobCardListItem({ card, indicatorColor, onClick }: JobCardListItemProps) {
+function JobCardListItem({ card, indicatorColor, onClick, showSchedule = false }: JobCardListItemProps) {
   const isDraft = card.status === "draft" || card.jobCardNumber === "DRAFT";
 
   return (
@@ -322,6 +330,16 @@ function JobCardListItem({ card, indicatorColor, onClick }: JobCardListItemProps
               {card.clientName}
             </span>
           </div>
+
+          {/* Schedule Info - Only for assigned cards */}
+          {showSchedule && card.scheduledAt && (
+            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/50">
+              <Calendar className="h-3.5 w-3.5 text-blue-400" />
+              <span className="text-xs text-muted-foreground/80 font-medium">
+                {card.scheduledAt}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Chevron */}
