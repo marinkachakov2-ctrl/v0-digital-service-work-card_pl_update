@@ -351,17 +351,47 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
     setIsGeneratingOrder(false);
   };
 
-  // Handle form submission - redirect to Planning
-  const handleSubmitAndGoToPlanning = () => {
-    // TODO: Insert Supabase logic here to save the service request
-    toast.success("Заявката е изпратена към Диспечер!", {
-      description: `Поръчка: ${navOrderId} | Машина: ${tractor.name}`,
-    });
-    // Reset and close
-    setIsWizardOpen(false);
-    setNavOrderId(null);
-    // Navigate to Planning page
-    router.push("/planning");
+  // Handle form submission - save to DB and redirect to Planning
+  const handleSubmitAndGoToPlanning = async () => {
+    try {
+      // 1. Supabase insert logic (commented out for v0 demo, ready for real integration)
+      /*
+      const { data, error } = await supabase
+        .from('job_cards')
+        .insert([
+          {
+            machine_model: tractor.name, // e.g. 'John Deere 9RX 640'
+            serial_number: tractor.serialNumber, // e.g. '1RW9640KTRD001256'
+            order_no: navOrderId, // The mock NAV order ID
+            navision_order_no: navOrderId, 
+            complaint_description: `Критични грешки от телематика: ${tractor.dtcCodes.map(d => d.code).join(', ')}`,
+            status: 'pending_order', // Matches DB enum
+            sync_status: 'pending_order'
+          }
+        ]);
+
+      if (error) throw error;
+      */
+
+      // 2. Mock logging for demo
+      console.log("Mock saved to DB with NAV Order:", navOrderId);
+
+      // 3. UI Feedback
+      toast.success("Заявката е изпратена към Планиране!", {
+        description: `Поръчка: ${navOrderId} | Машина: ${tractor.name}`,
+      });
+
+      // 4. Reset and close dialog
+      setIsWizardOpen(false);
+      setNavOrderId(null);
+
+      // 5. Navigate to Planning & Calendar page
+      router.push("/planning");
+
+    } catch (error) {
+      console.error(error);
+      toast.error("Грешка при запис в базата данни.");
+    }
   };
 
   // Check if form is valid for submission (only NAV order required now)
