@@ -801,7 +801,7 @@ export default function FleetIntelligencePage() {
         <div className="flex h-16 items-center justify-between px-6">
           {/* Left: Back button and Logo */}
           <div className="flex items-center gap-6">
-            <Link href="/admin/manager">
+            <Link href="/app">
               <Button
                 variant="ghost"
                 size="sm"

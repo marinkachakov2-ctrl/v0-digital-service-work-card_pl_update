@@ -236,7 +236,7 @@ export default function AppDashboard() {
                 <Link href="/admin/manager">
                   <Button variant="outline" className="w-full h-20 flex-col gap-2 border-border/50 hover:border-blue-500/50 hover:bg-blue-500/5">
                     <Users className="h-6 w-6 text-blue-500" />
-                    <span className="text-xs">Manager View</span>
+                    <span className="text-xs">KPI Reports</span>
                   </Button>
                 </Link>
               </CardContent>

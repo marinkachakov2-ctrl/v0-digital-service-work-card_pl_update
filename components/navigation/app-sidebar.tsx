@@ -75,7 +75,7 @@ interface AppSidebarProps {
 const primaryNavItems: NavItem[] = [
   {
     title: "Dashboard",
-    href: "/admin/manager",
+    href: "/app",
     icon: LayoutDashboard,
     roles: ["admin", "tech"],
   },
@@ -108,6 +108,15 @@ const serviceManagementItems: NavItem[] = [
     title: "Proposals Queue",
     href: "/admin/queue/proposals",
     icon: ClipboardList,
+    roles: ["admin"],
+  },
+];
+
+const archiveReportsItems: NavItem[] = [
+  {
+    title: "Financial KPI Reports",
+    href: "/admin/manager",
+    icon: LayoutDashboard,
     roles: ["admin"],
   },
   {
@@ -363,26 +372,45 @@ function SidebarNavContent({
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Service Management (Admin) */}
-        {userRole === "admin" && (
-          <>
-            <Separator className="my-4 bg-border/50" />
-            <SidebarGroup>
-              {!isCollapsed && (
-                <SidebarGroupLabel className="text-xs text-muted-foreground px-2 mb-2">
-                  Service Management
-                </SidebarGroupLabel>
-              )}
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {filterByRole(serviceManagementItems).map(renderNavItem)}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </>
-        )}
+{/* Service Management (Admin) */}
+  {userRole === "admin" && (
+  <>
+  <Separator className="my-4 bg-border/50" />
+  <SidebarGroup>
+  {!isCollapsed && (
+  <SidebarGroupLabel className="text-xs text-muted-foreground px-2 mb-2">
+  Service Management
+  </SidebarGroupLabel>
+  )}
+  <SidebarGroupContent>
+  <SidebarMenu>
+  {filterByRole(serviceManagementItems).map(renderNavItem)}
+  </SidebarMenu>
+  </SidebarGroupContent>
+  </SidebarGroup>
+  </>
+  )}
 
-        {/* Technician Tools */}
+  {/* Archive & Reports (Admin) */}
+  {userRole === "admin" && (
+  <>
+  <Separator className="my-4 bg-border/50" />
+  <SidebarGroup>
+  {!isCollapsed && (
+  <SidebarGroupLabel className="text-xs text-muted-foreground px-2 mb-2">
+  Archive & Reports
+  </SidebarGroupLabel>
+  )}
+  <SidebarGroupContent>
+  <SidebarMenu>
+  {filterByRole(archiveReportsItems).map(renderNavItem)}
+  </SidebarMenu>
+  </SidebarGroupContent>
+  </SidebarGroup>
+  </>
+  )}
+  
+  {/* Technician Tools */}
         <Separator className="my-4 bg-border/50" />
         <SidebarGroup>
           {!isCollapsed && (
@@ -484,7 +512,7 @@ function MobileBottomNav({ userRole, pendingCardsCount }: { userRole: UserRole; 
 
 // Mobile nav items (limited set)
   const mobileNavItems: Array<{ title: string; href: string; icon: React.ElementType; isLive?: boolean; badge?: number }> = [
-    { title: "Dashboard", href: "/admin/manager", icon: LayoutDashboard },
+  { title: "Dashboard", href: "/app", icon: LayoutDashboard },
     { title: "Planning", href: "/planning", icon: CalendarRange, isLive: true },
     ...(userRole === "admin" ? [{ title: "Fleet", href: "/admin/fleet", icon: Radar, isLive: true }] : []),
     { title: "Work Card", href: "/technician", icon: Wrench },

@@ -319,12 +319,12 @@ export default function AdminQueuePage() {
           ))}
         </nav>
 
-        {/* Back to Manager Dashboard */}
+        {/* Back to Dashboard */}
         <div className="p-4 border-t border-sidebar-border space-y-2">
-          <Link href="/admin/manager">
+          <Link href="/app">
             <Button variant="outline" className="w-full gap-2 bg-transparent border-sidebar-border hover:bg-sidebar-accent text-sm">
               <FileText className="h-4 w-4" />
-              Manager Dashboard
+              Dashboard
               <ChevronRight className="h-4 w-4 ml-auto" />
             </Button>
           </Link>

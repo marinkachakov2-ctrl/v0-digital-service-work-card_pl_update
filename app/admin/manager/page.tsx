@@ -363,14 +363,14 @@ export default function ManagerDashboard() {
       <header className="sticky top-0 z-40 border-b border-border/50 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="container flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-4">
-            <Link href="/">
+            <Link href="/app">
               <Button variant="ghost" size="icon" className="hover:bg-muted">
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl font-bold text-foreground tracking-tight">Manager Dashboard</h1>
-              <p className="text-xs text-muted-foreground">Megatron Digital Service - KPI Overview</p>
+              <h1 className="text-xl font-bold text-foreground tracking-tight">Financial KPI Reports</h1>
+              <p className="text-xs text-muted-foreground">Megatron Digital Service - Revenue Analytics</p>
             </div>
           </div>
           <Button
