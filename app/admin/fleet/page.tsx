@@ -352,7 +352,7 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
   };
 
   // Handle form submission - save to DB and redirect to Planning
-  const handleSubmitAndGoToPlanning = async () => {
+  const handleSaveToPlanning = async () => {
     try {
       // 1. Supabase insert logic (commented out for v0 demo, ready for real integration)
       /*
@@ -390,7 +390,7 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
 
     } catch (error) {
       console.error(error);
-      toast.error("Грешка при запис в базата данни.");
+      toast.error("Грешка при запис в базата данн��.");
     }
   };
 
@@ -713,7 +713,7 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
                 Отказ
               </Button>
               <Button
-                onClick={handleSubmitAndGoToPlanning}
+                onClick={handleSaveToPlanning}
                 disabled={!isFormValid}
                 className="gap-2 bg-primary hover:bg-primary/90"
               >
