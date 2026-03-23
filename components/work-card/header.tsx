@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { NotificationCenter } from "@/components/notifications/notification-center";
+import { MyJobCardsPanel } from "@/components/work-card/my-job-cards-panel";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,8 @@ interface WorkCardHeaderProps {
   jobCardNumber: string;
   isAdmin: boolean;
   onAdminToggle: (val: boolean) => void;
+  onNewJobCard?: () => void;
+  onSelectJobCard?: (jobCardId: string) => void;
 }
 
 export function WorkCardHeader({
@@ -24,6 +27,8 @@ export function WorkCardHeader({
   jobCardNumber,
   isAdmin,
   onAdminToggle,
+  onNewJobCard,
+  onSelectJobCard,
 }: WorkCardHeaderProps) {
   const [currentDate, setCurrentDate] = useState("--/--/----");
   const { theme, setTheme } = useTheme();
@@ -149,6 +154,12 @@ export function WorkCardHeader({
               {isAdmin ? "Admin" : "Tech"}
             </Label>
           </div>
+
+          {/* My Job Cards Panel - Always visible next to notification bell */}
+          <MyJobCardsPanel 
+            onNewJobCard={onNewJobCard || (() => {})}
+            onSelectJobCard={onSelectJobCard}
+          />
 
           {/* Notification Center */}
           <NotificationCenter />

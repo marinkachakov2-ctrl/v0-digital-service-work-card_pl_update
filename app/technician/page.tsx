@@ -893,6 +893,11 @@ function WorkCardPageContent() {
           jobCardNumber={selectedOrder?.jobCardNumber || jobCardNumber}
           isAdmin={isAdmin}
           onAdminToggle={setIsAdmin}
+          onNewJobCard={handleFormReset}
+          onSelectJobCard={(jobCardId) => {
+            // Navigate to edit the selected job card
+            router.push(`/technician?editId=${jobCardId}`);
+          }}
         />
 
         {/* Order Type Selector & Unified Search - Right below header */}
