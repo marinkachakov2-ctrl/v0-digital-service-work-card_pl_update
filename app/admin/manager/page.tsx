@@ -363,7 +363,7 @@ export default function ManagerDashboard() {
       <header className="sticky top-0 z-40 border-b border-border/50 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="container flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-4">
-            <Link href="/admin/queue">
+            <Link href="/">
               <Button variant="ghost" size="icon" className="hover:bg-muted">
                 <ArrowLeft className="h-5 w-5" />
               </Button>

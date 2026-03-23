@@ -4,7 +4,7 @@ import { useState, Component, type ReactNode } from "react";
 import { ChevronRight, Home, Calendar, Users, ArrowLeft, LayoutGrid, GanttChart, CalendarRange, AlertTriangle, Columns3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { TechnicalPortalLayout } from "@/components/layout/technical-portal-layout";
+import { ManagerLayout } from "@/components/layout/manager-layout";
 import { WorkshopDiary } from "@/components/planning/workshop-diary";
 import { TechnicianRoster } from "@/components/planning/technician-roster";
 import { DragDropScheduler } from "@/components/planning/drag-drop-scheduler";
@@ -252,7 +252,7 @@ export default function PlanningBoardPage() {
   };
 
   return (
-    <TechnicalPortalLayout subtitle="Планиране на работилница">
+    <ManagerLayout userRole="admin" userName="Service Manager">
       {/* Sub-header with view toggles */}
       <div className="border-b border-border bg-card/50 px-4 py-2">
         <div className="flex items-center justify-end gap-2">
@@ -516,6 +516,6 @@ export default function PlanningBoardPage() {
           </div>
         </div>
       </footer>
-    </TechnicalPortalLayout>
+    </ManagerLayout>
   );
 }
