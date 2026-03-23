@@ -26,7 +26,30 @@ import {
   Settings,
   Droplets,
   Cog,
+  Wrench,
+  Calendar,
+  CheckCircle,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -320,6 +343,46 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
     (Date.now() - tractor.lastUpdate.getTime()) / 1000
   );
 
+  // Service Request Wizard State
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [navOrderId, setNavOrderId] = useState<string | null>(null);
+  const [isGeneratingOrder, setIsGeneratingOrder] = useState(false);
+  const [selectedTechnician, setSelectedTechnician] = useState<string>("");
+  const [plannedDate, setPlannedDate] = useState<string>("");
+
+  // Mock technicians data
+  const technicians = [
+    { id: "ivan", name: "Иван Иванов" },
+    { id: "petar", name: "Петър Петров" },
+    { id: "georgi", name: "Георги Георгиев" },
+  ];
+
+  // Generate mock NAV order
+  const handleGenerateNavOrder = async () => {
+    setIsGeneratingOrder(true);
+    // Simulate API call with 1.5s delay
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const mockOrderId = `ON-NAV-2026-${Math.floor(Math.random() * 900 + 100)}`;
+    setNavOrderId(mockOrderId);
+    setIsGeneratingOrder(false);
+  };
+
+  // Handle form submission
+  const handleSubmitJobCard = () => {
+    // TODO: Insert Supabase logic here
+    toast.success("Работна карта е създадена!", {
+      description: `Поръчка: ${navOrderId} | Техник: ${technicians.find(t => t.id === selectedTechnician)?.name}`,
+    });
+    // Reset and close
+    setIsWizardOpen(false);
+    setNavOrderId(null);
+    setSelectedTechnician("");
+    setPlannedDate("");
+  };
+
+  // Check if form is valid for submission
+  const isFormValid = navOrderId && selectedTechnician;
+
   // Compact stat card component for the grid
   const CompactStat = ({ 
     icon: Icon, 
@@ -518,6 +581,180 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
             </CardContent>
           </Card>
         )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            CREATE SERVICE REQUEST BUTTON (Hero Flow Trigger)
+            ═══════════════════════════════════════════════════════════════════ */}
+        {totalAlerts > 0 && (
+          <Button
+            onClick={() => setIsWizardOpen(true)}
+            className={cn(
+              "w-full gap-2 font-semibold shadow-lg transition-all",
+              hasErrors
+                ? "bg-red-600 hover:bg-red-700 text-white"
+                : "bg-amber-600 hover:bg-amber-700 text-white"
+            )}
+            size="lg"
+          >
+            <Wrench className="h-5 w-5" />
+            Създай Сервизна Заявка
+          </Button>
+        )}
+
+        {/* Service Request Wizard Dialog */}
+        <Dialog open={isWizardOpen} onOpenChange={setIsWizardOpen}>
+          <DialogContent className="sm:max-w-[500px] bg-background border-border">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                <Wrench className="h-5 w-5 text-primary" />
+                Нова Сервизна Заявка & Планиране
+              </DialogTitle>
+              <DialogDescription>
+                Създайте работна карта за избраната машина
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-6 py-4">
+              {/* Section 1: Context (Auto-filled) */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                  Машина & Статус
+                </h4>
+                <div className={cn(
+                  "rounded-lg border p-4 space-y-2",
+                  theme === "presentation" ? "bg-gray-50 border-gray-200" : "bg-muted/30 border-border"
+                )}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-foreground">{tractor.name}</span>
+                    <Badge variant="outline" className="text-xs">
+                      {tractor.status.toUpperCase()}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground font-mono">
+                    S/N: {tractor.serialNumber}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 pt-2">
+                    {tractor.dtcCodes.map((dtc, i) => (
+                      <Badge
+                        key={i}
+                        variant="outline"
+                        className={cn(
+                          "text-[10px] font-mono",
+                          dtc.severity === "critical"
+                            ? "border-red-500/50 bg-red-500/10 text-red-500"
+                            : "border-amber-500/50 bg-amber-500/10 text-amber-500"
+                        )}
+                      >
+                        {dtc.code}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2: ERP Integration (Mocked) */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                  ERP Интеграция
+                </h4>
+                <div className={cn(
+                  "rounded-lg border p-4",
+                  theme === "presentation" ? "bg-gray-50 border-gray-200" : "bg-muted/30 border-border"
+                )}>
+                  {!navOrderId ? (
+                    <Button
+                      onClick={handleGenerateNavOrder}
+                      disabled={isGeneratingOrder}
+                      variant="outline"
+                      className="w-full gap-2"
+                    >
+                      {isGeneratingOrder ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Генериране...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="h-4 w-4" />
+                          Генерирай Поръчка в NAV
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-2 text-emerald-500">
+                      <CheckCircle className="h-5 w-5" />
+                      <span className="font-semibold">Успешно! Поръчка: {navOrderId}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Section 3: Planning & Assignment */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                  Планиране & Назначаване
+                </h4>
+                <div className="grid gap-4">
+                  {/* Technician Select */}
+                  <div className="space-y-2">
+                    <Label htmlFor="technician" className="text-sm">
+                      Избери Техник
+                    </Label>
+                    <Select
+                      value={selectedTechnician}
+                      onValueChange={setSelectedTechnician}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Избери техник..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {technicians.map((tech) => (
+                          <SelectItem key={tech.id} value={tech.id}>
+                            {tech.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Planned Date */}
+                  <div className="space-y-2">
+                    <Label htmlFor="plannedDate" className="text-sm">
+                      Планирана Дата
+                    </Label>
+                    <div className="relative">
+                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="plannedDate"
+                        type="date"
+                        value={plannedDate}
+                        onChange={(e) => setPlannedDate(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setIsWizardOpen(false)}
+              >
+                Отказ
+              </Button>
+              <Button
+                onClick={handleSubmitJobCard}
+                disabled={!isFormValid}
+                className="gap-2 bg-primary hover:bg-primary/90"
+              >
+                <CheckCircle className="h-4 w-4" />
+                Запиши Работна Карта
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
       {/* ═══════════════════════════════════════════════════════════════════
           PRIMARY STATS: Fuel & DEF (Full Width with Progress Bars)
