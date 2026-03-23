@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
@@ -27,7 +28,6 @@ import {
   Droplets,
   Cog,
   Wrench,
-  Calendar,
   CheckCircle,
   Loader2,
   RefreshCw,
@@ -41,15 +41,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -344,18 +336,10 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
   );
 
   // Service Request Wizard State
+  const router = useRouter();
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [navOrderId, setNavOrderId] = useState<string | null>(null);
   const [isGeneratingOrder, setIsGeneratingOrder] = useState(false);
-  const [selectedTechnician, setSelectedTechnician] = useState<string>("");
-  const [plannedDate, setPlannedDate] = useState<string>("");
-
-  // Mock technicians data
-  const technicians = [
-    { id: "ivan", name: "Иван Иванов" },
-    { id: "petar", name: "Петър Петров" },
-    { id: "georgi", name: "Георги Георгиев" },
-  ];
 
   // Generate mock NAV order
   const handleGenerateNavOrder = async () => {
@@ -367,21 +351,21 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
     setIsGeneratingOrder(false);
   };
 
-  // Handle form submission
-  const handleSubmitJobCard = () => {
-    // TODO: Insert Supabase logic here
-    toast.success("Работна карта е създадена!", {
-      description: `Поръчка: ${navOrderId} | Техник: ${technicians.find(t => t.id === selectedTechnician)?.name}`,
+  // Handle form submission - redirect to Planning
+  const handleSubmitAndGoToPlanning = () => {
+    // TODO: Insert Supabase logic here to save the service request
+    toast.success("Заявката е изпратена към Диспечер!", {
+      description: `Поръчка: ${navOrderId} | Машина: ${tractor.name}`,
     });
     // Reset and close
     setIsWizardOpen(false);
     setNavOrderId(null);
-    setSelectedTechnician("");
-    setPlannedDate("");
+    // Navigate to Planning page
+    router.push("/planning");
   };
 
-  // Check if form is valid for submission
-  const isFormValid = navOrderId && selectedTechnician;
+  // Check if form is valid for submission (only NAV order required now)
+  const isFormValid = !!navOrderId;
 
   // Compact stat card component for the grid
   const CompactStat = ({ 
@@ -689,52 +673,6 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
                 </div>
               </div>
 
-              {/* Section 3: Planning & Assignment */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                  Планиране & Назначаване
-                </h4>
-                <div className="grid gap-4">
-                  {/* Technician Select */}
-                  <div className="space-y-2">
-                    <Label htmlFor="technician" className="text-sm">
-                      Избери Техник
-                    </Label>
-                    <Select
-                      value={selectedTechnician}
-                      onValueChange={setSelectedTechnician}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Избери техник..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {technicians.map((tech) => (
-                          <SelectItem key={tech.id} value={tech.id}>
-                            {tech.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Planned Date */}
-                  <div className="space-y-2">
-                    <Label htmlFor="plannedDate" className="text-sm">
-                      Планирана Дата
-                    </Label>
-                    <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="plannedDate"
-                        type="date"
-                        value={plannedDate}
-                        onChange={(e) => setPlannedDate(e.target.value)}
-                        className="pl-10"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
 
             <DialogFooter>
@@ -745,12 +683,12 @@ function TelematicsPanel({ tractor, theme }: { tractor: Tractor; theme: Theme })
                 Отказ
               </Button>
               <Button
-                onClick={handleSubmitJobCard}
+                onClick={handleSubmitAndGoToPlanning}
                 disabled={!isFormValid}
                 className="gap-2 bg-primary hover:bg-primary/90"
               >
-                <CheckCircle className="h-4 w-4" />
-                Запиши Работна Карта
+                Запиши и Към Планиране
+                <span className="ml-1">&#10145;</span>
               </Button>
             </DialogFooter>
           </DialogContent>
