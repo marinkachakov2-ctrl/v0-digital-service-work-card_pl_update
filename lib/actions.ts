@@ -1093,7 +1093,7 @@ export async function masterSearch(
         model_name,
         brand,
         model,
-        clients:client_id (id, name, is_blocked, location),
+        clients:client_id (id, name, is_blocked, address),
         machine_telematics (*)
       `);
     
@@ -1122,7 +1122,7 @@ export async function masterSearch(
     
     // Process real database results with hybrid telematics
     for (const m of machines) {
-      const client = m.clients as { id: string; name: string; is_blocked: boolean; location: string } | null;
+      const client = m.clients as { id: string; name: string; is_blocked: boolean; address?: string } | null;
       const rawTelematics = m.machine_telematics as Array<Record<string, unknown>> | null;
       
       // Check if real telematics exists, otherwise inject mock data
@@ -1145,7 +1145,7 @@ export async function masterSearch(
           : `${m.brand || ""} ${m.model || ""}`.trim(),
         clientId: client?.id || undefined,
         clientName: client?.name || "",
-        clientLocation: client?.location || "",
+        clientLocation: client?.address || "",
         isBlocked: client?.is_blocked || false,
         telematics: {
           engineHours: (telematics.engine_hours as number) || 0,
@@ -1457,7 +1457,7 @@ export async function submitJobCard(data: {
 
   // ═══════════════════════════════════════════════════════════════════════════
   // REAL DATABASE SAVE: Valid UUIDs detected, proceed with Supabase insert
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ════════════════════���══════════════════════════════════════════════════════
   const supabase = await createClient();
 
   // Insert job card into Supabase - order_no can be null
@@ -1864,6 +1864,12 @@ export interface MachineIssue {
 export async function fetchUnresolvedMachineIssues(
   machineId: string
 ): Promise<{ issues: MachineIssue[]; error?: string }> {
+  // Sandbox: Skip database call for mock IDs
+  if (isMockId(machineId)) {
+    console.log("[Sandbox] Skipping fetchUnresolvedMachineIssues for mock machine:", machineId);
+    return { issues: [] };
+  }
+
   const supabase = await createClient();
 
   try {
