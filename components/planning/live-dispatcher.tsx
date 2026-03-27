@@ -12,6 +12,8 @@ import {
   DragOverEvent,
   useDroppable,
   useDraggable,
+  pointerWithin,
+  rectIntersection,
 } from "@dnd-kit/core";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -189,15 +191,17 @@ function WaitingJobCard({
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
 
-  // Note cards with checkbox style (like reference)
+  // Note cards with checkbox style (like reference) - entire card is draggable
   if (isNote) {
     return (
       <div
         ref={setNodeRef}
+        {...listeners}
+        {...attributes}
         style={style}
         className={cn(
-          "flex cursor-grab items-center gap-3 rounded-md border border-l-4 border-amber-200 border-l-amber-400 bg-amber-50 p-2.5 transition-all",
-          isDragging && "opacity-50 scale-105 shadow-lg"
+          "flex cursor-grab items-center gap-3 rounded-md border border-l-4 border-amber-200 border-l-amber-400 bg-amber-50 p-2.5 transition-all touch-none",
+          isDragging && "opacity-50 scale-105 shadow-lg z-50"
         )}
       >
         {/* Checkbox for notes */}
@@ -211,9 +215,7 @@ function WaitingJobCard({
           {/* Empty checkbox */}
         </button>
         
-        <div {...listeners} {...attributes} className="flex items-center">
-          <GripVertical className="h-4 w-4 flex-shrink-0 text-amber-600 opacity-60" />
-        </div>
+        <GripVertical className="h-4 w-4 flex-shrink-0 text-amber-600 opacity-60" />
         
         <div className="flex-1 min-w-0">
           <p className="text-sm text-amber-900 truncate">
@@ -243,20 +245,20 @@ function WaitingJobCard({
     );
   }
 
-  // Service/Repair cards with colored left border and badge
+  // Service/Repair cards with colored left border and badge - entire card is draggable
   return (
     <div
       ref={setNodeRef}
+      {...listeners}
+      {...attributes}
       style={style}
       className={cn(
-        "flex cursor-grab items-center gap-2 rounded-md border border-l-4 bg-card p-2.5 shadow-sm transition-all",
+        "flex cursor-grab items-center gap-2 rounded-md border border-l-4 bg-card p-2.5 shadow-sm transition-all touch-none",
         getBorderColor(),
-        isDragging && "opacity-50 scale-105 shadow-lg"
+        isDragging && "opacity-50 scale-105 shadow-lg z-50"
       )}
     >
-      <div {...listeners} {...attributes} className="flex items-center">
-        <GripVertical className="h-4 w-4 flex-shrink-0 text-muted-foreground opacity-60" />
-      </div>
+      <GripVertical className="h-4 w-4 flex-shrink-0 text-muted-foreground opacity-60" />
       
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-foreground truncate">
@@ -550,10 +552,17 @@ function TechnicianRow({
   onResize?: (appointmentId: string, newDuration: number) => void;
   techIndex?: number;
 }) {
-  const { setNodeRef } = useDroppable({
+  const { setNodeRef, isOver: localIsOver } = useDroppable({
     id: `tech-${technician.id}`,
     data: { technicianName: technician.name, technicianId: technician.id },
   });
+  
+  // Debug: log when this droppable becomes active
+  useEffect(() => {
+    if (localIsOver) {
+      console.log("[v0] Droppable active:", technician.name, technician.id);
+    }
+  }, [localIsOver, technician.name, technician.id]);
 
   const initials = getInitials(technician.name);
   const techColor = getTechColor(techIndex);
@@ -616,7 +625,7 @@ function TechnicianRow({
         ref={setNodeRef}
         className={cn(
           "relative flex-1 border-b border-border transition-colors",
-          isOver && "bg-primary/10"
+          (isOver || localIsOver) && "bg-primary/10"
         )}
         style={{ minWidth: HOURS.length * CELL_WIDTH }}
       >
@@ -662,7 +671,7 @@ function TechnicianRow({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────���───────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProps) {
@@ -871,11 +880,13 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
   // DRAG HANDLERS
   // ─────────────────────────────────────────────────────────────────────────
   const handleDragStart = (event: DragStartEvent) => {
+    console.log("[v0] Drag started:", event.active.id, event.active.data.current);
     setActiveId(event.active.id as string);
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    const { over, active } = event;
+    const { over } = event;
+    console.log("[v0] Drag over:", over?.id, over?.data?.current);
     
     if (over) {
       setOverId(over.id as string);
@@ -897,12 +908,16 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
 
 const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    console.log("[v0] Drag end - active:", active.id, "over:", over?.id, over?.data?.current);
     setActiveId(null);
     setOverId(null);
     setDropHour(null);
     setDropWarning(null);
 
-    if (!over) return;
+    if (!over) {
+      console.log("[v0] No drop target found");
+      return;
+    }
 
     const appointmentId = active.id as string;
     // Check assignedAppointments (timeline), sidebarBacklog (waiting list + notes), and demo jobs
@@ -1014,9 +1029,13 @@ const handleDragEnd = async (event: DragEndEvent) => {
   }, [demoJobs, sidebarBacklog]);
 
   // Active appointment for drag overlay (check all lists including demo jobs)
-  const activeAppointment = activeId
-    ? (assignedAppointments.find((a) => a.id === activeId) || waitingAppointments.find((a) => a.id === activeId))
-    : null;
+  const activeAppointment = useMemo(() => {
+    if (!activeId) return null;
+    return assignedAppointments.find((a) => a.id === activeId) 
+      || waitingAppointments.find((a) => a.id === activeId)
+      || demoJobs.find((a) => a.id === activeId)
+      || null;
+  }, [activeId, assignedAppointments, waitingAppointments, demoJobs]);
 
   // Current time line position (only show on today)
   const currentHour = currentTime.getHours();
@@ -1050,13 +1069,14 @@ const handleDragEnd = async (event: DragEndEvent) => {
     );
   }
 
-  return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDragEnd={handleDragEnd}
-    >
+return (
+<DndContext
+  sensors={sensors}
+  collisionDetection={rectIntersection}
+  onDragStart={handleDragStart}
+  onDragOver={handleDragOver}
+  onDragEnd={handleDragEnd}
+  >
       <div className="relative flex h-full flex-col gap-4">
         {/* Date Navigation Header - matching reference design */}
         <div className="flex items-center gap-3">
@@ -1357,14 +1377,37 @@ const handleDragEnd = async (event: DragEndEvent) => {
         </DialogContent>
       </Dialog>
 
-      {/* Drag Overlay */}
-      <DragOverlay>
-        {activeAppointment && (
-          <div className="opacity-90">
-            <TimelineTask appointment={activeAppointment} isOverlay />
+{/* Drag Overlay - shows dragged item */}
+<DragOverlay dropAnimation={null}>
+  {activeAppointment && (
+    <div className="opacity-95 pointer-events-none">
+      {/* Use WaitingJobCard style for items from sidebar, TimelineTask for timeline items */}
+      {activeAppointment.technician_name ? (
+        <TimelineTask appointment={activeAppointment} isOverlay />
+      ) : (
+        <div className={cn(
+          "flex cursor-grabbing items-center gap-2 rounded-md border border-l-4 bg-card p-2.5 shadow-xl",
+          activeAppointment.task_type === "note" 
+            ? "border-amber-200 border-l-amber-400 bg-amber-50" 
+            : "border-border border-l-[#367C2B]"
+        )}>
+          <GripVertical className="h-4 w-4 flex-shrink-0 opacity-60" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">
+              {activeAppointment.client_name || "Без клиент"}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {activeAppointment.machine_model || "Машина"}
+            </p>
           </div>
-        )}
-      </DragOverlay>
+          <Badge variant="secondary" className="text-xs shrink-0">
+            {activeAppointment.planned_hours || 1}ч
+          </Badge>
+        </div>
+      )}
+    </div>
+  )}
+</DragOverlay>
     </DndContext>
   );
 }
