@@ -1184,13 +1184,6 @@ setMissingPhotoReason("");
             />
           )}
 
-          {/* FREE CHECK Section - 14 point John Deere inspection */}
-          <FreeCheckSection
-            jobCardId={savedJobCardId}
-            isEnabled={isScanned}
-            onItemsChange={setFreeCheckItems}
-          />
-
           <DiagnosticsSection
             reasonCode={reasonCode}
             defectCode={defectCode}
@@ -1227,6 +1220,13 @@ setMissingPhotoReason("");
             laborItems={laborItems}
             onLaborItemsChange={setLaborItems}
             isAdmin={isAdmin}
+          />
+
+          {/* FREE CHECK Section - 14 point John Deere inspection */}
+          <FreeCheckSection
+            jobCardId={savedJobCardId}
+            isEnabled={isScanned}
+            onItemsChange={setFreeCheckItems}
           />
 
           {/* Unresolved Issues — after Labor/Work Done */}
