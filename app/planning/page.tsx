@@ -240,34 +240,49 @@ export default function PlanningBoardPage() {
 
   return (
     <ManagerLayout userRole="admin" userName="Service Manager">
-      {/* Sub-header with view toggles */}
+      {/* Sub-header with view toggles - matching reference design */}
       <div className="border-b border-border bg-card/50 px-4 py-2">
         <div className="flex items-center justify-end gap-2">
           <Button 
-            variant={navigation.level === "dispatcher" ? "default" : "outline"} 
+            variant={navigation.level === "dispatcher" ? "default" : "ghost"} 
             size="sm" 
-            className={navigation.level === "dispatcher" ? "" : "bg-transparent"}
+            className={cn(
+              "gap-1.5",
+              navigation.level === "dispatcher" 
+                ? "bg-amber-500 text-white hover:bg-amber-600" 
+                : "text-muted-foreground hover:text-foreground"
+            )}
             onClick={() => setNavigation({ level: "dispatcher", selectedDate: new Date(), selectedTechnicianId: null, selectedTechnicianName: null })}
           >
-            <Users className="h-4 w-4 mr-1.5" />
+            <Users className="h-4 w-4" />
             Gantt
           </Button>
           <Button 
-            variant={navigation.level === "calendar" ? "default" : "outline"} 
+            variant={navigation.level === "calendar" ? "default" : "ghost"} 
             size="sm" 
-            className={navigation.level === "calendar" ? "" : "bg-transparent"}
+            className={cn(
+              "gap-1.5",
+              navigation.level === "calendar" 
+                ? "bg-primary text-primary-foreground" 
+                : "text-muted-foreground hover:text-foreground"
+            )}
             onClick={() => setNavigation({ level: "calendar", selectedDate: null, selectedTechnicianId: null, selectedTechnicianName: null })}
           >
-            <CalendarRange className="h-4 w-4 mr-1.5" />
+            <CalendarRange className="h-4 w-4" />
             Calendar
           </Button>
           <Button 
-            variant={navigation.level === "kanban" ? "default" : "outline"} 
+            variant={navigation.level === "kanban" ? "default" : "ghost"} 
             size="sm" 
-            className={navigation.level === "kanban" ? "" : "bg-transparent"}
+            className={cn(
+              "gap-1.5",
+              navigation.level === "kanban" 
+                ? "bg-primary text-primary-foreground" 
+                : "text-muted-foreground hover:text-foreground"
+            )}
             onClick={() => setNavigation({ level: "kanban", selectedDate: null, selectedTechnicianId: null, selectedTechnicianName: null })}
           >
-            <Columns3 className="h-4 w-4 mr-1.5" />
+            <Columns3 className="h-4 w-4" />
             Kanban
           </Button>
         </div>

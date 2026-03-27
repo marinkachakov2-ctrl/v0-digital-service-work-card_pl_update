@@ -42,16 +42,16 @@ interface LiveDispatcherProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CONSTANTS
+// CONSTANTS - Matching reference design layout
 // ─────────────────────────────────────────────────────────────────────────────
 const START_HOUR = 0;  // Extended to 00:00
 const END_HOUR = 24;   // Extended to 24:00
 const WORK_START_HOUR = 7;  // Visual work start
 const WORK_END_HOUR = 19;   // Visual work end
 const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
-const CELL_WIDTH = 80; // Slightly smaller for 24 hours
-const ROW_HEIGHT = 70;
-const SIDEBAR_WIDTH = 160;
+const CELL_WIDTH = 70; // Matching reference column width
+const ROW_HEIGHT = 60; // Matching reference row height
+const SIDEBAR_WIDTH = 180; // Wider for full names like reference
 
 // Colors by type/status
 const TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> = {
@@ -155,13 +155,15 @@ function toUTCTimestamp(): string {
 // DRAGGABLE COMPONENTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Waiting list draggable item
+// Waiting list draggable item - compact card with left color border (matching reference)
 function WaitingJobCard({ 
   appointment, 
-  onConvert 
+  onConvert,
+  onToggleComplete,
 }: { 
   appointment: ServiceAppointment;
   onConvert?: (apt: ServiceAppointment) => void;
+  onToggleComplete?: (apt: ServiceAppointment) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: appointment.id,
@@ -171,58 +173,111 @@ function WaitingJobCard({
   const colors = getAppointmentColor(appointment);
   const isNote = appointment.task_type === "note";
   const appointmentDate = new Date(appointment.work_date);
-  const dateLabel = appointmentDate.toLocaleDateString("bg-BG", { day: "2-digit", month: "short" });
+  const dateLabel = appointmentDate.toLocaleDateString("bg-BG", { day: "numeric", month: "short" });
+
+  // Determine border color based on type
+  const getBorderColor = () => {
+    if (isNote) return "border-l-amber-400";
+    const priority = appointment.priority?.toLowerCase();
+    const notes = appointment.notes?.toLowerCase() || "";
+    if (priority === "emergency" || priority === "urgent" || notes.includes("спешно")) return "border-l-red-500";
+    if (notes.includes("ремонт") || notes.includes("repair")) return "border-l-blue-500";
+    return "border-l-[#367C2B]"; // Service green
+  };
 
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
 
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "flex cursor-grab items-center gap-2 rounded-md border p-2 shadow-sm transition-all",
-        isNote ? "bg-amber-100 border-amber-300 text-amber-900" : colors.bg,
-        !isNote && colors.border,
-        !isNote && colors.text,
-        isDragging && "opacity-50 scale-105 shadow-lg"
-      )}
-    >
-      <div {...listeners} {...attributes} className="flex items-center">
-        <GripVertical className="h-4 w-4 flex-shrink-0 opacity-60" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1">
-          {isNote && <FileText className="h-3 w-3 flex-shrink-0" />}
-          <p className="text-xs font-medium truncate">
-            {appointment.client_name || "Без клиент"}
+  // Note cards with checkbox style (like reference)
+  if (isNote) {
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={cn(
+          "flex cursor-grab items-center gap-3 rounded-md border border-l-4 border-amber-200 border-l-amber-400 bg-amber-50 p-2.5 transition-all",
+          isDragging && "opacity-50 scale-105 shadow-lg"
+        )}
+      >
+        {/* Checkbox for notes */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleComplete?.(appointment);
+          }}
+          className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border border-amber-400 bg-white hover:bg-amber-100 transition-colors"
+        >
+          {/* Empty checkbox */}
+        </button>
+        
+        <div {...listeners} {...attributes} className="flex items-center">
+          <GripVertical className="h-4 w-4 flex-shrink-0 text-amber-600 opacity-60" />
+        </div>
+        
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-amber-900 truncate">
+            {appointment.client_name || "Бележка"}
+          </p>
+          <p className="text-[10px] text-amber-700">
+            {dateLabel}
           </p>
         </div>
-        <p className="text-[10px] opacity-80 truncate">
-          {isNote ? dateLabel : (appointment.machine_model || appointment.serial_number || "Машина")}
-        </p>
-      </div>
-      <div className="flex items-center gap-1">
-        {isNote && onConvert && (
+        
+        {onConvert && (
           <button
             onClick={(e) => {
               e.stopPropagation();
               onConvert(appointment);
             }}
-            className="p-1 rounded hover:bg-amber-200 transition-colors"
+            className="p-1 rounded hover:bg-amber-200 transition-colors flex-shrink-0"
             title="Преобразувай в поръчка"
           >
-            <ArrowRight className="h-3 w-3" />
+            <ArrowRight className="h-3.5 w-3.5 text-amber-700" />
           </button>
         )}
-        <Badge variant="outline" className={cn(
-          "text-[10px] shrink-0",
-          isNote ? "bg-amber-200/50 border-amber-400" : "bg-white/20 border-white/30"
-        )}>
-          {appointment.planned_hours || 1}ч
-        </Badge>
+        
+        {/* Checkbox style indicator */}
+        <div className="w-6 h-6 rounded border border-amber-300 bg-amber-100 flex-shrink-0" />
       </div>
+    );
+  }
+
+  // Service/Repair cards with colored left border and badge
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "flex cursor-grab items-center gap-2 rounded-md border border-l-4 bg-card p-2.5 shadow-sm transition-all",
+        getBorderColor(),
+        isDragging && "opacity-50 scale-105 shadow-lg"
+      )}
+    >
+      <div {...listeners} {...attributes} className="flex items-center">
+        <GripVertical className="h-4 w-4 flex-shrink-0 text-muted-foreground opacity-60" />
+      </div>
+      
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-foreground truncate">
+          {appointment.client_name || "Без клиент"}
+        </p>
+        <p className="text-xs text-muted-foreground truncate">
+          {appointment.machine_model || appointment.serial_number || "Машина"}
+        </p>
+      </div>
+      
+      {/* Hours badge on right side */}
+      <Badge 
+        variant="secondary" 
+        className={cn(
+          "text-xs font-semibold shrink-0 px-2",
+          colors.bg,
+          colors.text
+        )}
+      >
+        {appointment.planned_hours || 1}ч
+      </Badge>
     </div>
   );
 }
@@ -293,7 +348,16 @@ function TimelineTask({
   );
 }
 
-// Droppable technician row
+// Get initials from name (e.g., "Георги Петров" -> "ГП")
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((part) => part.charAt(0).toUpperCase())
+    .slice(0, 2)
+    .join("");
+}
+
+// Droppable technician row - matching reference design
 function TechnicianRow({
   technician,
   appointments,
@@ -312,21 +376,21 @@ function TechnicianRow({
     data: { technicianName: technician.name, technicianId: technician.id },
   });
 
+  const initials = getInitials(technician.name);
+
   return (
     <div className="flex" style={{ height: ROW_HEIGHT }}>
-      {/* Technician name sidebar */}
+      {/* Technician name sidebar - matching reference with avatar and name */}
       <div
-        className="flex flex-shrink-0 items-center border-b border-r border-border bg-secondary/30 px-3"
+        className="flex flex-shrink-0 items-center gap-3 border-b border-r border-border bg-secondary/30 px-3"
         style={{ width: SIDEBAR_WIDTH }}
       >
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/20">
-            <User className="h-4 w-4 text-primary" />
-          </div>
-          <span className="text-sm font-medium text-foreground truncate">
-            {technician.name}
-          </span>
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
+          <User className="h-4 w-4" />
         </div>
+        <span className="text-sm font-medium text-foreground truncate">
+          {technician.name}
+        </span>
       </div>
 
       {/* Timeline area - droppable */}
@@ -443,13 +507,13 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
     setCurrentDate(new Date());
   }, []);
 
-  // Format date for display (Bulgarian locale)
+  // Format date for display (Bulgarian locale) - matching reference "27 март 2026 г."
   const formattedDisplayDate = currentDate.toLocaleDateString("bg-BG", {
-    day: "2-digit",
+    day: "numeric",
     month: "long",
     year: "numeric",
     timeZone: "Europe/Sofia",
-  });
+  }) + " г.";
 
   // Sensors for drag detection
   const sensors = useSensors(
@@ -736,52 +800,59 @@ const handleDragEnd = async (event: DragEndEvent) => {
       onDragEnd={handleDragEnd}
     >
       <div className="relative flex h-full flex-col gap-4">
-        {/* Date Navigation Header */}
-        <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
-          <div className="flex items-center gap-2">
+        {/* Date Navigation Header - matching reference design */}
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={goToPreviousDay}
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground"
+          >
+            <CalendarDays className="h-5 w-5" />
+          </Button>
+          
+          <span className="text-base font-semibold text-foreground min-w-[180px]">
+            {formattedDisplayDate}
+          </span>
+          
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={goToNextDay}
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </Button>
+          
+          {!isToday && (
             <Button
               variant="outline"
-              size="icon"
-              onClick={goToPreviousDay}
-              className="h-8 w-8"
+              size="sm"
+              onClick={goToToday}
+              className="ml-2 gap-1.5"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <Clock className="h-3.5 w-3.5" />
+              Днес
             </Button>
-            
-            <div className="flex items-center gap-2 px-3">
-              <CalendarDays className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-semibold min-w-[180px] text-center">
-                {formattedDisplayDate}
-              </span>
-            </div>
-            
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={goToNextDay}
-              className="h-8 w-8"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {!isToday && (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={goToToday}
-                className="gap-1.5"
-              >
-                <Clock className="h-3.5 w-3.5" />
-                Днес
-              </Button>
-            )}
-            
-            <Button variant="outline" size="sm" onClick={refetch} disabled={loading}>
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-            </Button>
-          </div>
+          )}
+          
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={refetch} 
+            disabled={loading}
+            className="h-8 w-8 ml-auto text-muted-foreground"
+          >
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
         </div>
 
         {/* Warning Toast */}
@@ -875,19 +946,20 @@ const handleDragEnd = async (event: DragEndEvent) => {
             </ScrollArea>
           </div>
 
-          {/* Waiting List Sidebar */}
+          {/* Waiting List Sidebar - matching reference design */}
         <div className="w-72 flex-shrink-0 rounded-lg border border-border bg-card flex flex-col">
-          <div className="border-b border-border bg-secondary/50 px-4 py-3">
+          {/* Header with title and count badge */}
+          <div className="border-b border-border px-4 py-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-foreground">Чакащи (Всички)</h3>
-              <Badge variant="secondary" className="text-xs">
+              <Badge className="bg-amber-500 text-white hover:bg-amber-500 text-xs px-2">
                 {waitingAppointments.length}
               </Badge>
             </div>
           </div>
 
-          {/* Quick Note Input */}
-          <div className="border-b border-border p-3">
+          {/* Quick Note Input - matching reference */}
+          <div className="border-b border-border px-4 py-3">
             <div className="flex gap-2">
               <Input
                 placeholder="Добави бърза бележка..."
@@ -895,12 +967,12 @@ const handleDragEnd = async (event: DragEndEvent) => {
                 onChange={(e) => setQuickNoteText(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAddQuickNote()}
                 disabled={addingNote}
-                className="h-8 text-xs"
+                className="h-9 text-sm bg-secondary/50 border-border"
               />
               <Button
                 size="icon"
-                variant="outline"
-                className="h-8 w-8 flex-shrink-0"
+                variant="ghost"
+                className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-foreground"
                 onClick={handleAddQuickNote}
                 disabled={addingNote || !quickNoteText.trim()}
               >
