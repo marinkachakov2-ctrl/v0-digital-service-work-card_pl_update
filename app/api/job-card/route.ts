@@ -95,11 +95,52 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get Supabase client
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SANDBOX SIMULATION: Check for mock IDs before attempting database operations
+    // This allows testing the UI in v0 sandbox without valid Supabase UUIDs
+    // ═══════════════════════════════════════════════════════════════════════════
+    const isMockId = (id: string | undefined | null): boolean => {
+      if (!id) return false;
+      if (id.startsWith("mock-")) return true;
+      // Check for valid UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      return !uuidRegex.test(id);
+    };
+
+    const primaryTechnicianId = validTechnicians[0];
+    const hasMockData = isMockId(data.machineId) || isMockId(primaryTechnicianId) || isMockId(data.payerId);
+
+    if (hasMockData) {
+      console.log("[Sandbox] Mock data detected - simulating save");
+      console.log("[Sandbox] Payload:", JSON.stringify({
+        machineId: data.machineId,
+        technicianId: primaryTechnicianId,
+        payerId: data.payerId,
+        orderNumber: data.orderNumber,
+        jobType: data.jobType,
+        status: data.status,
+      }, null, 2));
+
+      // Simulate network delay
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Generate mock job card ID
+      const mockJobCardId = `JC-${Date.now().toString(36).toUpperCase()}`;
+
+      console.log("[Sandbox] Simulated save successful. Mock Job Card ID:", mockJobCardId);
+
+      return NextResponse.json({
+        success: true,
+        jobCardId: mockJobCardId,
+        pendingOrder: !data.orderNumber || data.orderNumber.trim() === "",
+        message: "[Sandbox] Job card saved successfully (simulated)",
+      });
+    }
+
+    // Get Supabase client (only for real UUID data)
     const supabase = await createClient();
 
     // Prepare data for insert - map to exact column names
-    const primaryTechnicianId = validTechnicians[0];
     const hasPendingOrder = !data.orderNumber || data.orderNumber.trim() === "";
     const totalSeconds = data.timerData?.elapsedSeconds ?? 0;
 

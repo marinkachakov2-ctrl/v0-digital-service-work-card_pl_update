@@ -14,7 +14,7 @@ import {
   Tractor,
   AlertTriangle,
 } from "lucide-react";
-import { masterSearch, type MasterSearchResult } from "@/lib/actions";
+import { masterSearch, type MasterSearchResult, type MachineTelematics } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 
 // Order types mapping
@@ -34,13 +34,19 @@ export interface SelectedOrder {
   jobCardNumber: string;
   clientId: string | null;
   clientName: string;
+  clientLocation?: string;
   machineId: string | null;
   machineModel: string;
   machineSerial: string;
+  engineSerial?: string;
   serviceType: OrderTypeValue;
   isBlocked?: boolean;
   // Navision description - pre-populated from service order
   navisionDescription?: string;
+  // JDLink telematics data
+  telematics?: MachineTelematics;
+  // Active DTC codes
+  dtcCodes?: Array<{ code: string; description: string; severity: "warning" | "critical" }>;
 }
 
 interface OrderSelectorProps {
@@ -85,9 +91,15 @@ export function OrderSelector({
     setShowResults(false);
   }, [onOrderTypeChange]);
 
-  // Debounced master search - searches both orders and machines
+  // Debounced master search with "Power User" wildcard (%) support
+  // - If user types just "%", fetch a general list of machines (limit 50)
+  // - If they type "%1L" or "1L", filter based on the input
   useEffect(() => {
-    if (searchQuery.length < 2) {
+    const isWildcardOnly = searchQuery.trim() === "%";
+    const cleanQuery = searchQuery.replace(/%/g, "").trim();
+    const shouldSearch = isWildcardOnly || cleanQuery.length >= 2;
+
+    if (!shouldSearch) {
       setSearchResults([]);
       setShowResults(false);
       return;
@@ -96,13 +108,14 @@ export function OrderSelector({
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const results = await masterSearch(searchQuery, orderType);
+        // Pass empty string for wildcard-only to get general list
+        const results = await masterSearch(isWildcardOnly ? "" : cleanQuery, orderType);
         setSearchResults(results);
         setShowResults(true);
       } catch (error) {
         console.error("OrderSelector search error:", error);
         setSearchResults([]);
-        setShowResults(true); // Still show dropdown with "no results" message
+        setShowResults(true);
       } finally {
         setIsSearching(false);
       }
@@ -120,13 +133,18 @@ export function OrderSelector({
       jobCardNumber: result.jobCardNumber || "",
       clientId: result.clientId || null,
       clientName: result.clientName,
+      clientLocation: result.clientLocation,
       machineId: result.machineId || null,
       machineModel: result.machineModel,
       machineSerial: result.machineSerial,
+      engineSerial: result.engineSerial,
       serviceType: result.serviceType || orderType,
       isBlocked: result.isBlocked,
       // Pass Navision description from service order
       navisionDescription: result.navisionDescription,
+      // Pass JDLink telematics data
+      telematics: result.telematics,
+      dtcCodes: result.dtcCodes,
     };
     onOrderSelect(selected);
     setSearchQuery("");
@@ -168,8 +186,14 @@ export function OrderSelector({
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => searchQuery.length >= 2 && setShowResults(true)}
-                placeholder="Търсене по РК, Поръчка, Сериен номер или Клиент..."
+                onFocus={() => {
+                  const isWildcard = searchQuery.trim() === "%";
+                  const cleanQuery = searchQuery.replace(/%/g, "").trim();
+                  if (isWildcard || cleanQuery.length >= 2) {
+                    setShowResults(true);
+                  }
+                }}
+                placeholder="Търсене (напиши % за всички машини)..."
                 className="pl-10 pr-4 h-12 text-base bg-background border-border/50 focus:border-[#007A33]"
                 disabled={!!selectedOrder}
               />
@@ -186,9 +210,9 @@ export function OrderSelector({
             </Button>
           </div>
 
-          {/* Search Results Dropdown with clear distinction */}
+          {/* Search Results Dropdown - Dark themed with prominent client names */}
           {showResults && searchResults.length > 0 && (
-            <div className="absolute z-50 mt-2 w-full rounded-lg border border-border bg-popover shadow-xl">
+            <div className="absolute z-50 mt-2 w-full rounded-xl border border-[#007A33]/30 bg-[#0a0f0a] shadow-2xl shadow-black/50">
               <div className="max-h-80 overflow-y-auto p-2 space-y-1">
                 {searchResults.map((result) => (
                   <button
@@ -196,69 +220,48 @@ export function OrderSelector({
                     type="button"
                     onClick={() => handleSelect(result)}
                     className={cn(
-                      "w-full rounded-lg px-3 py-3 text-left transition-colors",
-                      "hover:bg-accent hover:text-accent-foreground",
-                      "focus:outline-none focus:bg-accent",
+                      "w-full rounded-lg px-3 py-3 text-left transition-all duration-200",
+                      "hover:bg-[#007A33]/10 hover:border-[#007A33]/50",
+                      "focus:outline-none focus:bg-[#007A33]/10",
                       "border border-transparent",
-                      result.type === "order" 
-                        ? "hover:border-blue-500/30" 
-                        : "hover:border-emerald-500/30",
                       result.isBlocked && "border-l-4 border-l-red-500"
                     )}
                   >
-                    <div className="flex items-start gap-3">
-                      {/* Type Icon */}
-                      <div className={cn(
-                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                        result.type === "order" 
-                          ? "bg-blue-500/10 text-blue-500" 
-                          : "bg-emerald-500/10 text-emerald-500"
-                      )}>
-                        {result.type === "order" ? (
-                          <FileText className="h-5 w-5" />
-                        ) : (
-                          <Tractor className="h-5 w-5" />
-                        )}
+                    <div className="flex items-center gap-3">
+                      {/* Green Tractor Icon */}
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#007A33]/20">
+                        <Tractor className="h-5 w-5 text-[#007A33]" />
                       </div>
                       
-                      {/* Content */}
+                      {/* Content - Client prominent, machine details below */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          {result.type === "order" ? (
-                            <>
-                              <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/30 text-xs">
-                                Отворена поръчка
-                              </Badge>
-                              <span className="font-mono font-bold text-sm text-foreground">
-                                РК {result.jobCardNumber}
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30 text-xs">
-                                Машина
-                              </Badge>
-                              <span className="font-mono font-bold text-sm text-foreground">
-                                SN: {result.machineSerial}
-                              </span>
-                            </>
-                          )}
+                        {/* Client Name - Prominent white text */}
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm text-white truncate">
+                            {result.clientName || "Unknown Client"}
+                          </span>
                           {result.isBlocked && (
-                            <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                            <Badge variant="destructive" className="text-[10px] px-1.5 py-0 shrink-0">
                               <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />
                               БЛОКИРАН
                             </Badge>
                           )}
+                          {result.telematics && (
+                            <span className="ml-auto flex items-center gap-1 text-[10px] text-[#007A33]">
+                              <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#007A33] opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#007A33]"></span>
+                              </span>
+                              JDLink
+                            </span>
+                          )}
                         </div>
                         
-                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                          {result.type === "order" && result.orderNumber && (
-                            <span>Поръчка: {result.orderNumber}</span>
-                          )}
+                        {/* Model + Serial - Smaller gray text */}
+                        <div className="flex items-center gap-1.5 text-xs text-gray-400 mt-0.5">
                           <span className="truncate">{result.machineModel}</span>
-                          {result.clientName && (
-                            <span className="truncate text-foreground/70">{result.clientName}</span>
-                          )}
+                          <span className="text-gray-600">•</span>
+                          <span className="font-mono text-gray-500">#{result.machineSerial}</span>
                         </div>
                       </div>
                     </div>
@@ -269,10 +272,12 @@ export function OrderSelector({
           )}
 
           {/* No results message */}
-          {showResults && searchResults.length === 0 && !isSearching && searchQuery.length >= 2 && (
-            <div className="absolute z-50 mt-2 w-full rounded-lg border border-border bg-popover p-4 shadow-xl">
-              <p className="text-sm text-muted-foreground text-center">
-                Няма намерени резултати за "{searchQuery}"
+          {showResults && searchResults.length === 0 && !isSearching && (searchQuery.trim() === "%" || searchQuery.replace(/%/g, "").trim().length >= 2) && (
+            <div className="absolute z-50 mt-2 w-full rounded-xl border border-[#007A33]/30 bg-[#0a0f0a] p-4 shadow-2xl">
+              <p className="text-sm text-gray-400 text-center">
+                {searchQuery.trim() === "%" 
+                  ? "Няма регистрирани машини в системата" 
+                  : `Няма намерени резултати за "${searchQuery}"`}
               </p>
             </div>
           )}

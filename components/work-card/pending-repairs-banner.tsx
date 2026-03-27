@@ -148,7 +148,7 @@ export function PendingRepairsBanner({
                   {pendingRepairs.length} отложени ремонта от предишни посещения
                   {totalEstimatedCost > 0 && (
                     <span className="ml-2">
-                      (прибл. {totalEstimatedCost.toFixed(2)} лв.)
+                      (прибл. {totalEstimatedCost.toFixed(2)} €)
                     </span>
                   )}
                 </p>
@@ -238,7 +238,7 @@ export function PendingRepairsBanner({
                           </span>
                           {repair.estimatedCost > 0 && (
                             <span className="text-amber-500">
-                              ~{repair.estimatedCost.toFixed(2)} лв.
+                              ~{repair.estimatedCost.toFixed(2)} €
                             </span>
                           )}
                           <Badge

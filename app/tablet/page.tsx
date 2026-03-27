@@ -43,17 +43,15 @@ import {
   PlusCircle,
   LayoutGrid,
   BarChart3,
-  ArrowLeft,
   ListChecks,
   Search,
-  Wrench,
   Users,
   Crown,
   Shield,
   FileSignature,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import Link from "next/link";
+import { TechnicalPortalLayout } from "@/components/layout/technical-portal-layout";
 import {
   useClocking,
   getStatusColor,
@@ -183,59 +181,43 @@ export default function TabletSystemPage() {
     : "";
 
   return (
-    <div className="min-h-screen bg-background text-foreground p-4 font-sans">
-      {/* Header */}
-      <header className="flex flex-col md:flex-row justify-between items-center bg-card p-4 rounded-xl border border-border mb-6 gap-4">
-        <div className="flex items-center gap-4">
-          <Link href="/planning">
-            <Button variant="ghost" size="sm" className="gap-2 bg-transparent text-muted-foreground hover:text-foreground">
-              <ArrowLeft className="h-4 w-4" />
-              Към графика
+    <TechnicalPortalLayout subtitle="SERVICE OS - Клокинг">
+      <div className="p-4 font-sans">
+        {/* Sub-header with tabs and admin toggle */}
+        <header className="flex flex-col md:flex-row justify-between items-center bg-card p-4 rounded-xl border border-border mb-6 gap-4">
+          <div className="flex items-center gap-4">
+            {/* Admin Toggle */}
+            <Button
+              variant={isAdmin ? "default" : "outline"}
+              size="sm"
+              className={cn("gap-1 text-xs", isAdmin && "bg-red-600 hover:bg-red-700 text-white")}
+              onClick={() => setIsAdmin(!isAdmin)}
+            >
+              <Shield className="h-3.5 w-3.5" />
+              {isAdmin ? "Admin ON" : "Admin"}
             </Button>
-          </Link>
-          <Link href="/admin">
-            <Button variant="ghost" size="sm" className="bg-transparent text-muted-foreground hover:text-foreground text-xs">
-              Admin
-            </Button>
-          </Link>
-          <div className="bg-emerald-500 p-2 rounded-lg text-black">
-            <Wrench size={20} />
           </div>
-          <h1 className="text-lg font-bold tracking-tighter text-foreground">
-            MEGATRON <span className="text-muted-foreground text-sm font-normal">SERVICE OS</span>
-          </h1>
-          {/* Admin Toggle */}
-          <Button
-            variant={isAdmin ? "default" : "outline"}
-            size="sm"
-            className={cn("gap-1 text-xs", isAdmin && "bg-red-600 hover:bg-red-700 text-white")}
-            onClick={() => setIsAdmin(!isAdmin)}
-          >
-            <Shield className="h-3.5 w-3.5" />
-            {isAdmin ? "Admin ON" : "Admin"}
-          </Button>
-        </div>
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full md:w-auto">
-          <TabsList className="grid grid-cols-4 bg-secondary">
-            <TabsTrigger value="dispatch" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-black">
-              <LayoutGrid size={16} className="mr-2" />
-              Борд
-            </TabsTrigger>
-            <TabsTrigger value="mobile" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-black">
-              <Play size={16} className="mr-2" />
-              Клокинг
-            </TabsTrigger>
-            <TabsTrigger value="registry" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-black">
-              <ListChecks size={16} className="mr-2" />
-              Регистър
-            </TabsTrigger>
-            <TabsTrigger value="kpi" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-black">
-              <BarChart3 size={16} className="mr-2" />
-              KPI
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </header>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full md:w-auto">
+            <TabsList className="grid grid-cols-4 bg-secondary">
+              <TabsTrigger value="dispatch" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-black">
+                <LayoutGrid size={16} className="mr-2" />
+                Борд
+              </TabsTrigger>
+              <TabsTrigger value="mobile" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-black">
+                <Play size={16} className="mr-2" />
+                Клокинг
+              </TabsTrigger>
+              <TabsTrigger value="registry" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-black">
+                <ListChecks size={16} className="mr-2" />
+                Регистър
+              </TabsTrigger>
+              <TabsTrigger value="kpi" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-black">
+                <BarChart3 size={16} className="mr-2" />
+                KPI
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </header>
 
       {/* CLOCKING TAB */}
       {activeTab === "mobile" && (
@@ -790,6 +772,7 @@ export default function TabletSystemPage() {
           </Card>
         </div>
       )}
-    </div>
+      </div>
+    </TechnicalPortalLayout>
   );
 }

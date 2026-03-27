@@ -563,13 +563,7 @@ export function Footer({
                     По банков път (Bank Transfer)
                   </Label>
                 </div>
-                <div className="flex items-center space-x-3 rounded-md border border-border bg-secondary p-3">
-                  <RadioGroupItem value="cash" id="cash" />
-                  <Label htmlFor="cash" className="flex flex-1 cursor-pointer items-center gap-2 text-foreground">
-                    <Banknote className="h-4 w-4 text-muted-foreground" />
-                    В брой (Cash)
-                  </Label>
-                </div>
+                
               </RadioGroup>
             </div>
 
@@ -578,25 +572,25 @@ export function Footer({
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Service Total:</span>
-                  <span className="font-mono text-foreground">{laborTotal.toFixed(2)} лв.</span>
+                  <span className="font-mono text-foreground">{laborTotal.toFixed(2)} €</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Parts Total:</span>
-                  <span className="font-mono text-foreground">{partsTotal.toFixed(2)} лв.</span>
+                  <span className="font-mono text-foreground">{partsTotal.toFixed(2)} €</span>
                 </div>
                 <Separator className="bg-border" />
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal:</span>
-                  <span className="font-mono text-foreground">{(laborTotal + partsTotal).toFixed(2)} лв.</span>
+                  <span className="font-mono text-foreground">{(laborTotal + partsTotal).toFixed(2)} €</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">VAT (20%):</span>
-                  <span className="font-mono text-foreground">{vat.toFixed(2)} лв.</span>
+                  <span className="font-mono text-foreground">{vat.toFixed(2)} €</span>
                 </div>
                 <Separator className="bg-border" />
                 <div className="flex justify-between">
                   <span className="text-lg font-semibold text-foreground">Grand Total:</span>
-                  <span className="font-mono text-xl font-bold text-primary">{grandTotal.toFixed(2)} лв.</span>
+                  <span className="font-mono text-xl font-bold text-primary">{grandTotal.toFixed(2)} €</span>
                 </div>
               </div>
             </div>
@@ -604,18 +598,21 @@ export function Footer({
         </CardContent>
       </Card>
 
-      {/* Technician Signature Pad - Required for PDF export */}
-      <TechnicianSignaturePad
-        onSignatureChange={handleTechSignatureChange}
-        disabled={isReadOnly}
-        leadTechnician={pdfData?.leadTechnician}
-      />
+      {/* Signature Pads - Side by Side */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Technician Signature Pad - Required for PDF export */}
+        <TechnicianSignaturePad
+          onSignatureChange={handleTechSignatureChange}
+          disabled={isReadOnly}
+          leadTechnician={pdfData?.leadTechnician}
+        />
 
-      {/* Client Signature Pad */}
-      <SignaturePad
-        onSignatureChange={handleSignatureChange}
-        disabled={isReadOnly}
-      />
+        {/* Client Signature Pad */}
+        <SignaturePad
+          onSignatureChange={handleSignatureChange}
+          disabled={isReadOnly}
+        />
+      </div>
 
       {/* Warning: signing auto-stops clocking */}
       {hasActiveTimer && (
@@ -789,7 +786,7 @@ export function Footer({
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="phone">Телефонен номер</Label>
+              <Label htmlFor="phone">Т��лефонен номер</Label>
               <div className="flex gap-2">
                 <span className="flex items-center px-3 bg-muted rounded-l-md border border-r-0 text-sm text-muted-foreground">
                   +359

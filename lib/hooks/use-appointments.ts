@@ -265,11 +265,13 @@ export function useAppointments(options: UseAppointmentsOptions = {}) {
     id: string,
     technicianName: string,
     workDate?: string,
-    startTime?: string
+    startTime?: string,
+    plannedHours?: number
   ): Promise<{ success: boolean; error?: string }> => {
     const updates: Partial<ServiceAppointment> = { technician_name: technicianName };
     if (workDate) updates.work_date = workDate;
     if (startTime) updates.start_time = startTime;
+    if (plannedHours !== undefined) updates.planned_hours = plannedHours;
     return updateAppointment(id, updates);
   }, [updateAppointment]);
 

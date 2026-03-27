@@ -4,22 +4,21 @@ import { useState, useMemo, useEffect, useRef, useCallback, Suspense } from "rea
 import { useSearchParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Lock, FileEdit, Loader2 } from "lucide-react";
-import { WorkCardHeader } from "@/components/work-card/header";
+import { TechnicalPortalLayout } from "@/components/layout/technical-portal-layout";
 import { OrderSelector, type SelectedOrder } from "@/components/work-card/order-selector";
 import { TechniciansSection } from "@/components/work-card/technicians-section";
 import { ClientSection } from "@/components/work-card/client-section";
 import { FreeCheckSection, FREE_CHECK_POINTS, type FreeCheckItem } from "@/components/work-card/free-check-section";
-import type { DetectedIssue } from "@/components/work-card/future-issues-section";
 import { DiagnosticsSection, type FaultPhoto } from "@/components/work-card/diagnostics-section";
 import { PartsTable } from "@/components/work-card/parts-table";
 import { LaborTable } from "@/components/work-card/labor-table";
-import { UnresolvedIssuesAlert, UnresolvedIssuesSection, DynamicUnresolvedIssuesAlert, type UnresolvedIssue } from "@/components/work-card/unresolved-issues";
+
 import { CreditWarningBanner } from "@/components/work-card/credit-warning-banner";
 import { HistoricalIssuesBanner } from "@/components/work-card/historical-issues-banner";
-import { RecommendationsSection, type RecommendationsData } from "@/components/work-card/recommendations-section";
-import { FutureIssuesSection } from "@/components/work-card/future-issues-section";
+import { UnifiedIssuesSection, type DetectedIssue } from "@/components/work-card/unified-issues-section";
 import { PendingRepairsBanner } from "@/components/work-card/pending-repairs-banner";
 import { TechnicianHeader } from "@/components/work-card/technician-header";
+import { JDLinkDiagnostics } from "@/components/work-card/jdlink-diagnostics";
 import type { ServiceHistoryIssue, PendingRepairItem } from "@/lib/actions";
 import { startClocking, stopClocking, updateJobCardDescription, getPreviousMachineHours, uploadEngineHoursPhoto, fetchUnresolvedMachineIssues, savePendingRepairs, fetchJobCardForEdit, type MachineIssue } from "@/lib/actions";
 import { Footer } from "@/components/work-card/footer";
@@ -92,6 +91,7 @@ function WorkCardPageContent() {
   // Technicians — dynamic list
   const [assignedTechnicians, setAssignedTechnicians] = useState<string[]>([""]);
   const [leadTechnicianId, setLeadTechnicianId] = useState<string | null>(null);
+  const [leadTechnicianName, setLeadTechnicianName] = useState<string>("");
   const [clockAtJobLevel, setClockAtJobLevel] = useState(false);
 
   // Signature
@@ -120,18 +120,18 @@ function WorkCardPageContent() {
   const [missingPhotoReason, setMissingPhotoReason] = useState("");
   const [isCapturingPhoto, setIsCapturingPhoto] = useState(false);
 
+  // Service location with GPS auto-fill
+  const [serviceLocation, setServiceLocation] = useState<string>("");
+  const [isGpsAutoFilled, setIsGpsAutoFilled] = useState(false);
+
   // Historical issues from previous job cards
   const [historicalIssues, setHistoricalIssues] = useState<ServiceHistoryIssue[]>([]);
   
   // Machine issues from database (unresolved issues for selected machine)
   const [machineIssues, setMachineIssues] = useState<MachineIssue[]>([]);
 
-  // Recommendations and pending issues for current card
-  const [recommendationsData, setRecommendationsData] = useState<RecommendationsData>({
-    pendingIssues: "",
-    pendingReason: "",
-    recommendations: "",
-  });
+  // General notes/recommendations for unified issues section
+  const [generalNotes, setGeneralNotes] = useState("");
 
   // Diagnostics (must be declared before localStorage hydration useEffect)
   const [reasonCode, setReasonCode] = useState("");
@@ -311,12 +311,8 @@ function WorkCardPageContent() {
           setTimerStatus("paused");
         }
         
-        // Recommendations
-        setRecommendationsData({
-          pendingIssues: data.pendingIssues,
-          pendingReason: data.pendingReason,
-          recommendations: data.recommendations,
-        });
+        // General notes (combined from old recommendations)
+        setGeneralNotes(data.recommendations || "");
         
         // Parts and labor
         if (data.parts?.length > 0) {
@@ -507,28 +503,8 @@ function WorkCardPageContent() {
 
 
 
-  // FREE CHECK items state (managed by FreeCheckSection, mirrored here for FutureIssuesSection)
+  // FREE CHECK items state (managed by FreeCheckSection, mirrored here for UnifiedIssuesSection)
   const [freeCheckItems, setFreeCheckItems] = useState<Record<string, FreeCheckItem>>({});
-
-  // Unresolved issues
-  const [unresolvedIssues, setUnresolvedIssues] = useState<UnresolvedIssue[]>([]);
-  // Simulated previous unresolved issues (would come from DB in production)
-  const [previousUnresolvedIssues] = useState<UnresolvedIssue[]>([
-    {
-      id: "prev-1",
-      description: "Хидравличен маркуч на десен цил��н��ър показва микропукнатини",
-      severity: "high",
-      fromPreviousCard: true,
-      previousCardId: "JC-0015",
-    },
-    {
-      id: "prev-2",
-      description: "Лек теч на масл���� при предната ос",
-      severity: "medium",
-      fromPreviousCard: true,
-      previousCardId: "JC-0012",
-    },
-  ]);
 
   const handleBillingEntityChange = (value: string) => {
     if (clientData) {
@@ -603,13 +579,9 @@ function WorkCardPageContent() {
     setIsPayerChanged(false);
     setPayerChangeReason("");
     
-    // Clear historical issues and recommendations
+    // Clear historical issues and general notes
     setHistoricalIssues([]);
-    setRecommendationsData({
-      pendingIssues: "",
-      pendingReason: "",
-      recommendations: "",
-    });
+    setGeneralNotes("");
     
     // Clear Supabase job card ID
     setSavedJobCardId(null);
@@ -726,10 +698,10 @@ function WorkCardPageContent() {
         // Machine and Payer IDs for database relations
         machineId: selectedMachineId || undefined,
         payerId: payerStatus?.payerId || undefined,
-        // Recommendations and pending issues
-        pendingIssues: recommendationsData.pendingIssues || null,
-        pendingReason: recommendationsData.pendingReason || null,
-        recommendations: recommendationsData.recommendations || null,
+        // General notes/recommendations
+        pendingIssues: null,
+        pendingReason: null,
+        recommendations: generalNotes || null,
         // Signature workflow - status is determined by presence of signature
         signatureData: signatureData || null,
         signerName: signerName || null,
@@ -778,7 +750,7 @@ function WorkCardPageContent() {
     clockAtJobLevel, timerStatus, elapsedSeconds, clientData, reasonCode, defectCode,
     description, faultDate, repairStart, repairEnd, engineHours, parts,
     laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned, savedJobCardId,
-    faultPhotos, hoursPhotoUrl, skipPhoto, missingPhotoReason, selectedMachineId, payerStatus, recommendationsData,
+    faultPhotos, hoursPhotoUrl, skipPhoto, missingPhotoReason, selectedMachineId, payerStatus, generalNotes,
     causalPartNo, assemblyGroup, correction, workDone, savePendingRepairs
   ]);
 
@@ -801,33 +773,42 @@ function WorkCardPageContent() {
   const isReadOnly = cardStatus === "completed";
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      {/* Technician Mobile Header - High contrast interface for outdoor use */}
-      {isScanned && clientData?.serialNo && (
-        <TechnicianHeader
-          jobCard={{
-            id: savedJobCardId || jobCardNumber || "NEW",
-            orderNo: orderNumber || "N/A",
-            customerName: clientData?.machineOwner || "Сканирайте машина",
-            location: clientData?.ownerAddress || "",
-            machineModel: clientData?.machineType ? `${clientData.machineBrand || ""} ${clientData.machineType}`.trim() : "N/A",
-            serialNumber: clientData?.serialNo || "",
-          }}
-          isEnabled={isScanned}
-          onImportRepairs={(repairs) => {
-            const newParts: PartItem[] = repairs.map((r) => ({
-              id: crypto.randomUUID(),
-              partId: r.partId || undefined,
-              partNo: "IMPORTED",
-              description: r.description,
-              qty: 1,
-              price: r.estimatedCost,
-              status: "deferred" as const,
-            }));
-            setParts((prev) => [...prev, ...newParts]);
-          }}
-        />
-      )}
+    <TechnicalPortalLayout
+      subtitle="Работна Карта"
+      onNewJobCard={handleFormReset}
+      onSelectJobCard={(jobCardId) => {
+        router.push(`/technician?editId=${jobCardId}`);
+      }}
+    >
+      <main className="min-h-screen bg-background text-foreground">
+        {/* Technician Mobile Header - High contrast interface for outdoor use */}
+        {isScanned && clientData?.serialNo && (
+          <TechnicianHeader
+            jobCard={{
+              id: savedJobCardId || jobCardNumber || "NEW",
+              orderNo: orderNumber || "N/A",
+              customerName: clientData?.machineOwner || "Сканирайте машина",
+              location: clientData?.ownerAddress || "",
+              machineModel: clientData?.machineModel || (clientData?.machineType ? `${clientData.machineBrand || ""} ${clientData.machineType}`.trim() : "N/A"),
+              serialNumber: clientData?.serialNo || "",
+            }}
+            isEnabled={isScanned}
+            telematics={selectedOrder?.telematics}
+            dtcCodes={selectedOrder?.dtcCodes}
+            onImportRepairs={(repairs) => {
+              const newParts: PartItem[] = repairs.map((r) => ({
+                id: crypto.randomUUID(),
+                partId: r.partId || undefined,
+                partNo: "IMPORTED",
+                description: r.description,
+                qty: 1,
+                price: r.estimatedCost,
+                status: "deferred" as const,
+              }));
+              setParts((prev) => [...prev, ...newParts]);
+            }}
+          />
+        )}
 
       {/* Loading overlay for edit mode */}
       {isLoadingEditCard && (
@@ -879,13 +860,7 @@ function WorkCardPageContent() {
           <div className="h-20" />
         )}
 
-        {/* Header with Megatron branding */}
-        <WorkCardHeader
-          orderNumber={selectedOrder?.orderNumber || orderNumber}
-          jobCardNumber={selectedOrder?.jobCardNumber || jobCardNumber}
-          isAdmin={isAdmin}
-          onAdminToggle={setIsAdmin}
-        />
+
 
         {/* Order Type Selector & Unified Search - Right below header */}
         <OrderSelector
@@ -931,8 +906,13 @@ function WorkCardPageContent() {
               // Reset payer change state when selecting new order
               setIsPayerChanged(false);
               setPayerChangeReason("");
-              // Reset engine hours inputs and photo
-              setCurrentEngineHours(null);
+              
+              // Auto-fill engine hours from JDLink telematics if available
+              if (order.telematics?.engineHours) {
+                setCurrentEngineHours(order.telematics.engineHours);
+              } else {
+                setCurrentEngineHours(null);
+              }
               setIsHoursWarningConfirmed(false);
               setHoursPhotoUrl(null);
               setSkipPhoto(false);
@@ -940,6 +920,31 @@ function WorkCardPageContent() {
               // Pre-populate description from Navision (editable by technician)
               if (order.navisionDescription) {
                 setDescription(order.navisionDescription);
+              }
+              
+              // Auto-fill GPS location from telematics if available
+              if (order.telematics) {
+                // Simulate GPS coordinates from JDLink telematics
+                const gpsLocations = [
+                  "GPS: 43.417, 24.616 (с. Долна Митрополия)",
+                  "GPS: 42.697, 23.322 (гр. София, Витоша)",
+                  "GPS: 42.150, 24.750 (гр. Пловдив)",
+                  "GPS: 43.204, 27.911 (гр. Варна)",
+                  "GPS: 42.435, 25.617 (гр. Стара Загора)",
+                ];
+                const randomLocation = gpsLocations[Math.floor(Math.random() * gpsLocations.length)];
+                setServiceLocation(order.clientLocation 
+                  ? `${randomLocation} - ${order.clientLocation}` 
+                  : randomLocation);
+                setIsGpsAutoFilled(true);
+                // Reset GPS pulse after 3 seconds
+                setTimeout(() => setIsGpsAutoFilled(false), 3000);
+              } else if (order.clientLocation) {
+                setServiceLocation(order.clientLocation);
+                setIsGpsAutoFilled(false);
+              } else {
+                setServiceLocation("");
+                setIsGpsAutoFilled(false);
               }
             } else {
               setOrderNumber("");
@@ -954,9 +959,11 @@ function WorkCardPageContent() {
   setIsHoursWarningConfirmed(false);
   setHoursPhotoUrl(null);
   setSkipPhoto(false);
-  setMissingPhotoReason("");
+setMissingPhotoReason("");
   setDescription("");
-  setMachineIssues([]);
+  setMachineIssues("");
+  setServiceLocation("");
+  setIsGpsAutoFilled(false);
   }
   }}
           onOrderTypeChange={(type) => {
@@ -977,6 +984,7 @@ function WorkCardPageContent() {
           onAssignedTechniciansChange={setAssignedTechnicians}
           leadTechnicianId={leadTechnicianId}
           onLeadTechnicianIdChange={setLeadTechnicianId}
+          onLeadTechnicianNameChange={setLeadTechnicianName}
           clockAtJobLevel={clockAtJobLevel}
           onClockAtJobLevelChange={setClockAtJobLevel}
           timerStatus={timerStatus}
@@ -1023,27 +1031,14 @@ function WorkCardPageContent() {
         status: "deferred" as const,
       }));
       setParts((prev) => [...prev, ...newParts]);
-      // Also add to recommendations if there are deferred items
+      // Also add to general notes if there are deferred items
       const descriptions = repairs.map((r) => r.description).join("; ");
-      setRecommendationsData((prev) => ({
-        ...prev,
-        pendingIssues: prev.pendingIssues
-          ? `${prev.pendingIssues}\n[Импортирано]: ${descriptions}`
-          : `[Импортирано]: ${descriptions}`,
-      }));
+      setGeneralNotes((prev) => prev
+        ? `${prev}\n[Импортирано]: ${descriptions}`
+        : `[Импортирано]: ${descriptions}`
+      );
     }}
   />
-
-  {/* Unresolved Issues Alert Banner — prominent at top, fetched from database */}
-  {isScanned && machineIssues.length > 0 && (
-    <DynamicUnresolvedIssuesAlert
-      machineIssues={machineIssues}
-      onIssueResolved={(issueId) => {
-        setMachineIssues(prev => prev.filter(issue => issue.id !== issueId));
-      }}
-      currentJobCardId={savedJobCardId}
-    />
-  )}
 
  <ClientSection
   clientData={clientData}
@@ -1114,14 +1109,33 @@ function WorkCardPageContent() {
     }
   }}
   isCapturingPhoto={isCapturingPhoto}
+  serviceLocation={serviceLocation}
+  onServiceLocationChange={setServiceLocation}
+  isGpsAutoFilled={isGpsAutoFilled}
   />
 
-          {/* FREE CHECK Section - 14 point John Deere inspection */}
-          <FreeCheckSection
-            jobCardId={savedJobCardId}
-            isEnabled={isScanned}
-            onItemsChange={setFreeCheckItems}
-          />
+          {/* Live JDLink Diagnostics - ECU data streaming from the machine */}
+          {isScanned && selectedOrder?.telematics && (
+            <JDLinkDiagnostics
+              engineHours={selectedOrder.telematics.engineHours}
+              batteryVoltage={selectedOrder.telematics.batteryVoltage}
+              fuelLevel={selectedOrder.telematics.fuelLevel}
+              defLevel={selectedOrder.telematics.defLevel}
+              engineTemp={selectedOrder.telematics.engineTemp}
+              coolantTemp={selectedOrder.telematics.coolantTemp}
+              hydraulicTemp={selectedOrder.telematics.hydraulicTemp}
+              engineLoad={selectedOrder.telematics.engineLoad}
+              hydraulicPressure={selectedOrder.telematics.hydraulicPressure}
+              dtcCodes={selectedOrder.dtcCodes || []}
+              onAppendToNotes={(text) => {
+                // Append DTC code to the repair description
+                setDescription((prev) =>
+                  prev ? `${prev}\n${text}` : text
+                );
+              }}
+              isConnected={true}
+            />
+          )}
 
           <DiagnosticsSection
             reasonCode={reasonCode}
@@ -1161,24 +1175,22 @@ function WorkCardPageContent() {
             isAdmin={isAdmin}
           />
 
-          {/* Unresolved Issues — after Labor/Work Done */}
-          <UnresolvedIssuesSection
-            issues={unresolvedIssues}
-            onIssuesChange={setUnresolvedIssues}
-            previousIssues={previousUnresolvedIssues}
+          {/* FREE CHECK Section - 14 point John Deere inspection */}
+          <FreeCheckSection
+            jobCardId={savedJobCardId}
+            isEnabled={isScanned}
+            onItemsChange={setFreeCheckItems}
           />
 
-          {/* Recommendations and Pending Issues for Future */}
-          <RecommendationsSection
-            data={recommendationsData}
-            onChange={setRecommendationsData}
-          />
-
-          {/* Future Issues - for next technician + Detected issues from FREE CHECK */}
-          <FutureIssuesSection
+          {/* Unified Issues & Recommendations Section */}
+          <UnifiedIssuesSection
             machineId={selectedMachineId}
             jobCardId={savedJobCardId}
             isReadOnly={isReadOnly}
+            machineIssues={machineIssues}
+            onIssueResolved={(issueId) => {
+              setMachineIssues(prev => prev.filter(issue => issue.id !== issueId));
+            }}
             detectedIssues={Object.entries(freeCheckItems)
               .filter(([, item]) => item.status === "0" || item.status === "repair")
               .map(([id, item]) => {
@@ -1193,10 +1205,10 @@ function WorkCardPageContent() {
                 };
               })}
             onGenerateQuote={(issue) => {
-              // Navigate to parts section or open quote modal
               console.log("[v0] Generate quote for issue:", issue);
-              // Could add a part with the issue name as description
             }}
+            generalNotes={generalNotes}
+            onGeneralNotesChange={setGeneralNotes}
           />
 
           <Footer
@@ -1221,7 +1233,7 @@ function WorkCardPageContent() {
               jobType,
               date: new Date().toLocaleDateString("bg-BG"),
               technicians: assignedTechnicians.filter(t => t),
-              leadTechnician: leadTechnicianId || undefined,
+              leadTechnician: leadTechnicianName || undefined,
               machineOwner: clientData?.machineOwner || "",
               billingEntity: clientData?.billingEntity || "",
               location: clientData?.location || "",
@@ -1251,7 +1263,8 @@ function WorkCardPageContent() {
           />
         </div>
       </div>
-    </main>
+      </main>
+    </TechnicalPortalLayout>
   );
 }
 

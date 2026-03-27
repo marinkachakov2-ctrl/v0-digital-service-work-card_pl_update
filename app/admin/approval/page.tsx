@@ -356,13 +356,13 @@ export default function ProposalApprovalPage() {
                     <div>
                       <p className="text-xs text-muted-foreground">Текущ баланс</p>
                       <p className="text-2xl font-bold text-foreground">
-                        {proposal.currentBalance.toLocaleString("bg-BG")} лв.
+                        {proposal.currentBalance.toLocaleString("bg-BG")} €
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-muted-foreground">Лимит</p>
                       <p className="text-lg font-semibold text-muted-foreground">
-                        {proposal.creditLimit.toLocaleString("bg-BG")} лв.
+                        {proposal.creditLimit.toLocaleString("bg-BG")} €
                       </p>
                     </div>
                   </div>
@@ -370,7 +370,7 @@ export default function ProposalApprovalPage() {
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Използване: {creditUtilization.toFixed(0)}%</span>
                       <span className={isWarning ? "text-amber-500" : "text-muted-foreground"}>
-                        Остават: {(proposal.creditLimit - proposal.currentBalance).toLocaleString("bg-BG")} лв.
+                        Остават: {(proposal.creditLimit - proposal.currentBalance).toLocaleString("bg-BG")} €
                       </span>
                     </div>
                     <Progress 
@@ -382,7 +382,7 @@ export default function ProposalApprovalPage() {
                     <Alert className="border-red-500/30 bg-red-500/5">
                       <AlertTriangle className="h-4 w-4 text-red-500" />
                       <AlertDescription className="text-red-500 text-xs">
-                        Прогнозен баланс ({projectedBalance.toLocaleString("bg-BG")} лв.) надвишава лимита!
+                        Прогнозен баланс ({projectedBalance.toLocaleString("bg-BG")} €) надвишава лимита!
                       </AlertDescription>
                     </Alert>
                   )}
@@ -515,10 +515,10 @@ export default function ProposalApprovalPage() {
                             <TableCell className="font-medium">{item.description}</TableCell>
                             <TableCell className="text-right">{item.quantity}</TableCell>
                             <TableCell className="text-right font-mono">
-                              {item.unitPrice.toFixed(2)} лв.
+                              {item.unitPrice.toFixed(2)} €
                             </TableCell>
                             <TableCell className="text-right font-mono font-semibold">
-                              {item.total.toFixed(2)} лв.
+                              {item.total.toFixed(2)} €
                             </TableCell>
                             <TableCell>{getStatusBadge(item.status)}</TableCell>
                             <TableCell>
@@ -571,16 +571,16 @@ export default function ProposalApprovalPage() {
                         <div className="w-72 space-y-2">
                           <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">Сума без ДДС:</span>
-                            <span className="font-mono">{subtotal.toFixed(2)} лв.</span>
+                            <span className="font-mono">{subtotal.toFixed(2)} €</span>
                           </div>
                           <div className="flex justify-between text-sm">
                             <span className="text-muted-foreground">ДДС (20%):</span>
-                            <span className="font-mono">{vatAmount.toFixed(2)} лв.</span>
+                            <span className="font-mono">{vatAmount.toFixed(2)} €</span>
                           </div>
                           <div className="border-t border-border pt-2 flex justify-between">
                             <span className="font-semibold">Общо с ДДС:</span>
                             <span className="text-xl font-bold text-foreground font-mono">
-                              {totalWithVat.toFixed(2)} лв.
+                              {totalWithVat.toFixed(2)} €
                             </span>
                           </div>
                         </div>

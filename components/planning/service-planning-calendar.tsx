@@ -59,6 +59,7 @@ interface Technician {
 interface ServicePlanningCalendarProps {
   userRole?: "technician" | "admin";
   currentTechnicianId?: string;
+  viewMode?: "monthly" | "weekly";
 }
 
 // Constants
@@ -135,9 +136,10 @@ function getCapacityBgColor(percentage: number): string {
 export function ServicePlanningCalendar({
   userRole = "admin",
   currentTechnicianId,
+  viewMode: initialViewMode = "monthly",
 }: ServicePlanningCalendarProps) {
   // State
-  const [viewMode, setViewMode] = useState<"monthly" | "weekly">("monthly");
+  const [viewMode, setViewMode] = useState<"monthly" | "weekly">(initialViewMode);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [tasks, setTasks] = useState<PlanningTask[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
@@ -733,9 +735,9 @@ export function ServicePlanningCalendar({
             <Button variant="outline" size="icon" onClick={goToNext} className="h-8 w-8">
               <ChevronRight className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="sm" onClick={goToToday} className="hidden sm:flex">
-              Today
-            </Button>
+<Button variant="outline" size="sm" onClick={goToToday} className="hidden sm:flex">
+                Днес
+              </Button>
           </div>
         </div>
 

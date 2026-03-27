@@ -1,38 +1,37 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Wrench, CalendarDays, ShieldCheck, Sun, Moon, MonitorPlay, Home } from "lucide-react";
+import { Wrench, Sun, Moon, MonitorPlay, Home, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotificationCenter } from "@/components/notifications/notification-center";
 import { MyJobCardsPanel } from "@/components/work-card/my-job-cards-panel";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
-interface WorkCardHeaderProps {
-  orderNumber: string;
-  jobCardNumber: string;
-  isAdmin: boolean;
-  onAdminToggle: (val: boolean) => void;
+interface GlobalHeaderProps {
+  /** Optional subtitle displayed under "Megatron EAD" */
+  subtitle?: string;
+  /** Optional callback for creating a new job card */
   onNewJobCard?: () => void;
+  /** Optional callback for selecting a job card */
   onSelectJobCard?: (jobCardId: string) => void;
+  /** Optional children to render in the center of the header */
+  children?: React.ReactNode;
 }
 
-export function WorkCardHeader({
-  orderNumber,
-  jobCardNumber,
-  isAdmin,
-  onAdminToggle,
+export function GlobalHeader({
+  subtitle = "Digital Service Platform",
   onNewJobCard,
   onSelectJobCard,
-}: WorkCardHeaderProps) {
+  children,
+}: GlobalHeaderProps) {
   const [currentDate, setCurrentDate] = useState("--/--/----");
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
     setMounted(true);
@@ -48,14 +47,20 @@ export function WorkCardHeader({
     );
   }, []);
 
+  const isActive = (path: string) => pathname === path;
+
   return (
-    <header className="space-y-4">
-      {/* Top Bar */}
-      <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
+    <header className="sticky top-0 z-50 border-b border-border bg-card/95 backdrop-blur-sm">
+      <div className="flex items-center justify-between px-4 py-3">
+        {/* Left Section: Logo & Nav */}
         <div className="flex items-center gap-3">
           {/* Home/Portal Button */}
           <Link href="/">
-            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="gap-1.5 text-muted-foreground hover:text-foreground"
+            >
               <Home className="h-4 w-4" />
               <span className="hidden sm:inline">Портал</span>
             </Button>
@@ -68,29 +73,61 @@ export function WorkCardHeader({
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight text-foreground">Megatron EAD</h1>
-              <p className="text-xs text-muted-foreground">Работна Карта</p>
+              <p className="text-xs text-muted-foreground">{subtitle}</p>
             </div>
           </Link>
+
+          {/* Navigation Links */}
+          <nav className="hidden md:flex items-center gap-1 ml-4">
+            <Link href="/technician">
+              <Button 
+                variant={isActive("/technician") ? "secondary" : "ghost"} 
+                size="sm" 
+                className={cn(
+                  "gap-1.5",
+                  isActive("/technician") && "bg-secondary"
+                )}
+              >
+                <Wrench className="h-4 w-4" />
+                <span>Работна Карта</span>
+              </Button>
+            </Link>
+            <Link href="/planning">
+              <Button 
+                variant={isActive("/planning") ? "secondary" : "ghost"} 
+                size="sm" 
+                className={cn(
+                  "gap-1.5",
+                  isActive("/planning") && "bg-secondary"
+                )}
+              >
+                <CalendarDays className="h-4 w-4" />
+                <span>Планиране</span>
+              </Button>
+            </Link>
+            <Link href="/tablet">
+              <Button 
+                variant={isActive("/tablet") ? "secondary" : "ghost"} 
+                size="sm" 
+                className={cn(
+                  "gap-1.5",
+                  isActive("/tablet") && "bg-secondary"
+                )}
+              >
+                <span>Клокинг</span>
+              </Button>
+            </Link>
+          </nav>
         </div>
 
-        {/* Order / JCN Display */}
-        {(orderNumber || jobCardNumber) && (
-          <div className="flex items-center gap-3">
-            {orderNumber && (
-              <div className="text-center">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Order #</p>
-                <Badge variant="outline" className="font-mono text-xs">{orderNumber}</Badge>
-              </div>
-            )}
-            {jobCardNumber && (
-              <div className="text-center">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Job Card #</p>
-                <Badge variant="secondary" className="font-mono text-xs">{jobCardNumber}</Badge>
-              </div>
-            )}
+        {/* Center Section: Optional children */}
+        {children && (
+          <div className="hidden lg:flex items-center">
+            {children}
           </div>
         )}
 
+        {/* Right Section: Controls */}
         <div className="flex items-center gap-3">
           {/* Theme Switcher */}
           {mounted && (
@@ -146,27 +183,7 @@ export function WorkCardHeader({
             </div>
           )}
 
-          {/* Admin Override Indicator */}
-          {isAdmin && (
-            <Badge variant="outline" className="gap-1 text-xs border-amber-500/30 text-amber-500">
-              <ShieldCheck className="h-3 w-3" />
-              Admin Edit
-            </Badge>
-          )}
-          {/* Admin Toggle */}
-          <div className="flex items-center gap-2">
-            <Switch
-              id="admin-toggle"
-              checked={isAdmin}
-              onCheckedChange={onAdminToggle}
-              className="data-[state=checked]:bg-amber-500"
-            />
-            <Label htmlFor="admin-toggle" className="text-xs text-muted-foreground cursor-pointer">
-              {isAdmin ? "Admin" : "Tech"}
-            </Label>
-          </div>
-
-          {/* My Job Cards Panel - Always visible next to notification bell */}
+          {/* My Job Cards Panel */}
           <MyJobCardsPanel 
             onNewJobCard={onNewJobCard || (() => {})}
             onSelectJobCard={onSelectJobCard}
@@ -175,12 +192,7 @@ export function WorkCardHeader({
           {/* Notification Center */}
           <NotificationCenter />
 
-          <Link href="/planning">
-            <Button variant="outline" size="sm" className="gap-1.5 bg-transparent">
-              <CalendarDays className="h-4 w-4" />
-              <span className="hidden sm:inline">Планиране</span>
-            </Button>
-          </Link>
+          {/* Date Display */}
           <div className="text-right hidden sm:block">
             <p className="text-sm font-medium text-foreground">{currentDate}</p>
             <p className="text-xs text-muted-foreground">Дата</p>

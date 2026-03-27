@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -12,6 +12,8 @@ import {
   DragOverEvent,
   useDroppable,
   useDraggable,
+  pointerWithin,
+  rectIntersection,
 } from "@dnd-kit/core";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -41,16 +44,16 @@ interface LiveDispatcherProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CONSTANTS
+// CONSTANTS - Matching reference design layout
 // ─────────────────────────────────────────────────────────────────────────────
 const START_HOUR = 0;  // Extended to 00:00
 const END_HOUR = 24;   // Extended to 24:00
 const WORK_START_HOUR = 7;  // Visual work start
 const WORK_END_HOUR = 19;   // Visual work end
 const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
-const CELL_WIDTH = 80; // Slightly smaller for 24 hours
-const ROW_HEIGHT = 70;
-const SIDEBAR_WIDTH = 160;
+const CELL_WIDTH = 75; // Matching reference column width
+const ROW_HEIGHT = 70; // Matching reference row height (taller for 2-line content)
+const SIDEBAR_WIDTH = 180; // Wider for full names like reference
 
 // Colors by type/status
 const TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> = {
@@ -154,13 +157,15 @@ function toUTCTimestamp(): string {
 // DRAGGABLE COMPONENTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Waiting list draggable item
+// Waiting list draggable item - compact card with left color border (matching reference)
 function WaitingJobCard({ 
   appointment, 
-  onConvert 
+  onConvert,
+  onToggleComplete,
 }: { 
   appointment: ServiceAppointment;
   onConvert?: (apt: ServiceAppointment) => void;
+  onToggleComplete?: (apt: ServiceAppointment) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: appointment.id,
@@ -170,161 +175,449 @@ function WaitingJobCard({
   const colors = getAppointmentColor(appointment);
   const isNote = appointment.task_type === "note";
   const appointmentDate = new Date(appointment.work_date);
-  const dateLabel = appointmentDate.toLocaleDateString("bg-BG", { day: "2-digit", month: "short" });
+  const dateLabel = appointmentDate.toLocaleDateString("bg-BG", { day: "numeric", month: "short" });
+
+  // Determine border color based on type
+  const getBorderColor = () => {
+    if (isNote) return "border-l-amber-400";
+    const priority = appointment.priority?.toLowerCase();
+    const notes = appointment.notes?.toLowerCase() || "";
+    if (priority === "emergency" || priority === "urgent" || notes.includes("спешно")) return "border-l-red-500";
+    if (notes.includes("ремонт") || notes.includes("repair")) return "border-l-blue-500";
+    return "border-l-[#367C2B]"; // Service green
+  };
 
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
 
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "flex cursor-grab items-center gap-2 rounded-md border p-2 shadow-sm transition-all",
-        isNote ? "bg-amber-100 border-amber-300 text-amber-900" : colors.bg,
-        !isNote && colors.border,
-        !isNote && colors.text,
-        isDragging && "opacity-50 scale-105 shadow-lg"
-      )}
-    >
-      <div {...listeners} {...attributes} className="flex items-center">
-        <GripVertical className="h-4 w-4 flex-shrink-0 opacity-60" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1">
-          {isNote && <FileText className="h-3 w-3 flex-shrink-0" />}
-          <p className="text-xs font-medium truncate">
-            {appointment.client_name || "Без клиент"}
+  // Note cards with checkbox style (like reference) - entire card is draggable
+  if (isNote) {
+    return (
+      <div
+        ref={setNodeRef}
+        {...listeners}
+        {...attributes}
+        style={style}
+        className={cn(
+          "flex cursor-grab items-center gap-3 rounded-md border border-l-4 border-amber-200 border-l-amber-400 bg-amber-50 p-2.5 transition-all touch-none",
+          isDragging && "opacity-50 scale-105 shadow-lg z-50"
+        )}
+      >
+        {/* Checkbox for notes */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleComplete?.(appointment);
+          }}
+          className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border border-amber-400 bg-white hover:bg-amber-100 transition-colors"
+        >
+          {/* Empty checkbox */}
+        </button>
+        
+        <GripVertical className="h-4 w-4 flex-shrink-0 text-amber-600 opacity-60" />
+        
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-amber-900 truncate">
+            {appointment.client_name || "Бележка"}
+          </p>
+          <p className="text-[10px] text-amber-700">
+            {dateLabel}
           </p>
         </div>
-        <p className="text-[10px] opacity-80 truncate">
-          {isNote ? dateLabel : (appointment.machine_model || appointment.serial_number || "Машина")}
-        </p>
-      </div>
-      <div className="flex items-center gap-1">
-        {isNote && onConvert && (
+        
+        {onConvert && (
           <button
             onClick={(e) => {
               e.stopPropagation();
               onConvert(appointment);
             }}
-            className="p-1 rounded hover:bg-amber-200 transition-colors"
+            className="p-1 rounded hover:bg-amber-200 transition-colors flex-shrink-0"
             title="Преобразувай в поръчка"
           >
-            <ArrowRight className="h-3 w-3" />
+            <ArrowRight className="h-3.5 w-3.5 text-amber-700" />
           </button>
         )}
-        <Badge variant="outline" className={cn(
-          "text-[10px] shrink-0",
-          isNote ? "bg-amber-200/50 border-amber-400" : "bg-white/20 border-white/30"
-        )}>
-          {appointment.planned_hours || 1}ч
-        </Badge>
+        
+        {/* Checkbox style indicator */}
+        <div className="w-6 h-6 rounded border border-amber-300 bg-amber-100 flex-shrink-0" />
       </div>
+    );
+  }
+
+  // Service/Repair cards with colored left border and badge - entire card is draggable
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      style={style}
+      className={cn(
+        "flex cursor-grab items-center gap-2 rounded-md border border-l-4 bg-card p-2.5 shadow-sm transition-all touch-none",
+        getBorderColor(),
+        isDragging && "opacity-50 scale-105 shadow-lg z-50"
+      )}
+    >
+      <GripVertical className="h-4 w-4 flex-shrink-0 text-muted-foreground opacity-60" />
+      
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-foreground truncate">
+          {appointment.client_name || "Без клиент"}
+        </p>
+        <p className="text-xs text-muted-foreground truncate">
+          {appointment.machine_model || appointment.serial_number || "Машина"}
+        </p>
+      </div>
+      
+      {/* Hours badge on right side */}
+      <Badge 
+        variant="secondary" 
+        className={cn(
+          "text-xs font-semibold shrink-0 px-2",
+          colors.bg,
+          colors.text
+        )}
+      >
+        {appointment.planned_hours || 1}ч
+      </Badge>
     </div>
   );
 }
 
-// Timeline draggable task
+// Status icon component
+function StatusIcon({ status }: { status: string | null }) {
+  const s = status?.toLowerCase() || "scheduled";
+  
+  // Active/In Progress - green filled circle with check
+  if (s === "active" || s === "in_progress" || s === "in progress") {
+    return (
+      <div className="flex h-4 w-4 items-center justify-center rounded-full bg-[#367C2B]">
+        <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      </div>
+    );
+  }
+  
+  // Waiting/Paused/Blocked - orange circle
+  if (s === "waiting" || s === "paused" || s === "blocked" || s === "on_hold") {
+    return (
+      <div className="h-4 w-4 rounded-full border-2 border-orange-500 bg-orange-500/20" />
+    );
+  }
+  
+  // Scheduled/Planned - grey circle outline
+  return (
+    <div className="h-4 w-4 rounded-full border-2 border-gray-400" />
+  );
+}
+
+// Get border color based on status
+function getStatusBorderColor(status: string | null): string {
+  const s = status?.toLowerCase() || "scheduled";
+  if (s === "active" || s === "in_progress" || s === "in progress") return "border-[#367C2B]";
+  if (s === "waiting" || s === "paused" || s === "blocked" || s === "on_hold") return "border-orange-500";
+  return "border-gray-600";
+}
+
+// Get progress bar color based on status
+function getProgressBarColor(status: string | null): string {
+  const s = status?.toLowerCase() || "scheduled";
+  if (s === "active" || s === "in_progress" || s === "in progress") return "bg-[#367C2B]";
+  if (s === "waiting" || s === "paused" || s === "blocked" || s === "on_hold") return "bg-orange-500";
+  return "bg-gray-500";
+}
+
+// Timeline draggable task with resize handles - matching reference design exactly
 function TimelineTask({ 
   appointment, 
   isOverlay = false,
   onConvert,
+  onResize,
+  onDoubleClick,
 }: { 
   appointment: ServiceAppointment; 
   isOverlay?: boolean;
   onConvert?: (apt: ServiceAppointment) => void;
+  onResize?: (appointmentId: string, newDuration: number) => void;
+  onDoubleClick?: (apt: ServiceAppointment) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: appointment.id,
     data: { appointment, type: "timeline" },
   });
 
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeWidth, setResizeWidth] = useState<number | null>(null);
+  const resizeStartRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
   const startHours = parseTimeToHours(appointment.start_time);
   const durationHours = appointment.planned_hours || 1;
   const pos = getPositionFromTime(startHours, durationHours);
-  const colors = getAppointmentColor(appointment);
   const isNote = appointment.task_type === "note";
+  
+  // Calculate progress (mock - would come from actual tracking)
+  const progress = appointment.status === "active" || appointment.status === "in_progress" ? 65 : 
+                   appointment.status === "completed" ? 100 : 30;
+
+  // Handle resize start
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setIsResizing(true);
+    resizeStartRef.current = {
+      startX: e.clientX,
+      startWidth: resizeWidth || pos.width,
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!resizeStartRef.current) return;
+      const deltaX = moveEvent.clientX - resizeStartRef.current.startX;
+      const newWidth = Math.max(CELL_WIDTH * 0.5, resizeStartRef.current.startWidth + deltaX);
+      // Snap to 30-minute increments
+      const snappedWidth = Math.round(newWidth / (CELL_WIDTH * 0.5)) * (CELL_WIDTH * 0.5);
+      setResizeWidth(snappedWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      if (resizeWidth && onResize) {
+        // Convert width to hours
+        const newDuration = Math.max(0.5, resizeWidth / CELL_WIDTH);
+        onResize(appointment.id, newDuration);
+      }
+      setResizeWidth(null);
+      resizeStartRef.current = null;
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const currentWidth = resizeWidth || Math.max(pos.width, 150);
 
   const style: React.CSSProperties = isOverlay
-    ? { width: pos.width }
+    ? { width: currentWidth }
     : {
         position: "absolute",
         left: pos.left,
-        width: pos.width,
+        width: currentWidth,
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+        zIndex: isDragging || isResizing ? 50 : 1,
       };
 
+  // Note cards
+  if (isNote) {
+    return (
+      <div
+        ref={!isOverlay ? setNodeRef : undefined}
+        {...(!isOverlay ? { ...listeners, ...attributes } : {})}
+        style={style}
+        className={cn(
+          "flex h-14 cursor-grab flex-col justify-center rounded border border-amber-400 bg-amber-50 px-3 text-amber-900 shadow-sm",
+          isDragging && !isOverlay && "opacity-50",
+          isOverlay && "shadow-xl ring-2 ring-amber-300"
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <FileText className="h-3.5 w-3.5 flex-shrink-0" />
+          <span className="text-xs font-medium truncate">{appointment.client_name || "Бележка"}</span>
+          {onConvert && !isOverlay && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onConvert(appointment); }}
+              className="ml-auto p-0.5 rounded hover:bg-amber-200"
+            >
+              <FileEdit className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Service/Repair appointment cards - matching reference exactly with resize handle
   return (
     <div
       ref={!isOverlay ? setNodeRef : undefined}
-      {...(!isOverlay ? { ...listeners, ...attributes } : {})}
       style={style}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        if (!isOverlay && onDoubleClick) onDoubleClick(appointment);
+      }}
       className={cn(
-        "flex h-10 cursor-grab items-center gap-1 rounded border px-2 text-xs font-medium shadow-sm",
-        isNote ? "bg-amber-100 border-amber-300 text-amber-900" : colors.bg,
-        !isNote && colors.border,
-        !isNote && colors.text,
+        "group relative flex cursor-grab flex-col rounded border-2 bg-card shadow-sm overflow-hidden",
+        getStatusBorderColor(appointment.status),
         isDragging && !isOverlay && "opacity-50",
-        isOverlay && "shadow-xl ring-2 ring-white/50"
+        isOverlay && "shadow-xl ring-2 ring-white/50",
+        isResizing && "ring-2 ring-primary"
       )}
-      title={`${appointment.client_name} - ${appointment.machine_model || "Бележка"}`}
     >
-      <GripVertical className="h-3 w-3 flex-shrink-0 opacity-60" />
-      {isNote && <FileText className="h-3 w-3 flex-shrink-0" />}
-      <span className="truncate flex-1">
-        {appointment.client_name?.split(" ")[0] || "?"} {!isNote && `- ${appointment.machine_model?.substring(0, 10) || "Машина"}`}
-      </span>
-      {isNote && onConvert && !isOverlay && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onConvert(appointment);
-          }}
-          className="p-0.5 rounded hover:bg-amber-200 transition-colors flex-shrink-0"
-          title="Преобразувай в поръчка"
+      {/* Drag handle area - the main content is draggable */}
+      <div {...(!isOverlay ? { ...listeners, ...attributes } : {})} className="flex-1">
+        {/* Main content */}
+        <div className="px-2.5 py-1.5">
+          {/* Top row: status icon + order number + edit icon + task name */}
+          <div className="flex items-center gap-1.5">
+            <StatusIcon status={appointment.status} />
+            <span className="text-[11px] text-muted-foreground font-medium">
+              ON-{appointment.id.toString().slice(-4)}
+            </span>
+            <FileEdit className="h-3 w-3 text-muted-foreground" />
+            <span className="text-xs font-semibold text-foreground truncate">
+              {appointment.notes?.split(" ").slice(0, 2).join(" ") || "Сервиз"}
+            </span>
+          </div>
+          
+          {/* Bottom row: client + machine */}
+          <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+            {appointment.client_name || "Клиент"} ({appointment.machine_model || appointment.serial_number || "Машина"})
+          </p>
+        </div>
+      </div>
+      
+      {/* Progress bar at bottom */}
+      <div className="h-1.5 w-full bg-muted">
+        <div 
+          className={cn("h-full transition-all", getProgressBarColor(appointment.status))}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      {/* Resize handle on right edge */}
+      {!isOverlay && onResize && (
+        <div
+          onMouseDown={handleResizeStart}
+          className={cn(
+            "absolute right-0 top-0 h-full w-2 cursor-ew-resize",
+            "bg-transparent hover:bg-primary/30 transition-colors",
+            "opacity-0 group-hover:opacity-100",
+            isResizing && "opacity-100 bg-primary/40"
+          )}
         >
-          <FileEdit className="h-3 w-3" />
-        </button>
+          <div className="absolute right-0.5 top-1/2 -translate-y-1/2 h-6 w-0.5 rounded-full bg-muted-foreground/50" />
+        </div>
+      )}
+      
+      {/* Duration indicator during resize */}
+      {isResizing && resizeWidth && (
+        <div className="absolute -top-6 right-0 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded shadow">
+          {(resizeWidth / CELL_WIDTH).toFixed(1)}ч
+        </div>
       )}
     </div>
   );
 }
 
-// Droppable technician row
+// Get initials from name (e.g., "Георги Петров" -> "ГП")
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((part) => part.charAt(0).toUpperCase())
+    .slice(0, 2)
+    .join("");
+}
+
+// Technician avatar colors - matching reference (blue, green, orange variants)
+const TECH_COLORS = [
+  { bg: "bg-blue-500", text: "text-white" },
+  { bg: "bg-emerald-500", text: "text-white" },
+  { bg: "bg-orange-500", text: "text-white" },
+  { bg: "bg-purple-500", text: "text-white" },
+  { bg: "bg-cyan-500", text: "text-white" },
+];
+
+function getTechColor(index: number) {
+  return TECH_COLORS[index % TECH_COLORS.length];
+}
+
+// Calculate technician utilization
+function calculateUtilization(appointments: ServiceAppointment[], maxHours = 8) {
+  const totalHours = appointments.reduce((sum, apt) => sum + (apt.planned_hours || 1), 0);
+  const percentage = Math.round((totalHours / maxHours) * 100);
+  const isOverbooked = totalHours > maxHours;
+  return { totalHours, maxHours, percentage, isOverbooked };
+}
+
+// Droppable technician row - matching reference design exactly
 function TechnicianRow({
   technician,
   appointments,
   isOver,
   dropHour,
   onConvertNote,
+  onResize,
+  onDoubleClick,
+  techIndex = 0,
 }: {
   technician: Technician;
   appointments: ServiceAppointment[];
   isOver: boolean;
   dropHour: number | null;
   onConvertNote?: (apt: ServiceAppointment) => void;
+  onResize?: (appointmentId: string, newDuration: number) => void;
+  onDoubleClick?: (apt: ServiceAppointment) => void;
+  techIndex?: number;
 }) {
-  const { setNodeRef } = useDroppable({
+  const { setNodeRef, isOver: localIsOver } = useDroppable({
     id: `tech-${technician.id}`,
     data: { technicianName: technician.name, technicianId: technician.id },
   });
 
+  const initials = getInitials(technician.name);
+  const techColor = getTechColor(techIndex);
+  const utilization = calculateUtilization(appointments);
+
+  // Progress bar color based on utilization
+  const getProgressColor = () => {
+    if (utilization.isOverbooked) return "bg-red-500";
+    if (utilization.percentage >= 75) return "bg-[#367C2B]"; // Green
+    if (utilization.percentage >= 50) return "bg-amber-500";
+    return "bg-gray-400";
+  };
+
   return (
-    <div className="flex" style={{ height: ROW_HEIGHT }}>
-      {/* Technician name sidebar */}
+    <div className="flex" style={{ height: ROW_HEIGHT + 20 }}>
+      {/* Technician sidebar - matching reference with avatar, name, utilization, progress bar */}
       <div
-        className="flex flex-shrink-0 items-center border-b border-r border-border bg-secondary/30 px-3"
-        style={{ width: SIDEBAR_WIDTH }}
+        className="flex flex-shrink-0 flex-col justify-center gap-1 border-b border-r border-border bg-card px-3 py-2"
+        style={{ width: SIDEBAR_WIDTH + 40 }}
       >
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/20">
-            <User className="h-4 w-4 text-primary" />
+        <div className="flex items-center gap-3">
+          {/* Colored initials avatar */}
+          <div className={cn(
+            "flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold",
+            techColor.bg,
+            techColor.text
+          )}>
+            {initials}
           </div>
-          <span className="text-sm font-medium text-foreground truncate">
-            {technician.name}
-          </span>
+          
+          {/* Name and utilization */}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground truncate">
+              {technician.name}
+            </p>
+            <p className={cn(
+              "text-xs",
+              utilization.isOverbooked ? "text-red-500 font-medium" : "text-muted-foreground"
+            )}>
+              {utilization.totalHours} / {utilization.maxHours} часа 
+              {utilization.isOverbooked 
+                ? " (Overbooked)" 
+                : ` (${utilization.percentage}%)`
+              }
+            </p>
+          </div>
+        </div>
+        
+        {/* Utilization progress bar */}
+        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+          <div 
+            className={cn("h-full rounded-full transition-all", getProgressColor())}
+            style={{ width: `${Math.min(utilization.percentage, 100)}%` }}
+          />
         </div>
       </div>
 
@@ -333,7 +626,7 @@ function TechnicianRow({
         ref={setNodeRef}
         className={cn(
           "relative flex-1 border-b border-border transition-colors",
-          isOver && "bg-primary/10"
+          (isOver || localIsOver) && "bg-primary/10"
         )}
         style={{ minWidth: HOURS.length * CELL_WIDTH }}
       >
@@ -348,21 +641,31 @@ function TechnicianRow({
           ))}
         </div>
 
-        {/* Drop preview indicator */}
+        {/* Drop preview indicator - shows where appointment will land */}
         {isOver && dropHour !== null && (
           <div
-            className="absolute top-2 h-10 rounded border-2 border-dashed border-primary bg-primary/20 pointer-events-none"
+            className="absolute top-2 h-14 rounded border-2 border-dashed border-primary bg-primary/20 pointer-events-none flex items-center justify-center"
             style={{
               left: (dropHour - START_HOUR) * CELL_WIDTH,
-              width: CELL_WIDTH,
+              width: CELL_WIDTH * 2, // Default 2 hour width preview
             }}
-          />
+          >
+            <span className="text-xs font-medium text-primary">
+              {dropHour.toString().padStart(2, "0")}:00
+            </span>
+          </div>
         )}
 
         {/* Tasks */}
         <div className="relative h-full pt-2">
           {appointments.map((apt) => (
-            <TimelineTask key={apt.id} appointment={apt} onConvert={onConvertNote} />
+            <TimelineTask 
+              key={apt.id} 
+              appointment={apt} 
+              onConvert={onConvertNote}
+              onResize={onResize}
+              onDoubleClick={onDoubleClick}
+            />
           ))}
         </div>
       </div>
@@ -370,7 +673,7 @@ function TechnicianRow({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────���───────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProps) {
@@ -401,6 +704,9 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
   const [dropWarning, setDropWarning] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   
+  // Demo jobs from MegatronVision localStorage integration
+  const [demoJobs, setDemoJobs] = useState<ServiceAppointment[]>([]);
+  
   // Quick notes state
   const [quickNoteText, setQuickNoteText] = useState("");
   const [addingNote, setAddingNote] = useState(false);
@@ -410,6 +716,12 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
   const [convertMachineModel, setConvertMachineModel] = useState("");
   const [convertSerialNumber, setConvertSerialNumber] = useState("");
   const [convertPriority, setConvertPriority] = useState<string>("normal");
+  
+  // Edit booking dialog state (for double-click)
+  const [editingAppointment, setEditingAppointment] = useState<ServiceAppointment | null>(null);
+  const [editTechnician, setEditTechnician] = useState("");
+  const [editStartTime, setEditStartTime] = useState("");
+  const [editDuration, setEditDuration] = useState("1");
   
   const scrollRef = useRef<HTMLDivElement>(null);
   
@@ -439,13 +751,13 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
     setCurrentDate(new Date());
   }, []);
 
-  // Format date for display (Bulgarian locale)
+  // Format date for display (Bulgarian locale) - matching reference "27 март 2026 г."
   const formattedDisplayDate = currentDate.toLocaleDateString("bg-BG", {
-    day: "2-digit",
+    day: "numeric",
     month: "long",
     year: "numeric",
     timeZone: "Europe/Sofia",
-  });
+  }) + " г.";
 
   // Sensors for drag detection
   const sensors = useSensors(
@@ -465,6 +777,58 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
     }, 60000); // Update every minute
     
     return () => clearInterval(interval);
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // LOAD DEMO JOBS FROM LOCALSTORAGE (MegatronVision Hero Flow)
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const loadDemoJobs = () => {
+      try {
+        const stored = localStorage.getItem("pendingDemoJobs");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            // Transform demo jobs to ServiceAppointment format
+            const transformed: ServiceAppointment[] = parsed.map((job: Record<string, unknown>, index: number) => ({
+              id: `demo-${Date.now()}-${index}`,
+              client_name: (job.clientName as string) || (job.client_name as string) || "Demo Client",
+              machine_model: (job.machineModel as string) || (job.machine_model as string) || "Demo Machine",
+              serial_number: (job.serialNumber as string) || (job.serial_number as string) || null,
+              technician_name: null, // Unassigned - will appear in Чакащи
+              work_date: (job.workDate as string) || (job.work_date as string) || formatDate(new Date()),
+              start_time: null,
+              end_time: null,
+              planned_hours: (job.estimatedHours as number) || (job.planned_hours as number) || 2,
+              status: "scheduled",
+              priority: (job.priority as string) || "normal",
+              notes: (job.description as string) || (job.notes as string) || "Demo job from MegatronVision",
+              task_type: "demo",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }));
+            setDemoJobs(transformed);
+          }
+        }
+      } catch (e) {
+        console.error("[v0] Error loading pendingDemoJobs from localStorage:", e);
+      }
+    };
+
+    // Load on mount
+    loadDemoJobs();
+
+    // Also listen for storage events (in case another tab updates it)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "pendingDemoJobs") {
+        loadDemoJobs();
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+    };
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -528,19 +892,21 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    const { over, active } = event;
+    const { over, activatorEvent } = event;
     
     if (over) {
       setOverId(over.id as string);
       
-      // Calculate drop hour from pointer position
-      const rect = event.active.rect.current?.translated;
-      if (rect) {
-        // Estimate hour based on position
-        const containerLeft = SIDEBAR_WIDTH;
-        const relativeX = rect.left - containerLeft;
+      // Calculate drop hour from pointer position using the droppable rect
+      const overRect = over.rect;
+      const pointerX = (activatorEvent as PointerEvent)?.clientX || 0;
+      
+      if (overRect && pointerX) {
+        // Get the relative position within the droppable (timeline area)
+        const relativeX = pointerX - overRect.left;
         const hour = Math.floor(relativeX / CELL_WIDTH) + START_HOUR;
-        setDropHour(Math.max(START_HOUR, Math.min(END_HOUR - 1, hour)));
+        const clampedHour = Math.max(START_HOUR, Math.min(END_HOUR - 1, hour));
+        setDropHour(clampedHour);
       }
     } else {
       setOverId(null);
@@ -558,8 +924,8 @@ const handleDragEnd = async (event: DragEndEvent) => {
     if (!over) return;
 
     const appointmentId = active.id as string;
-    // Check both assignedAppointments (timeline) and sidebarBacklog (waiting list + notes)
-    const appointment = assignedAppointments.find((a) => a.id === appointmentId) || sidebarBacklog.find((a) => a.id === appointmentId);
+    // Check assignedAppointments (timeline), sidebarBacklog (waiting list + notes), and demo jobs
+    const appointment = assignedAppointments.find((a) => a.id === appointmentId) || sidebarBacklog.find((a) => a.id === appointmentId) || demoJobs.find((a) => a.id === appointmentId);
     if (!appointment) return;
 
     // Extract technician info from drop target
@@ -576,7 +942,7 @@ const handleDragEnd = async (event: DragEndEvent) => {
     }
     const newStartTime = hoursToTimeStr(newStartHour);
 
-    // ───────────────────────���─────────────────────────────────────────────
+    // ──────────��────���───────���─────────────────────────────────────────────
     // PAST TIME VALIDATION
     // ─────────────────────────────────────────────────────────────────────
     const now = new Date();
@@ -594,7 +960,7 @@ const handleDragEnd = async (event: DragEndEvent) => {
     if (selectedDateStr === todayStr) {
       const currentHourNow = now.getHours() + now.getMinutes() / 60;
       if (newStartHour < currentHourNow) {
-        setDropWarning("Не можете да планирате задачи в минало време");
+        setDropWarning("Не можете да планир��те задачи в минало време");
         setTimeout(() => setDropWarning(null), 3000);
         return;
       }
@@ -626,16 +992,88 @@ const handleDragEnd = async (event: DragEndEvent) => {
     setSaving(false);
   };
 
-// ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // RESIZE HANDLER - Update appointment duration
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleResize = useCallback(async (appointmentId: string, newDuration: number) => {
+    // Find the appointment
+    const appointment = assignedAppointments.find((a) => a.id === appointmentId);
+    if (!appointment) return;
+
+    // Round to nearest 0.5 hours
+    const roundedDuration = Math.round(newDuration * 2) / 2;
+    
+    // Don't update if duration hasn't really changed
+    if (Math.abs((appointment.planned_hours || 1) - roundedDuration) < 0.1) return;
+
+    setSaving(true);
+    
+    // Update via the hook (reusing assignTechnician since it updates the appointment)
+    const result = await assignTechnicianFromHook(
+      appointmentId,
+      appointment.technician_name || "",
+      appointment.work_date,
+      appointment.start_time || hoursToTimeStr(WORK_START_HOUR),
+      roundedDuration // Pass new duration
+    );
+
+    if (!result.success) {
+      refetch();
+    }
+    setSaving(false);
+  }, [assignedAppointments, assignTechnicianFromHook, refetch]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DOUBLE-CLICK EDIT HANDLER
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleDoubleClickAppointment = useCallback((appointment: ServiceAppointment) => {
+    setEditingAppointment(appointment);
+    setEditTechnician(appointment.technician_name || "");
+    setEditStartTime(appointment.start_time || hoursToTimeStr(WORK_START_HOUR));
+    setEditDuration(String(appointment.planned_hours || 1));
+  }, []);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!editingAppointment) return;
+    
+    setSaving(true);
+    
+    const result = await assignTechnicianFromHook(
+      editingAppointment.id,
+      editTechnician,
+      editingAppointment.work_date,
+      editStartTime,
+      parseFloat(editDuration)
+    );
+
+    if (result.success) {
+      setEditingAppointment(null);
+    }
+    setSaving(false);
+    refetch();
+  }, [editingAppointment, editTechnician, editStartTime, editDuration, assignTechnicianFromHook, refetch]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingAppointment(null);
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // DERIVED DATA
   // ─────────────────────────────────────────────────────────────────────────
-  // Waiting list: combined waiting orders + notes from shared hook
-  const waitingAppointments = sidebarBacklog;
+  // Waiting list: combined waiting orders + notes from shared hook + demo jobs from localStorage
+  const waitingAppointments = useMemo(() => {
+    // Prepend demo jobs to the beginning of the list (Hero Flow requirement)
+    return [...demoJobs, ...sidebarBacklog];
+  }, [demoJobs, sidebarBacklog]);
 
-  // Active appointment for drag overlay (check both lists)
-  const activeAppointment = activeId 
-    ? (assignedAppointments.find((a) => a.id === activeId) || sidebarBacklog.find((a) => a.id === activeId)) 
-    : null;
+  // Active appointment for drag overlay (check all lists including demo jobs)
+  const activeAppointment = useMemo(() => {
+    if (!activeId) return null;
+    return assignedAppointments.find((a) => a.id === activeId) 
+      || waitingAppointments.find((a) => a.id === activeId)
+      || demoJobs.find((a) => a.id === activeId)
+      || null;
+  }, [activeId, assignedAppointments, waitingAppointments, demoJobs]);
 
   // Current time line position (only show on today)
   const currentHour = currentTime.getHours();
@@ -669,60 +1107,68 @@ const handleDragEnd = async (event: DragEndEvent) => {
     );
   }
 
-  return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDragEnd={handleDragEnd}
-    >
+return (
+<DndContext
+  sensors={sensors}
+  collisionDetection={rectIntersection}
+  onDragStart={handleDragStart}
+  onDragOver={handleDragOver}
+  onDragEnd={handleDragEnd}
+  >
       <div className="relative flex h-full flex-col gap-4">
-        {/* Date Navigation Header */}
-        <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
-          <div className="flex items-center gap-2">
+        {/* Date Navigation Header - matching reference design */}
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={goToPreviousDay}
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground"
+          >
+            <CalendarDays className="h-5 w-5" />
+          </Button>
+          
+          <span className="text-base font-semibold text-foreground min-w-[180px]">
+            {formattedDisplayDate}
+          </span>
+          
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={goToNextDay}
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </Button>
+          
+          {!isToday && (
             <Button
               variant="outline"
-              size="icon"
-              onClick={goToPreviousDay}
-              className="h-8 w-8"
+              size="sm"
+              onClick={goToToday}
+              className="ml-2 gap-1.5"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <Clock className="h-3.5 w-3.5" />
+              Днес
             </Button>
-            
-            <div className="flex items-center gap-2 px-3">
-              <CalendarDays className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-semibold min-w-[180px] text-center">
-                {formattedDisplayDate}
-              </span>
-            </div>
-            
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={goToNextDay}
-              className="h-8 w-8"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {!isToday && (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={goToToday}
-                className="gap-1.5"
-              >
-                <Clock className="h-3.5 w-3.5" />
-                Днес
-              </Button>
-            )}
-            
-            <Button variant="outline" size="sm" onClick={refetch} disabled={loading}>
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-            </Button>
-          </div>
+          )}
+          
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={refetch} 
+            disabled={loading}
+            className="h-8 w-8 ml-auto text-muted-foreground"
+          >
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
         </div>
 
         {/* Warning Toast */}
@@ -747,14 +1193,14 @@ const handleDragEnd = async (event: DragEndEvent) => {
           {/* Main Timeline Area */}
           <div className="flex-1 rounded-lg border border-border bg-card overflow-hidden">
             <ScrollArea className="h-full" ref={scrollRef}>
-            <div style={{ minWidth: SIDEBAR_WIDTH + HOURS.length * CELL_WIDTH }}>
-              {/* Header with hours */}
-              <div className="sticky top-0 z-20 flex border-b border-border bg-secondary/80 backdrop-blur">
+            <div style={{ minWidth: (SIDEBAR_WIDTH + 40) + HOURS.length * CELL_WIDTH }}>
+              {/* Header with hours - matching reference "ТЕХНИК" */}
+              <div className="sticky top-0 z-20 flex border-b border-border bg-card">
                 <div
-                  className="flex-shrink-0 border-r border-border px-3 py-2"
-                  style={{ width: SIDEBAR_WIDTH }}
+                  className="flex-shrink-0 border-r border-border px-3 py-3 flex items-center"
+                  style={{ width: SIDEBAR_WIDTH + 40 }}
                 >
-                  <span className="text-xs font-medium text-muted-foreground">Техник</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">ТЕХНИК</span>
                 </div>
                 <div className="flex">
                   {HOURS.map((hour) => (
@@ -773,10 +1219,11 @@ const handleDragEnd = async (event: DragEndEvent) => {
 
               {/* Technician rows */}
               <div className="relative">
-                {technicians.map((tech) => (
+                {technicians.map((tech, index) => (
                   <TechnicianRow
                     key={tech.id}
                     technician={tech}
+                    techIndex={index}
                     appointments={techAppointments[tech.name] || []}
                     isOver={overId === `tech-${tech.id}`}
                     dropHour={overId === `tech-${tech.id}` ? dropHour : null}
@@ -786,16 +1233,18 @@ const handleDragEnd = async (event: DragEndEvent) => {
                       setConvertSerialNumber("");
                       setConvertPriority("normal");
                     }}
-                  />
-                ))}
+onResize={handleResize}
+  onDoubleClick={handleDoubleClickAppointment}
+  />
+  ))}
 
                 {/* Current time indicator */}
                 {currentTimeOffset !== null && (
                   <div
                     className="absolute top-0 z-10 w-0.5 bg-red-500 pointer-events-none"
                     style={{
-                      left: SIDEBAR_WIDTH + currentTimeOffset,
-                      height: technicians.length * ROW_HEIGHT,
+                      left: (SIDEBAR_WIDTH + 40) + currentTimeOffset,
+                      height: technicians.length * (ROW_HEIGHT + 20),
                     }}
                   >
                     <div className="absolute -left-2 -top-5 rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
@@ -816,19 +1265,20 @@ const handleDragEnd = async (event: DragEndEvent) => {
             </ScrollArea>
           </div>
 
-          {/* Waiting List Sidebar */}
+          {/* Waiting List Sidebar - matching reference design */}
         <div className="w-72 flex-shrink-0 rounded-lg border border-border bg-card flex flex-col">
-          <div className="border-b border-border bg-secondary/50 px-4 py-3">
+          {/* Header with title and count badge */}
+          <div className="border-b border-border px-4 py-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-foreground">Чакащи (Всички)</h3>
-              <Badge variant="secondary" className="text-xs">
+              <Badge className="bg-amber-500 text-white hover:bg-amber-500 text-xs px-2">
                 {waitingAppointments.length}
               </Badge>
             </div>
           </div>
 
-          {/* Quick Note Input */}
-          <div className="border-b border-border p-3">
+          {/* Quick Note Input - matching reference */}
+          <div className="border-b border-border px-4 py-3">
             <div className="flex gap-2">
               <Input
                 placeholder="Добави бърза бележка..."
@@ -836,12 +1286,12 @@ const handleDragEnd = async (event: DragEndEvent) => {
                 onChange={(e) => setQuickNoteText(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAddQuickNote()}
                 disabled={addingNote}
-                className="h-8 text-xs"
+                className="h-9 text-sm bg-secondary/50 border-border"
               />
               <Button
                 size="icon"
-                variant="outline"
-                className="h-8 w-8 flex-shrink-0"
+                variant="ghost"
+                className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-foreground"
                 onClick={handleAddQuickNote}
                 disabled={addingNote || !quickNoteText.trim()}
               >
@@ -908,8 +1358,9 @@ const handleDragEnd = async (event: DragEndEvent) => {
       <Dialog open={!!convertingNote} onOpenChange={(open) => !open && setConvertingNote(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Преобразувай в поръчка</DialogTitle>
-          </DialogHeader>
+<DialogTitle>Преобразувай в поръчка</DialogTitle>
+              <DialogDescription className="sr-only">Convert appointment to service order</DialogDescription>
+  </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="machine">Модел машина *</Label>
@@ -965,14 +1416,118 @@ const handleDragEnd = async (event: DragEndEvent) => {
         </DialogContent>
       </Dialog>
 
-      {/* Drag Overlay */}
-      <DragOverlay>
-        {activeAppointment && (
-          <div className="opacity-90">
-            <TimelineTask appointment={activeAppointment} isOverlay />
+{/* Drag Overlay - shows dragged item */}
+<DragOverlay dropAnimation={null}>
+  {activeAppointment && (
+    <div className="opacity-95 pointer-events-none">
+      {/* Use WaitingJobCard style for items from sidebar, TimelineTask for timeline items */}
+      {activeAppointment.technician_name ? (
+        <TimelineTask appointment={activeAppointment} isOverlay />
+      ) : (
+        <div className={cn(
+          "flex cursor-grabbing items-center gap-2 rounded-md border border-l-4 bg-card p-2.5 shadow-xl",
+          activeAppointment.task_type === "note" 
+            ? "border-amber-200 border-l-amber-400 bg-amber-50" 
+            : "border-border border-l-[#367C2B]"
+        )}>
+          <GripVertical className="h-4 w-4 flex-shrink-0 opacity-60" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">
+              {activeAppointment.client_name || "Без клиент"}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {activeAppointment.machine_model || "Машина"}
+            </p>
           </div>
-        )}
-      </DragOverlay>
-    </DndContext>
+          <Badge variant="secondary" className="text-xs shrink-0">
+            {activeAppointment.planned_hours || 1}ч
+          </Badge>
+        </div>
+  )}
+  </div>
+  )}
+</DragOverlay>
+
+{/* Edit Booking Dialog - opens on double-click */}
+{editingAppointment && (
+  <Dialog open={!!editingAppointment} onOpenChange={(open) => !open && handleCancelEdit()}>
+    <DialogContent className="sm:max-w-[400px]">
+      <DialogHeader>
+        <DialogTitle>Редактирай резервация</DialogTitle>
+        <DialogDescription>
+          {editingAppointment.client_name} - {editingAppointment.machine_model || "Машина"}
+        </DialogDescription>
+      </DialogHeader>
+      <div className="grid gap-4 py-4">
+        {/* Technician Select */}
+        <div className="space-y-2">
+          <Label htmlFor="edit-technician">Техник</Label>
+          <Select value={editTechnician} onValueChange={setEditTechnician}>
+            <SelectTrigger id="edit-technician">
+              <SelectValue placeholder="Избери техник" />
+            </SelectTrigger>
+            <SelectContent>
+              {technicians.map((tech) => (
+                <SelectItem key={tech.id} value={tech.name}>
+                  {tech.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        {/* Start Time */}
+        <div className="space-y-2">
+          <Label htmlFor="edit-start-time">Начален час</Label>
+          <Select value={editStartTime} onValueChange={setEditStartTime}>
+            <SelectTrigger id="edit-start-time">
+              <SelectValue placeholder="Избери час" />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: (END_HOUR - START_HOUR) * 2 }, (_, i) => {
+                const hour = START_HOUR + Math.floor(i / 2);
+                const minutes = (i % 2) * 30;
+                const timeStr = `${hour.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+                return (
+                  <SelectItem key={timeStr} value={timeStr}>
+                    {timeStr}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        {/* Duration */}
+        <div className="space-y-2">
+          <Label htmlFor="edit-duration">Продължителност (часове)</Label>
+          <Select value={editDuration} onValueChange={setEditDuration}>
+            <SelectTrigger id="edit-duration">
+              <SelectValue placeholder="Избери продължителност" />
+            </SelectTrigger>
+            <SelectContent>
+              {[0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 8].map((hours) => (
+                <SelectItem key={hours} value={String(hours)}>
+                  {hours} ч.
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={handleCancelEdit}>
+          Отказ
+        </Button>
+        <Button onClick={handleSaveEdit} disabled={saving || !editTechnician}>
+          {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+          Запази
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+)}
+
+  </DndContext>
   );
 }

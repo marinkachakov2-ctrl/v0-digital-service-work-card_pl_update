@@ -281,7 +281,7 @@ export function PartsTable({ parts, onPartsChange }: PartsTableProps) {
                       </div>
                       <div className="text-right shrink-0 ml-2">
                         <p className="text-sm font-medium text-foreground">
-                          {part.unitPrice.toFixed(2)} лв.
+                          {part.unitPrice.toFixed(2)} €
                         </p>
                         <p className={cn(
                           "text-[10px]",
@@ -312,7 +312,7 @@ export function PartsTable({ parts, onPartsChange }: PartsTableProps) {
                 <TableHead className="text-muted-foreground">Part No</TableHead>
                 <TableHead className="text-muted-foreground">Описание</TableHead>
                 <TableHead className="text-right text-muted-foreground">Кол.</TableHead>
-                <TableHead className="text-right text-muted-foreground">Цена (лв.)</TableHead>
+                <TableHead className="text-right text-muted-foreground">Цена (€)</TableHead>
                 <TableHead className="text-right text-muted-foreground">Сума</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
@@ -401,7 +401,7 @@ export function PartsTable({ parts, onPartsChange }: PartsTableProps) {
                         />
                       </TableCell>
                       <TableCell className="text-right font-mono text-foreground">
-                        {(part.qty * part.price).toFixed(2)} лв.
+                        {(part.qty * part.price).toFixed(2)} €
                       </TableCell>
                       <TableCell>
                         <Button
@@ -426,7 +426,7 @@ export function PartsTable({ parts, onPartsChange }: PartsTableProps) {
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground">Обща сума на частите:</span>
             <span className="font-mono text-lg font-semibold text-foreground">
-              {subtotal.toFixed(2)} лв.
+              {subtotal.toFixed(2)} €
             </span>
           </div>
         </div>

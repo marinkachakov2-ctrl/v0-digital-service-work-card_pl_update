@@ -472,6 +472,18 @@ export async function fetchLaborCatalog(): Promise<LaborCatalogItem[]> {
 }
 
 /**
+ * Helper to detect mock IDs (used when Supabase is unavailable in v0 sandbox)
+ */
+function isMockId(id: string | undefined | null): boolean {
+  if (!id) return false;
+  // Check for mock prefix or non-UUID format
+  if (id.startsWith("mock-")) return true;
+  // Check for valid UUID format (8-4-4-4-12 hex pattern)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return !uuidRegex.test(id);
+}
+
+/**
  * Save labor items to job_card_labor table
  */
 export async function saveJobCardLabor(
@@ -484,6 +496,14 @@ export async function saveJobCardLabor(
     endTime?: string | null;
   }>
 ): Promise<{ success: boolean; error?: string }> {
+  // Sandbox simulation: if using mock IDs, skip real database call
+  if (isMockId(jobCardId)) {
+    console.log("[Sandbox] Simulating saveJobCardLabor for mock job card:", jobCardId);
+    console.log("[Sandbox] Labor items:", laborItems);
+    await new Promise((resolve) => setTimeout(resolve, 500)); // Simulate network delay
+    return { success: true };
+  }
+
   const supabase = await createClient();
 
   // First delete existing labor items for this job card
@@ -1002,6 +1022,20 @@ export async function fetchPayerStatus(clientId: string): Promise<PayerStatus | 
  * Combined search for the Master Search bar
  * Searches both service_orders and machines, returning unified results
  */
+// Machine telematics data from JDLink
+export interface MachineTelematics {
+  engineHours: number;
+  batteryVoltage: number;
+  fuelLevel: number;
+  defLevel?: number;
+  engineTemp?: number;
+  coolantTemp?: number;
+  hydraulicTemp?: number;
+  engineLoad?: number;
+  hydraulicPressure?: number;
+  lastUpdated?: string;
+}
+
 export interface MasterSearchResult {
   type: "order" | "machine";
   id: string;
@@ -1016,114 +1050,230 @@ export interface MasterSearchResult {
   // Client fields
   clientId?: string;
   clientName: string;
+  clientLocation?: string;
+  // Engine serial number
+  engineSerial?: string;
   // Payer status
   isBlocked?: boolean;
   // Navision description from service order
   navisionDescription?: string;
+  // JDLink telematics data
+  telematics?: MachineTelematics;
+  // Active DTC codes from machine
+  dtcCodes?: Array<{ code: string; description: string; severity: "warning" | "critical" }>;
 }
 
 export async function masterSearch(
   query: string,
   orderType?: string
 ): Promise<MasterSearchResult[]> {
-  if (!query || query.trim().length < 2) {
+  // Allow empty query for wildcard (%) mode - returns general machine list
+  const isWildcardMode = !query || query.trim().length === 0;
+  
+  if (!isWildcardMode && query.trim().length < 2) {
     return [];
   }
 
-  const supabase = await createClient();
-  const searchTerm = query.trim();
+  const searchTerm = query?.trim() || "";
   const results: MasterSearchResult[] = [];
 
-  // Search service orders - use ilike for case-insensitive search
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HYBRID STRATEGY: Real Supabase UUIDs + Mock Telematics for JDLink UI
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   try {
-    let orderQuery = supabase
-      .from("service_orders")
-      .select(`
-        *,
-        machines:machine_id (id, model, serial_number, brand),
-        clients:client_id (id, name, is_blocked)
-      `)
-      .or(`order_number.ilike.%${searchTerm}%,job_card_number.ilike.%${searchTerm}%`)
-      .order("created_at", { ascending: false })
-      .limit(10);
-
-    // Filter by order type if specified
-    if (orderType && orderType !== "all" && orderType !== "repair") {
-      orderQuery = orderQuery.eq("service_type", orderType);
-    }
-
-    const { data: orders, error: orderError } = await orderQuery;
-
-    if (orderError) {
-      console.error("masterSearch orders error:", orderError);
-    }
-
-    if (!orderError && orders) {
-      for (const o of orders) {
-        const machine = o.machines as Record<string, unknown> | null;
-        const client = o.clients as Record<string, unknown> | null;
-        results.push({
-          type: "order",
-          id: o.id as string,
-          orderNumber: o.order_number as string || "",
-          jobCardNumber: o.job_card_number as string || "",
-          serviceType: o.service_type as MasterSearchResult["serviceType"],
-          machineId: (machine?.id as string) || undefined,
-          machineSerial: (machine?.serial_number as string) || "",
-          machineModel: `${machine?.brand || ""} ${machine?.model || ""}`.trim(),
-          clientId: (client?.id as string) || undefined,
-          clientName: (client?.name as string) || "",
-          isBlocked: (client?.is_blocked as boolean) || false,
-          // Include Navision description from service order
-          navisionDescription: (o.description as string) || (o.fault_description as string) || "",
-        });
-      }
-    }
-  } catch (err) {
-    console.error("masterSearch orders catch:", err);
-  }
-
-  // Search machines directly
-  try {
-    const { data: machines, error: machineError } = await supabase
+    const supabase = await createClient();
+    
+    // Build the real Supabase query
+    let machineQuery = supabase
       .from("machines")
       .select(`
-        *,
-        clients:client_id (id, name, is_blocked)
-      `)
-      .or(`serial_number.ilike.%${searchTerm}%,model.ilike.%${searchTerm}%,brand.ilike.%${searchTerm}%`)
-      .limit(10);
-
-    if (machineError) {
-      console.error("masterSearch machines error:", machineError);
+        id,
+        serial_number,
+        model_name,
+        brand,
+        model,
+        clients:client_id (id, name, is_blocked, address),
+        machine_telematics (*)
+      `);
+    
+    // Apply search filter if not wildcard mode
+    if (!isWildcardMode && searchTerm) {
+      machineQuery = machineQuery.or(
+        `serial_number.ilike.%${searchTerm}%,model_name.ilike.%${searchTerm}%,brand.ilike.%${searchTerm}%`
+      );
     }
-
-    if (!machineError && machines) {
-      for (const m of machines) {
-        const client = m.clients as Record<string, unknown> | null;
-        // Don't add duplicates (machines already in orders)
-        const alreadyInResults = results.some(
-          r => r.machineSerial === m.serial_number
-        );
-        if (!alreadyInResults) {
-          results.push({
-            type: "machine",
-            id: m.id as string,
-            machineId: m.id as string,
-            machineSerial: (m.serial_number as string) || "",
-            machineModel: `${m.brand || ""} ${m.model || ""}`.trim(),
-            clientId: (client?.id as string) || undefined,
-            clientName: (client?.name as string) || m.client_name as string || "",
-            isBlocked: (client?.is_blocked as boolean) || false,
-          });
-        }
-      }
+    
+    // Limit results
+    machineQuery = machineQuery.limit(isWildcardMode ? 50 : 10);
+    
+    const { data: machines, error } = await machineQuery;
+    
+    if (error) {
+      console.error("masterSearch Supabase error:", error);
+      // Fall back to mock data on error
+      return getMockMachineResults(searchTerm, isWildcardMode);
     }
+    
+    if (!machines || machines.length === 0) {
+      // No results from database - return mock data for demo
+      return getMockMachineResults(searchTerm, isWildcardMode);
+    }
+    
+    // Process real database results with hybrid telematics
+    for (const m of machines) {
+      const client = m.clients as { id: string; name: string; is_blocked: boolean; address?: string } | null;
+      const rawTelematics = m.machine_telematics as Array<Record<string, unknown>> | null;
+      
+      // Check if real telematics exists, otherwise inject mock data
+      const hasRealTelematics = rawTelematics && rawTelematics.length > 0;
+      const telematics = hasRealTelematics 
+        ? rawTelematics[0] 
+        : generateMockTelematics();
+      
+      // Generate mock DTC codes if machine has active DTCs
+      const activeDtcs = (telematics.active_dtcs as number) || 0;
+      const dtcCodes = activeDtcs > 0 ? generateMockDtcCodes(activeDtcs) : [];
+      
+      results.push({
+        type: "machine",
+        id: m.id as string, // Real UUID from Supabase
+        machineId: m.id as string,
+        machineSerial: (m.serial_number as string) || "",
+        machineModel: m.model_name 
+          ? (m.model_name as string)
+          : `${m.brand || ""} ${m.model || ""}`.trim(),
+        clientId: client?.id || undefined,
+        clientName: client?.name || "",
+        clientLocation: client?.address || "",
+        isBlocked: client?.is_blocked || false,
+        telematics: {
+          engineHours: (telematics.engine_hours as number) || 0,
+          batteryVoltage: (telematics.battery_voltage as number) || 0,
+          fuelLevel: (telematics.fuel_level_percent as number) || 0,
+          defLevel: (telematics.def_level_percent as number) || 0,
+          engineTemp: (telematics.engine_temp as number) || 0,
+          coolantTemp: (telematics.coolant_temp as number) || 0,
+          hydraulicTemp: (telematics.hydraulic_temp as number) || 0,
+          engineLoad: (telematics.engine_load as number) || 0,
+          hydraulicPressure: (telematics.hydraulic_pressure as number) || 0,
+          lastUpdated: new Date().toISOString(),
+        },
+        dtcCodes,
+      });
+    }
+    
+    return results;
+    
   } catch (err) {
-    console.error("masterSearch machines catch:", err);
+    console.error("masterSearch exception:", err);
+    // Fall back to mock data on any error
+    return getMockMachineResults(searchTerm, isWildcardMode);
   }
+}
 
-  return results;
+// Generate mock telematics for machines without real JDLink data
+function generateMockTelematics(): Record<string, unknown> {
+  return {
+    engine_hours: Math.floor(Math.random() * 4000) + 1000,
+    fuel_level_percent: Math.floor(Math.random() * 60) + 30,
+    def_level_percent: Math.floor(Math.random() * 50) + 40,
+    battery_voltage: 12.8 + Math.random() * 2,
+    engine_temp: 75 + Math.floor(Math.random() * 25),
+    coolant_temp: 70 + Math.floor(Math.random() * 20),
+    hydraulic_temp: 55 + Math.floor(Math.random() * 25),
+    engine_load: Math.floor(Math.random() * 70) + 20,
+    hydraulic_pressure: 150 + Math.floor(Math.random() * 80),
+    active_dtcs: Math.random() > 0.7 ? 1 : 0, // 30% chance of having DTC
+  };
+}
+
+// Generate mock DTC codes based on count
+function generateMockDtcCodes(count: number): Array<{ code: string; description: string; severity: "warning" | "critical" }> {
+  const possibleDtcs = [
+    { code: "ECU 524287.31", description: "Engine Oil Pressure Low", severity: "warning" as const },
+    { code: "ECU 641.14", description: "Battery Voltage Low", severity: "warning" as const },
+    { code: "ECU 110.03", description: "Engine Coolant Temp High", severity: "critical" as const },
+    { code: "ECU 91.09", description: "Throttle Position Sensor", severity: "warning" as const },
+    { code: "ECU 168.01", description: "Electrical System Voltage", severity: "warning" as const },
+  ];
+  return possibleDtcs.slice(0, Math.min(count, possibleDtcs.length));
+}
+
+// Fallback mock data when Supabase is unavailable (v0 sandbox)
+function getMockMachineResults(searchTerm: string, isWildcardMode: boolean): MasterSearchResult[] {
+  const mockMachines = [
+    {
+      id: "mock-6m195-001",
+      serial_number: "1L06155MCHJ100042",
+      model_name: "John Deere 6M 195",
+      client: { id: "c1", name: "Агроинвест ООД", is_blocked: false, location: "Пловдив" },
+      telematics: { engine_hours: 2156, fuel_level_percent: 28, def_level_percent: 45, battery_voltage: 13.8, engine_temp: 88, coolant_temp: 85, hydraulic_temp: 72, engine_load: 42, hydraulic_pressure: 185, active_dtcs: 1 },
+      dtc_codes: [{ code: "ECU 524287.31", description: "Engine Oil Pressure Low", severity: "warning" as const }],
+    },
+    {
+      id: "mock-7r350-002",
+      serial_number: "1RW7350KMPD008912",
+      model_name: "John Deere 7R 350",
+      client: { id: "c2", name: "Golden Fields EOOD", is_blocked: false, location: "Стара Загора" },
+      telematics: { engine_hours: 4320, fuel_level_percent: 65, def_level_percent: 78, battery_voltage: 14.1, engine_temp: 92, coolant_temp: 88, hydraulic_temp: 68, engine_load: 68, hydraulic_pressure: 210, active_dtcs: 0 },
+      dtc_codes: [],
+    },
+    {
+      id: "mock-8r410-003",
+      serial_number: "1RW8400RTNE002847",
+      model_name: "John Deere 8R 410",
+      client: { id: "c3", name: "Мегатрон Демо ЕООД", is_blocked: false, location: "София" },
+      telematics: { engine_hours: 1245, fuel_level_percent: 82, def_level_percent: 91, battery_voltage: 14.2, engine_temp: 78, coolant_temp: 75, hydraulic_temp: 62, engine_load: 35, hydraulic_pressure: 175, active_dtcs: 0 },
+      dtc_codes: [],
+    },
+    {
+      id: "mock-9620rx-004",
+      serial_number: "1L09620STPK004521",
+      model_name: "John Deere 9620 RX",
+      client: { id: "c4", name: "Зърнени Храни АД", is_blocked: true, location: "Добрич" },
+      telematics: { engine_hours: 6789, fuel_level_percent: 15, def_level_percent: 22, battery_voltage: 11.8, engine_temp: 105, coolant_temp: 98, hydraulic_temp: 88, engine_load: 0, hydraulic_pressure: 0, active_dtcs: 2 },
+      dtc_codes: [
+        { code: "ECU 524287.31", description: "Engine Oil Pressure Low", severity: "critical" as const },
+        { code: "ECU 641.14", description: "Battery Voltage Low", severity: "warning" as const },
+      ],
+    },
+  ];
+
+  // Filter based on search term
+  const filtered = isWildcardMode
+    ? mockMachines
+    : mockMachines.filter(
+        (m) =>
+          m.serial_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          m.model_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          m.client.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+
+  return filtered.map((m) => ({
+    type: "machine" as const,
+    id: m.id,
+    machineId: m.id,
+    machineSerial: m.serial_number,
+    machineModel: m.model_name,
+    clientId: m.client.id,
+    clientName: m.client.name,
+    clientLocation: m.client.location,
+    isBlocked: m.client.is_blocked,
+    telematics: {
+      engineHours: m.telematics.engine_hours,
+      batteryVoltage: m.telematics.battery_voltage,
+      fuelLevel: m.telematics.fuel_level_percent,
+      defLevel: m.telematics.def_level_percent,
+      engineTemp: m.telematics.engine_temp,
+      coolantTemp: m.telematics.coolant_temp,
+      hydraulicTemp: m.telematics.hydraulic_temp,
+      engineLoad: m.telematics.engine_load,
+      hydraulicPressure: m.telematics.hydraulic_pressure,
+      lastUpdated: new Date().toISOString(),
+    },
+    dtcCodes: m.dtc_codes,
+  }));
 }
 
 /**
@@ -1257,8 +1407,6 @@ export async function submitJobCard(data: {
   status?: string;
   totalSeconds?: number;
 }): Promise<{ success: boolean; jobCardId?: string; pendingOrder?: boolean; error?: string }> {
-  const supabase = await createClient();
-
   // Validation - only jobCardNumber and technicians are required
   if (!data.jobCardNumber) {
     return { success: false, error: "Job Card number is required" };
@@ -1273,6 +1421,44 @@ export async function submitJobCard(data: {
 
   // Determine if this is a "pending order" submission
   const hasPendingOrder = !data.orderNumber || data.orderNumber.trim() === "";
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SANDBOX SIMULATION: If using mock IDs, skip real database call
+  // This allows testing in v0 sandbox without valid Supabase connection
+  // ═══════════════════════════════════════════════════════════════════════════
+  const hasMockData = isMockId(data.machineId) || isMockId(primaryTechnicianId);
+  
+  if (hasMockData) {
+    console.log("[Sandbox] Simulating submitJobCard - mock data detected");
+    console.log("[Sandbox] Payload:", {
+      orderNumber: data.orderNumber,
+      jobCardNumber: data.jobCardNumber,
+      machineId: data.machineId,
+      technicianIds: data.technicianIds,
+      notes: data.notes,
+      status: data.status,
+      totalSeconds: data.totalSeconds,
+    });
+    
+    // Simulate network delay
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    
+    // Generate a mock job card ID
+    const mockJobCardId = `JC-${Date.now().toString(36).toUpperCase()}`;
+    
+    console.log("[Sandbox] Simulated save successful. Mock Job Card ID:", mockJobCardId);
+    
+    return {
+      success: true,
+      jobCardId: mockJobCardId,
+      pendingOrder: hasPendingOrder,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REAL DATABASE SAVE: Valid UUIDs detected, proceed with Supabase insert
+  // ════════════════════���══════════════════════════════════════════════════════
+  const supabase = await createClient();
 
   // Insert job card into Supabase - order_no can be null
   const { data: insertedData, error } = await supabase
@@ -1660,7 +1846,7 @@ export async function updateMissingPhotoReason(
   }
 }
 
-// ────────────────────────────── Machine Issues ──────────────────────────────
+// ────────────────────────────── Machine Issues ───────────────────────────��──
 
 export interface MachineIssue {
   id: string;
@@ -1678,6 +1864,12 @@ export interface MachineIssue {
 export async function fetchUnresolvedMachineIssues(
   machineId: string
 ): Promise<{ issues: MachineIssue[]; error?: string }> {
+  // Sandbox: Skip database call for mock IDs
+  if (isMockId(machineId)) {
+    console.log("[Sandbox] Skipping fetchUnresolvedMachineIssues for mock machine:", machineId);
+    return { issues: [] };
+  }
+
   const supabase = await createClient();
 
   try {

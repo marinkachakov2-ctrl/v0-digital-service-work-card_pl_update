@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, MapPin, Tractor, Hash, Cpu, Clock, Loader2, CheckCircle2, AlertTriangle, Pencil, X, Camera, ImageIcon, Trash2 } from "lucide-react";
+import { Building2, MapPin, Tractor, Hash, Cpu, Clock, Loader2, CheckCircle2, AlertTriangle, Pencil, X, Camera, ImageIcon, Trash2, Target } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { searchClients } from "@/lib/actions";
@@ -48,6 +48,10 @@ interface ClientSectionProps {
   onMissingPhotoReasonChange: (reason: string) => void;
   onCapturePhoto: () => Promise<string | null>;
   isCapturingPhoto?: boolean;
+  // Service location handling
+  serviceLocation: string;
+  onServiceLocationChange: (location: string) => void;
+  isGpsAutoFilled?: boolean;
 }
 
 export function ClientSection({
@@ -72,6 +76,9 @@ export function ClientSection({
   onMissingPhotoReasonChange,
   onCapturePhoto,
   isCapturingPhoto = false,
+  serviceLocation,
+  onServiceLocationChange,
+  isGpsAutoFilled = false,
 }: ClientSectionProps) {
   // Payer editing state
   const [isEditingPayer, setIsEditingPayer] = useState(false);
@@ -261,7 +268,7 @@ export function ClientSection({
                           )}
                           {!payer.isBlocked && payer.creditLimit > 0 && (
                             <p className="text-[10px] text-muted-foreground mt-0.5">
-                              Лимит: {payer.creditLimit.toLocaleString()} лв | Баланс: {payer.currentBalance.toLocaleString()} лв
+                              Лимит: {payer.creditLimit.toLocaleString()} € | Баланс: {payer.currentBalance.toLocaleString()} €
                             </p>
                           )}
                         </button>
@@ -358,18 +365,37 @@ export function ClientSection({
           )}
         </div>
 
-        {/* Location */}
+        {/* Location - Editable with GPS auto-fill */}
         <div className="space-y-2">
           <Label className="flex items-center gap-2 text-xs text-muted-foreground">
             <MapPin className="h-3 w-3" />
             Локация
           </Label>
-          <Input
-            readOnly
-            value={clientData?.location || ""}
-            placeholder="--"
-            className="bg-secondary text-foreground"
-          />
+          <div className="relative">
+            <Input
+              type="text"
+              value={serviceLocation}
+              onChange={(e) => onServiceLocationChange(e.target.value)}
+              placeholder="Въведете локация или изчакайте GPS..."
+              className="bg-secondary text-foreground pr-10"
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              <Target 
+                className={cn(
+                  "h-4 w-4 transition-all duration-300",
+                  isGpsAutoFilled 
+                    ? "text-[#00FF88] animate-pulse" 
+                    : "text-muted-foreground/50"
+                )} 
+              />
+            </div>
+          </div>
+          {isGpsAutoFilled && (
+            <p className="text-[10px] text-[#007A33] flex items-center gap-1">
+              <Target className="h-2.5 w-2.5" />
+              GPS локация автоматично попълнена от JDLink
+            </p>
+          )}
         </div>
 
         {/* Machine Model */}

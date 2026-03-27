@@ -48,6 +48,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
@@ -490,6 +491,7 @@ export default function AdminDashboardPage() {
             <DialogTitle className="text-base">
               Edit {editingOrder?.id}
             </DialogTitle>
+            <DialogDescription className="sr-only">Edit order details</DialogDescription>
           </DialogHeader>
           {editingOrder && (
             <div className="space-y-4 py-2">
