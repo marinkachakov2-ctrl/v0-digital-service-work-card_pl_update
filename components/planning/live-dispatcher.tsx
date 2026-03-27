@@ -326,20 +326,26 @@ function getProgressBarColor(status: string | null): string {
   return "bg-gray-500";
 }
 
-// Timeline draggable task - matching reference design exactly
+// Timeline draggable task with resize handles - matching reference design exactly
 function TimelineTask({ 
   appointment, 
   isOverlay = false,
   onConvert,
+  onResize,
 }: { 
   appointment: ServiceAppointment; 
   isOverlay?: boolean;
   onConvert?: (apt: ServiceAppointment) => void;
+  onResize?: (appointmentId: string, newDuration: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: appointment.id,
     data: { appointment, type: "timeline" },
   });
+
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeWidth, setResizeWidth] = useState<number | null>(null);
+  const resizeStartRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   const startHours = parseTimeToHours(appointment.start_time);
   const durationHours = appointment.planned_hours || 1;
@@ -350,13 +356,52 @@ function TimelineTask({
   const progress = appointment.status === "active" || appointment.status === "in_progress" ? 65 : 
                    appointment.status === "completed" ? 100 : 30;
 
+  // Handle resize start
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setIsResizing(true);
+    resizeStartRef.current = {
+      startX: e.clientX,
+      startWidth: resizeWidth || pos.width,
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!resizeStartRef.current) return;
+      const deltaX = moveEvent.clientX - resizeStartRef.current.startX;
+      const newWidth = Math.max(CELL_WIDTH * 0.5, resizeStartRef.current.startWidth + deltaX);
+      // Snap to 30-minute increments
+      const snappedWidth = Math.round(newWidth / (CELL_WIDTH * 0.5)) * (CELL_WIDTH * 0.5);
+      setResizeWidth(snappedWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      if (resizeWidth && onResize) {
+        // Convert width to hours
+        const newDuration = Math.max(0.5, resizeWidth / CELL_WIDTH);
+        onResize(appointment.id, newDuration);
+      }
+      setResizeWidth(null);
+      resizeStartRef.current = null;
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  };
+
+  const currentWidth = resizeWidth || Math.max(pos.width, 150);
+
   const style: React.CSSProperties = isOverlay
-    ? { width: Math.max(pos.width, 180) }
+    ? { width: currentWidth }
     : {
         position: "absolute",
         left: pos.left,
-        width: Math.max(pos.width, 180), // Minimum width for readability
+        width: currentWidth,
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+        zIndex: isDragging || isResizing ? 50 : 1,
       };
 
   // Note cards
@@ -367,7 +412,7 @@ function TimelineTask({
         {...(!isOverlay ? { ...listeners, ...attributes } : {})}
         style={style}
         className={cn(
-          "flex h-12 cursor-grab flex-col justify-center rounded border border-amber-400 bg-amber-50 px-3 text-amber-900 shadow-sm",
+          "flex h-14 cursor-grab flex-col justify-center rounded border border-amber-400 bg-amber-50 px-3 text-amber-900 shadow-sm",
           isDragging && !isOverlay && "opacity-50",
           isOverlay && "shadow-xl ring-2 ring-amber-300"
         )}
@@ -388,46 +433,71 @@ function TimelineTask({
     );
   }
 
-  // Service/Repair appointment cards - matching reference exactly
+  // Service/Repair appointment cards - matching reference exactly with resize handle
   return (
     <div
       ref={!isOverlay ? setNodeRef : undefined}
-      {...(!isOverlay ? { ...listeners, ...attributes } : {})}
       style={style}
       className={cn(
-        "flex cursor-grab flex-col rounded border-2 bg-card shadow-sm overflow-hidden",
+        "group relative flex cursor-grab flex-col rounded border-2 bg-card shadow-sm overflow-hidden",
         getStatusBorderColor(appointment.status),
         isDragging && !isOverlay && "opacity-50",
-        isOverlay && "shadow-xl ring-2 ring-white/50"
+        isOverlay && "shadow-xl ring-2 ring-white/50",
+        isResizing && "ring-2 ring-primary"
       )}
     >
-      {/* Main content */}
-      <div className="flex-1 px-2.5 py-1.5">
-        {/* Top row: status icon + order number + edit icon + task name */}
-        <div className="flex items-center gap-1.5">
-          <StatusIcon status={appointment.status} />
-          <span className="text-[11px] text-muted-foreground font-medium">
-            ON-{appointment.id.toString().slice(-4)}
-          </span>
-          <FileEdit className="h-3 w-3 text-muted-foreground" />
-          <span className="text-xs font-semibold text-foreground truncate">
-            {appointment.notes?.split(" ").slice(0, 2).join(" ") || "Сервиз"}
-          </span>
+      {/* Drag handle area - the main content is draggable */}
+      <div {...(!isOverlay ? { ...listeners, ...attributes } : {})} className="flex-1">
+        {/* Main content */}
+        <div className="px-2.5 py-1.5">
+          {/* Top row: status icon + order number + edit icon + task name */}
+          <div className="flex items-center gap-1.5">
+            <StatusIcon status={appointment.status} />
+            <span className="text-[11px] text-muted-foreground font-medium">
+              ON-{appointment.id.toString().slice(-4)}
+            </span>
+            <FileEdit className="h-3 w-3 text-muted-foreground" />
+            <span className="text-xs font-semibold text-foreground truncate">
+              {appointment.notes?.split(" ").slice(0, 2).join(" ") || "Сервиз"}
+            </span>
+          </div>
+          
+          {/* Bottom row: client + machine */}
+          <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+            {appointment.client_name || "Клиент"} ({appointment.machine_model || appointment.serial_number || "Машина"})
+          </p>
         </div>
-        
-        {/* Bottom row: client + machine */}
-        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-          {appointment.client_name || "Клиент"} ({appointment.machine_model || appointment.serial_number || "Машина"})
-        </p>
       </div>
       
       {/* Progress bar at bottom */}
-      <div className="h-1 w-full bg-muted">
+      <div className="h-1.5 w-full bg-muted">
         <div 
           className={cn("h-full transition-all", getProgressBarColor(appointment.status))}
           style={{ width: `${progress}%` }}
         />
       </div>
+
+      {/* Resize handle on right edge */}
+      {!isOverlay && onResize && (
+        <div
+          onMouseDown={handleResizeStart}
+          className={cn(
+            "absolute right-0 top-0 h-full w-2 cursor-ew-resize",
+            "bg-transparent hover:bg-primary/30 transition-colors",
+            "opacity-0 group-hover:opacity-100",
+            isResizing && "opacity-100 bg-primary/40"
+          )}
+        >
+          <div className="absolute right-0.5 top-1/2 -translate-y-1/2 h-6 w-0.5 rounded-full bg-muted-foreground/50" />
+        </div>
+      )}
+      
+      {/* Duration indicator during resize */}
+      {isResizing && resizeWidth && (
+        <div className="absolute -top-6 right-0 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded shadow">
+          {(resizeWidth / CELL_WIDTH).toFixed(1)}ч
+        </div>
+      )}
     </div>
   );
 }
@@ -469,6 +539,7 @@ function TechnicianRow({
   isOver,
   dropHour,
   onConvertNote,
+  onResize,
   techIndex = 0,
 }: {
   technician: Technician;
@@ -476,6 +547,7 @@ function TechnicianRow({
   isOver: boolean;
   dropHour: number | null;
   onConvertNote?: (apt: ServiceAppointment) => void;
+  onResize?: (appointmentId: string, newDuration: number) => void;
   techIndex?: number;
 }) {
   const { setNodeRef } = useDroppable({
@@ -559,21 +631,30 @@ function TechnicianRow({
           ))}
         </div>
 
-        {/* Drop preview indicator */}
+        {/* Drop preview indicator - shows where appointment will land */}
         {isOver && dropHour !== null && (
           <div
-            className="absolute top-2 h-10 rounded border-2 border-dashed border-primary bg-primary/20 pointer-events-none"
+            className="absolute top-2 h-14 rounded border-2 border-dashed border-primary bg-primary/20 pointer-events-none flex items-center justify-center"
             style={{
               left: (dropHour - START_HOUR) * CELL_WIDTH,
-              width: CELL_WIDTH,
+              width: CELL_WIDTH * 2, // Default 2 hour width preview
             }}
-          />
+          >
+            <span className="text-xs font-medium text-primary">
+              {dropHour.toString().padStart(2, "0")}:00
+            </span>
+          </div>
         )}
 
         {/* Tasks */}
         <div className="relative h-full pt-2">
           {appointments.map((apt) => (
-            <TimelineTask key={apt.id} appointment={apt} onConvert={onConvertNote} />
+            <TimelineTask 
+              key={apt.id} 
+              appointment={apt} 
+              onConvert={onConvertNote}
+              onResize={onResize}
+            />
           ))}
         </div>
       </div>
@@ -893,6 +974,37 @@ const handleDragEnd = async (event: DragEndEvent) => {
   };
 
   // ─────────────────────────────────────────────────────────────────────────
+  // RESIZE HANDLER - Update appointment duration
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleResize = useCallback(async (appointmentId: string, newDuration: number) => {
+    // Find the appointment
+    const appointment = assignedAppointments.find((a) => a.id === appointmentId);
+    if (!appointment) return;
+
+    // Round to nearest 0.5 hours
+    const roundedDuration = Math.round(newDuration * 2) / 2;
+    
+    // Don't update if duration hasn't really changed
+    if (Math.abs((appointment.planned_hours || 1) - roundedDuration) < 0.1) return;
+
+    setSaving(true);
+    
+    // Update via the hook (reusing assignTechnician since it updates the appointment)
+    const result = await assignTechnicianFromHook(
+      appointmentId,
+      appointment.technician_name || "",
+      appointment.work_date,
+      appointment.start_time || hoursToTimeStr(WORK_START_HOUR),
+      roundedDuration // Pass new duration
+    );
+
+    if (!result.success) {
+      refetch();
+    }
+    setSaving(false);
+  }, [assignedAppointments, assignTechnicianFromHook, refetch]);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // DERIVED DATA
   // ─────────────────────────────────────────────────────────────────────────
   // Waiting list: combined waiting orders + notes from shared hook + demo jobs from localStorage
@@ -1063,6 +1175,7 @@ const handleDragEnd = async (event: DragEndEvent) => {
                       setConvertSerialNumber("");
                       setConvertPriority("normal");
                     }}
+                    onResize={handleResize}
                   />
                 ))}
 
