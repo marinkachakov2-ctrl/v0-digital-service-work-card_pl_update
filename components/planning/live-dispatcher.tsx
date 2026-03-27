@@ -1446,7 +1446,7 @@ onResize={handleResize}
   )}
   </div>
   )}
-> </DragOverlay>
+</DragOverlay>
 
 {/* Edit Booking Dialog - opens on double-click */}
 {editingAppointment && (
