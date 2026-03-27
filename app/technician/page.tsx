@@ -9,15 +9,13 @@ import { OrderSelector, type SelectedOrder } from "@/components/work-card/order-
 import { TechniciansSection } from "@/components/work-card/technicians-section";
 import { ClientSection } from "@/components/work-card/client-section";
 import { FreeCheckSection, FREE_CHECK_POINTS, type FreeCheckItem } from "@/components/work-card/free-check-section";
-import type { DetectedIssue } from "@/components/work-card/future-issues-section";
 import { DiagnosticsSection, type FaultPhoto } from "@/components/work-card/diagnostics-section";
 import { PartsTable } from "@/components/work-card/parts-table";
 import { LaborTable } from "@/components/work-card/labor-table";
-import { UnresolvedIssuesAlert, UnresolvedIssuesSection, DynamicUnresolvedIssuesAlert, type UnresolvedIssue } from "@/components/work-card/unresolved-issues";
+
 import { CreditWarningBanner } from "@/components/work-card/credit-warning-banner";
 import { HistoricalIssuesBanner } from "@/components/work-card/historical-issues-banner";
-import { RecommendationsSection, type RecommendationsData } from "@/components/work-card/recommendations-section";
-import { FutureIssuesSection } from "@/components/work-card/future-issues-section";
+import { UnifiedIssuesSection, type DetectedIssue } from "@/components/work-card/unified-issues-section";
 import { PendingRepairsBanner } from "@/components/work-card/pending-repairs-banner";
 import { TechnicianHeader } from "@/components/work-card/technician-header";
 import { JDLinkDiagnostics } from "@/components/work-card/jdlink-diagnostics";
@@ -132,12 +130,8 @@ function WorkCardPageContent() {
   // Machine issues from database (unresolved issues for selected machine)
   const [machineIssues, setMachineIssues] = useState<MachineIssue[]>([]);
 
-  // Recommendations and pending issues for current card
-  const [recommendationsData, setRecommendationsData] = useState<RecommendationsData>({
-    pendingIssues: "",
-    pendingReason: "",
-    recommendations: "",
-  });
+  // General notes/recommendations for unified issues section
+  const [generalNotes, setGeneralNotes] = useState("");
 
   // Diagnostics (must be declared before localStorage hydration useEffect)
   const [reasonCode, setReasonCode] = useState("");
@@ -317,12 +311,8 @@ function WorkCardPageContent() {
           setTimerStatus("paused");
         }
         
-        // Recommendations
-        setRecommendationsData({
-          pendingIssues: data.pendingIssues,
-          pendingReason: data.pendingReason,
-          recommendations: data.recommendations,
-        });
+        // General notes (combined from old recommendations)
+        setGeneralNotes(data.recommendations || "");
         
         // Parts and labor
         if (data.parts?.length > 0) {
@@ -513,28 +503,8 @@ function WorkCardPageContent() {
 
 
 
-  // FREE CHECK items state (managed by FreeCheckSection, mirrored here for FutureIssuesSection)
+  // FREE CHECK items state (managed by FreeCheckSection, mirrored here for UnifiedIssuesSection)
   const [freeCheckItems, setFreeCheckItems] = useState<Record<string, FreeCheckItem>>({});
-
-  // Unresolved issues
-  const [unresolvedIssues, setUnresolvedIssues] = useState<UnresolvedIssue[]>([]);
-  // Simulated previous unresolved issues (would come from DB in production)
-  const [previousUnresolvedIssues] = useState<UnresolvedIssue[]>([
-    {
-      id: "prev-1",
-      description: "Хидравличен маркуч на десен цил��н��ър показва микропукнатини",
-      severity: "high",
-      fromPreviousCard: true,
-      previousCardId: "JC-0015",
-    },
-    {
-      id: "prev-2",
-      description: "Лек теч на масл���� при предната ос",
-      severity: "medium",
-      fromPreviousCard: true,
-      previousCardId: "JC-0012",
-    },
-  ]);
 
   const handleBillingEntityChange = (value: string) => {
     if (clientData) {
@@ -609,13 +579,9 @@ function WorkCardPageContent() {
     setIsPayerChanged(false);
     setPayerChangeReason("");
     
-    // Clear historical issues and recommendations
+    // Clear historical issues and general notes
     setHistoricalIssues([]);
-    setRecommendationsData({
-      pendingIssues: "",
-      pendingReason: "",
-      recommendations: "",
-    });
+    setGeneralNotes("");
     
     // Clear Supabase job card ID
     setSavedJobCardId(null);
@@ -732,10 +698,10 @@ function WorkCardPageContent() {
         // Machine and Payer IDs for database relations
         machineId: selectedMachineId || undefined,
         payerId: payerStatus?.payerId || undefined,
-        // Recommendations and pending issues
-        pendingIssues: recommendationsData.pendingIssues || null,
-        pendingReason: recommendationsData.pendingReason || null,
-        recommendations: recommendationsData.recommendations || null,
+        // General notes/recommendations
+        pendingIssues: null,
+        pendingReason: null,
+        recommendations: generalNotes || null,
         // Signature workflow - status is determined by presence of signature
         signatureData: signatureData || null,
         signerName: signerName || null,
@@ -784,7 +750,7 @@ function WorkCardPageContent() {
     clockAtJobLevel, timerStatus, elapsedSeconds, clientData, reasonCode, defectCode,
     description, faultDate, repairStart, repairEnd, engineHours, parts,
     laborItems, paymentMethod, partsTotal, laborTotal, vat, grandTotal, isSigned, savedJobCardId,
-    faultPhotos, hoursPhotoUrl, skipPhoto, missingPhotoReason, selectedMachineId, payerStatus, recommendationsData,
+    faultPhotos, hoursPhotoUrl, skipPhoto, missingPhotoReason, selectedMachineId, payerStatus, generalNotes,
     causalPartNo, assemblyGroup, correction, workDone, savePendingRepairs
   ]);
 
@@ -1065,27 +1031,14 @@ setMissingPhotoReason("");
         status: "deferred" as const,
       }));
       setParts((prev) => [...prev, ...newParts]);
-      // Also add to recommendations if there are deferred items
+      // Also add to general notes if there are deferred items
       const descriptions = repairs.map((r) => r.description).join("; ");
-      setRecommendationsData((prev) => ({
-        ...prev,
-        pendingIssues: prev.pendingIssues
-          ? `${prev.pendingIssues}\n[Импортирано]: ${descriptions}`
-          : `[Импортирано]: ${descriptions}`,
-      }));
+      setGeneralNotes((prev) => prev
+        ? `${prev}\n[Импортирано]: ${descriptions}`
+        : `[Импортирано]: ${descriptions}`
+      );
     }}
   />
-
-  {/* Unresolved Issues Alert Banner — prominent at top, fetched from database */}
-  {isScanned && machineIssues.length > 0 && (
-    <DynamicUnresolvedIssuesAlert
-      machineIssues={machineIssues}
-      onIssueResolved={(issueId) => {
-        setMachineIssues(prev => prev.filter(issue => issue.id !== issueId));
-      }}
-      currentJobCardId={savedJobCardId}
-    />
-  )}
 
  <ClientSection
   clientData={clientData}
@@ -1229,24 +1182,15 @@ setMissingPhotoReason("");
             onItemsChange={setFreeCheckItems}
           />
 
-          {/* Unresolved Issues — after Labor/Work Done */}
-          <UnresolvedIssuesSection
-            issues={unresolvedIssues}
-            onIssuesChange={setUnresolvedIssues}
-            previousIssues={previousUnresolvedIssues}
-          />
-
-          {/* Recommendations and Pending Issues for Future */}
-          <RecommendationsSection
-            data={recommendationsData}
-            onChange={setRecommendationsData}
-          />
-
-          {/* Future Issues - for next technician + Detected issues from FREE CHECK */}
-          <FutureIssuesSection
+          {/* Unified Issues & Recommendations Section */}
+          <UnifiedIssuesSection
             machineId={selectedMachineId}
             jobCardId={savedJobCardId}
             isReadOnly={isReadOnly}
+            machineIssues={machineIssues}
+            onIssueResolved={(issueId) => {
+              setMachineIssues(prev => prev.filter(issue => issue.id !== issueId));
+            }}
             detectedIssues={Object.entries(freeCheckItems)
               .filter(([, item]) => item.status === "0" || item.status === "repair")
               .map(([id, item]) => {
@@ -1261,10 +1205,10 @@ setMissingPhotoReason("");
                 };
               })}
             onGenerateQuote={(issue) => {
-              // Navigate to parts section or open quote modal
               console.log("[v0] Generate quote for issue:", issue);
-              // Could add a part with the issue name as description
             }}
+            generalNotes={generalNotes}
+            onGeneralNotesChange={setGeneralNotes}
           />
 
           <Footer
