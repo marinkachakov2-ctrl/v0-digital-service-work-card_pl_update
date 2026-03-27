@@ -334,11 +334,13 @@ function TimelineTask({
   isOverlay = false,
   onConvert,
   onResize,
+  onDoubleClick,
 }: { 
   appointment: ServiceAppointment; 
   isOverlay?: boolean;
   onConvert?: (apt: ServiceAppointment) => void;
   onResize?: (appointmentId: string, newDuration: number) => void;
+  onDoubleClick?: (apt: ServiceAppointment) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: appointment.id,
@@ -440,6 +442,10 @@ function TimelineTask({
     <div
       ref={!isOverlay ? setNodeRef : undefined}
       style={style}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        if (!isOverlay && onDoubleClick) onDoubleClick(appointment);
+      }}
       className={cn(
         "group relative flex cursor-grab flex-col rounded border-2 bg-card shadow-sm overflow-hidden",
         getStatusBorderColor(appointment.status),
@@ -542,6 +548,7 @@ function TechnicianRow({
   dropHour,
   onConvertNote,
   onResize,
+  onDoubleClick,
   techIndex = 0,
 }: {
   technician: Technician;
@@ -550,19 +557,13 @@ function TechnicianRow({
   dropHour: number | null;
   onConvertNote?: (apt: ServiceAppointment) => void;
   onResize?: (appointmentId: string, newDuration: number) => void;
+  onDoubleClick?: (apt: ServiceAppointment) => void;
   techIndex?: number;
 }) {
   const { setNodeRef, isOver: localIsOver } = useDroppable({
     id: `tech-${technician.id}`,
     data: { technicianName: technician.name, technicianId: technician.id },
   });
-  
-  // Debug: log when this droppable becomes active
-  useEffect(() => {
-    if (localIsOver) {
-      console.log("[v0] Droppable active:", technician.name, technician.id);
-    }
-  }, [localIsOver, technician.name, technician.id]);
 
   const initials = getInitials(technician.name);
   const techColor = getTechColor(techIndex);
@@ -663,6 +664,7 @@ function TechnicianRow({
               appointment={apt} 
               onConvert={onConvertNote}
               onResize={onResize}
+              onDoubleClick={onDoubleClick}
             />
           ))}
         </div>
@@ -714,6 +716,12 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
   const [convertMachineModel, setConvertMachineModel] = useState("");
   const [convertSerialNumber, setConvertSerialNumber] = useState("");
   const [convertPriority, setConvertPriority] = useState<string>("normal");
+  
+  // Edit booking dialog state (for double-click)
+  const [editingAppointment, setEditingAppointment] = useState<ServiceAppointment | null>(null);
+  const [editTechnician, setEditTechnician] = useState("");
+  const [editStartTime, setEditStartTime] = useState("");
+  const [editDuration, setEditDuration] = useState("1");
   
   const scrollRef = useRef<HTMLDivElement>(null);
   
@@ -880,25 +888,25 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
   // DRAG HANDLERS
   // ─────────────────────────────────────────────────────────────────────────
   const handleDragStart = (event: DragStartEvent) => {
-    console.log("[v0] Drag started:", event.active.id, event.active.data.current);
     setActiveId(event.active.id as string);
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    const { over } = event;
-    console.log("[v0] Drag over:", over?.id, over?.data?.current);
+    const { over, activatorEvent } = event;
     
     if (over) {
       setOverId(over.id as string);
       
-      // Calculate drop hour from pointer position
-      const rect = event.active.rect.current?.translated;
-      if (rect) {
-        // Estimate hour based on position
-        const containerLeft = SIDEBAR_WIDTH;
-        const relativeX = rect.left - containerLeft;
+      // Calculate drop hour from pointer position using the droppable rect
+      const overRect = over.rect;
+      const pointerX = (activatorEvent as PointerEvent)?.clientX || 0;
+      
+      if (overRect && pointerX) {
+        // Get the relative position within the droppable (timeline area)
+        const relativeX = pointerX - overRect.left;
         const hour = Math.floor(relativeX / CELL_WIDTH) + START_HOUR;
-        setDropHour(Math.max(START_HOUR, Math.min(END_HOUR - 1, hour)));
+        const clampedHour = Math.max(START_HOUR, Math.min(END_HOUR - 1, hour));
+        setDropHour(clampedHour);
       }
     } else {
       setOverId(null);
@@ -908,16 +916,12 @@ export function LiveDispatcher({ selectedDate: initialDate }: LiveDispatcherProp
 
 const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
-    console.log("[v0] Drag end - active:", active.id, "over:", over?.id, over?.data?.current);
     setActiveId(null);
     setOverId(null);
     setDropHour(null);
     setDropWarning(null);
 
-    if (!over) {
-      console.log("[v0] No drop target found");
-      return;
-    }
+    if (!over) return;
 
     const appointmentId = active.id as string;
     // Check assignedAppointments (timeline), sidebarBacklog (waiting list + notes), and demo jobs
@@ -956,7 +960,7 @@ const handleDragEnd = async (event: DragEndEvent) => {
     if (selectedDateStr === todayStr) {
       const currentHourNow = now.getHours() + now.getMinutes() / 60;
       if (newStartHour < currentHourNow) {
-        setDropWarning("Не можете да планирате задачи в минало време");
+        setDropWarning("Не можете да планир��те задачи в минало време");
         setTimeout(() => setDropWarning(null), 3000);
         return;
       }
@@ -1018,6 +1022,40 @@ const handleDragEnd = async (event: DragEndEvent) => {
     }
     setSaving(false);
   }, [assignedAppointments, assignTechnicianFromHook, refetch]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DOUBLE-CLICK EDIT HANDLER
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleDoubleClickAppointment = useCallback((appointment: ServiceAppointment) => {
+    setEditingAppointment(appointment);
+    setEditTechnician(appointment.technician_name || "");
+    setEditStartTime(appointment.start_time || hoursToTimeStr(WORK_START_HOUR));
+    setEditDuration(String(appointment.planned_hours || 1));
+  }, []);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!editingAppointment) return;
+    
+    setSaving(true);
+    
+    const result = await assignTechnicianFromHook(
+      editingAppointment.id,
+      editTechnician,
+      editingAppointment.work_date,
+      editStartTime,
+      parseFloat(editDuration)
+    );
+
+    if (result.success) {
+      setEditingAppointment(null);
+    }
+    setSaving(false);
+    refetch();
+  }, [editingAppointment, editTechnician, editStartTime, editDuration, assignTechnicianFromHook, refetch]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingAppointment(null);
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
   // DERIVED DATA
@@ -1195,9 +1233,10 @@ return (
                       setConvertSerialNumber("");
                       setConvertPriority("normal");
                     }}
-                    onResize={handleResize}
-                  />
-                ))}
+onResize={handleResize}
+  onDoubleClick={handleDoubleClickAppointment}
+  />
+  ))}
 
                 {/* Current time indicator */}
                 {currentTimeOffset !== null && (
@@ -1404,10 +1443,91 @@ return (
             {activeAppointment.planned_hours || 1}ч
           </Badge>
         </div>
-      )}
-    </div>
   )}
-</DragOverlay>
-    </DndContext>
+  </div>
+  )}
+> </DragOverlay>
+
+{/* Edit Booking Dialog - opens on double-click */}
+{editingAppointment && (
+  <Dialog open={!!editingAppointment} onOpenChange={(open) => !open && handleCancelEdit()}>
+    <DialogContent className="sm:max-w-[400px]">
+      <DialogHeader>
+        <DialogTitle>Редактирай резервация</DialogTitle>
+        <DialogDescription>
+          {editingAppointment.client_name} - {editingAppointment.machine_model || "Машина"}
+        </DialogDescription>
+      </DialogHeader>
+      <div className="grid gap-4 py-4">
+        {/* Technician Select */}
+        <div className="space-y-2">
+          <Label htmlFor="edit-technician">Техник</Label>
+          <Select value={editTechnician} onValueChange={setEditTechnician}>
+            <SelectTrigger id="edit-technician">
+              <SelectValue placeholder="Избери техник" />
+            </SelectTrigger>
+            <SelectContent>
+              {technicians.map((tech) => (
+                <SelectItem key={tech.id} value={tech.name}>
+                  {tech.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        {/* Start Time */}
+        <div className="space-y-2">
+          <Label htmlFor="edit-start-time">Начален час</Label>
+          <Select value={editStartTime} onValueChange={setEditStartTime}>
+            <SelectTrigger id="edit-start-time">
+              <SelectValue placeholder="Избери час" />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: (END_HOUR - START_HOUR) * 2 }, (_, i) => {
+                const hour = START_HOUR + Math.floor(i / 2);
+                const minutes = (i % 2) * 30;
+                const timeStr = `${hour.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+                return (
+                  <SelectItem key={timeStr} value={timeStr}>
+                    {timeStr}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        {/* Duration */}
+        <div className="space-y-2">
+          <Label htmlFor="edit-duration">Продължителност (часове)</Label>
+          <Select value={editDuration} onValueChange={setEditDuration}>
+            <SelectTrigger id="edit-duration">
+              <SelectValue placeholder="Избери продължителност" />
+            </SelectTrigger>
+            <SelectContent>
+              {[0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 8].map((hours) => (
+                <SelectItem key={hours} value={String(hours)}>
+                  {hours} ч.
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={handleCancelEdit}>
+          Отказ
+        </Button>
+        <Button onClick={handleSaveEdit} disabled={saving || !editTechnician}>
+          {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+          Запази
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+)}
+
+  </DndContext>
   );
 }
