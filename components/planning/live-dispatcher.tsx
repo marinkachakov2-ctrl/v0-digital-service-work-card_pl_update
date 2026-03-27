@@ -49,8 +49,8 @@ const END_HOUR = 24;   // Extended to 24:00
 const WORK_START_HOUR = 7;  // Visual work start
 const WORK_END_HOUR = 19;   // Visual work end
 const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
-const CELL_WIDTH = 70; // Matching reference column width
-const ROW_HEIGHT = 60; // Matching reference row height
+const CELL_WIDTH = 75; // Matching reference column width
+const ROW_HEIGHT = 70; // Matching reference row height (taller for 2-line content)
 const SIDEBAR_WIDTH = 180; // Wider for full names like reference
 
 // Colors by type/status
@@ -282,7 +282,51 @@ function WaitingJobCard({
   );
 }
 
-// Timeline draggable task
+// Status icon component
+function StatusIcon({ status }: { status: string | null }) {
+  const s = status?.toLowerCase() || "scheduled";
+  
+  // Active/In Progress - green filled circle with check
+  if (s === "active" || s === "in_progress" || s === "in progress") {
+    return (
+      <div className="flex h-4 w-4 items-center justify-center rounded-full bg-[#367C2B]">
+        <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      </div>
+    );
+  }
+  
+  // Waiting/Paused/Blocked - orange circle
+  if (s === "waiting" || s === "paused" || s === "blocked" || s === "on_hold") {
+    return (
+      <div className="h-4 w-4 rounded-full border-2 border-orange-500 bg-orange-500/20" />
+    );
+  }
+  
+  // Scheduled/Planned - grey circle outline
+  return (
+    <div className="h-4 w-4 rounded-full border-2 border-gray-400" />
+  );
+}
+
+// Get border color based on status
+function getStatusBorderColor(status: string | null): string {
+  const s = status?.toLowerCase() || "scheduled";
+  if (s === "active" || s === "in_progress" || s === "in progress") return "border-[#367C2B]";
+  if (s === "waiting" || s === "paused" || s === "blocked" || s === "on_hold") return "border-orange-500";
+  return "border-gray-600";
+}
+
+// Get progress bar color based on status
+function getProgressBarColor(status: string | null): string {
+  const s = status?.toLowerCase() || "scheduled";
+  if (s === "active" || s === "in_progress" || s === "in progress") return "bg-[#367C2B]";
+  if (s === "waiting" || s === "paused" || s === "blocked" || s === "on_hold") return "bg-orange-500";
+  return "bg-gray-500";
+}
+
+// Timeline draggable task - matching reference design exactly
 function TimelineTask({ 
   appointment, 
   isOverlay = false,
@@ -300,50 +344,90 @@ function TimelineTask({
   const startHours = parseTimeToHours(appointment.start_time);
   const durationHours = appointment.planned_hours || 1;
   const pos = getPositionFromTime(startHours, durationHours);
-  const colors = getAppointmentColor(appointment);
   const isNote = appointment.task_type === "note";
+  
+  // Calculate progress (mock - would come from actual tracking)
+  const progress = appointment.status === "active" || appointment.status === "in_progress" ? 65 : 
+                   appointment.status === "completed" ? 100 : 30;
 
   const style: React.CSSProperties = isOverlay
-    ? { width: pos.width }
+    ? { width: Math.max(pos.width, 180) }
     : {
         position: "absolute",
         left: pos.left,
-        width: pos.width,
+        width: Math.max(pos.width, 180), // Minimum width for readability
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
       };
 
+  // Note cards
+  if (isNote) {
+    return (
+      <div
+        ref={!isOverlay ? setNodeRef : undefined}
+        {...(!isOverlay ? { ...listeners, ...attributes } : {})}
+        style={style}
+        className={cn(
+          "flex h-12 cursor-grab flex-col justify-center rounded border border-amber-400 bg-amber-50 px-3 text-amber-900 shadow-sm",
+          isDragging && !isOverlay && "opacity-50",
+          isOverlay && "shadow-xl ring-2 ring-amber-300"
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <FileText className="h-3.5 w-3.5 flex-shrink-0" />
+          <span className="text-xs font-medium truncate">{appointment.client_name || "Бележка"}</span>
+          {onConvert && !isOverlay && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onConvert(appointment); }}
+              className="ml-auto p-0.5 rounded hover:bg-amber-200"
+            >
+              <FileEdit className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Service/Repair appointment cards - matching reference exactly
   return (
     <div
       ref={!isOverlay ? setNodeRef : undefined}
       {...(!isOverlay ? { ...listeners, ...attributes } : {})}
       style={style}
       className={cn(
-        "flex h-10 cursor-grab items-center gap-1 rounded border px-2 text-xs font-medium shadow-sm",
-        isNote ? "bg-amber-100 border-amber-300 text-amber-900" : colors.bg,
-        !isNote && colors.border,
-        !isNote && colors.text,
+        "flex cursor-grab flex-col rounded border-2 bg-card shadow-sm overflow-hidden",
+        getStatusBorderColor(appointment.status),
         isDragging && !isOverlay && "opacity-50",
         isOverlay && "shadow-xl ring-2 ring-white/50"
       )}
-      title={`${appointment.client_name} - ${appointment.machine_model || "Бележка"}`}
     >
-      <GripVertical className="h-3 w-3 flex-shrink-0 opacity-60" />
-      {isNote && <FileText className="h-3 w-3 flex-shrink-0" />}
-      <span className="truncate flex-1">
-        {appointment.client_name?.split(" ")[0] || "?"} {!isNote && `- ${appointment.machine_model?.substring(0, 10) || "Машина"}`}
-      </span>
-      {isNote && onConvert && !isOverlay && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onConvert(appointment);
-          }}
-          className="p-0.5 rounded hover:bg-amber-200 transition-colors flex-shrink-0"
-          title="Преобразувай в поръчка"
-        >
-          <FileEdit className="h-3 w-3" />
-        </button>
-      )}
+      {/* Main content */}
+      <div className="flex-1 px-2.5 py-1.5">
+        {/* Top row: status icon + order number + edit icon + task name */}
+        <div className="flex items-center gap-1.5">
+          <StatusIcon status={appointment.status} />
+          <span className="text-[11px] text-muted-foreground font-medium">
+            ON-{appointment.id.toString().slice(-4)}
+          </span>
+          <FileEdit className="h-3 w-3 text-muted-foreground" />
+          <span className="text-xs font-semibold text-foreground truncate">
+            {appointment.notes?.split(" ").slice(0, 2).join(" ") || "Сервиз"}
+          </span>
+        </div>
+        
+        {/* Bottom row: client + machine */}
+        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+          {appointment.client_name || "Клиент"} ({appointment.machine_model || appointment.serial_number || "Машина"})
+        </p>
+      </div>
+      
+      {/* Progress bar at bottom */}
+      <div className="h-1 w-full bg-muted">
+        <div 
+          className={cn("h-full transition-all", getProgressBarColor(appointment.status))}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -357,19 +441,42 @@ function getInitials(name: string): string {
     .join("");
 }
 
-// Droppable technician row - matching reference design
+// Technician avatar colors - matching reference (blue, green, orange variants)
+const TECH_COLORS = [
+  { bg: "bg-blue-500", text: "text-white" },
+  { bg: "bg-emerald-500", text: "text-white" },
+  { bg: "bg-orange-500", text: "text-white" },
+  { bg: "bg-purple-500", text: "text-white" },
+  { bg: "bg-cyan-500", text: "text-white" },
+];
+
+function getTechColor(index: number) {
+  return TECH_COLORS[index % TECH_COLORS.length];
+}
+
+// Calculate technician utilization
+function calculateUtilization(appointments: ServiceAppointment[], maxHours = 8) {
+  const totalHours = appointments.reduce((sum, apt) => sum + (apt.planned_hours || 1), 0);
+  const percentage = Math.round((totalHours / maxHours) * 100);
+  const isOverbooked = totalHours > maxHours;
+  return { totalHours, maxHours, percentage, isOverbooked };
+}
+
+// Droppable technician row - matching reference design exactly
 function TechnicianRow({
   technician,
   appointments,
   isOver,
   dropHour,
   onConvertNote,
+  techIndex = 0,
 }: {
   technician: Technician;
   appointments: ServiceAppointment[];
   isOver: boolean;
   dropHour: number | null;
   onConvertNote?: (apt: ServiceAppointment) => void;
+  techIndex?: number;
 }) {
   const { setNodeRef } = useDroppable({
     id: `tech-${technician.id}`,
@@ -377,20 +484,59 @@ function TechnicianRow({
   });
 
   const initials = getInitials(technician.name);
+  const techColor = getTechColor(techIndex);
+  const utilization = calculateUtilization(appointments);
+
+  // Progress bar color based on utilization
+  const getProgressColor = () => {
+    if (utilization.isOverbooked) return "bg-red-500";
+    if (utilization.percentage >= 75) return "bg-[#367C2B]"; // Green
+    if (utilization.percentage >= 50) return "bg-amber-500";
+    return "bg-gray-400";
+  };
 
   return (
-    <div className="flex" style={{ height: ROW_HEIGHT }}>
-      {/* Technician name sidebar - matching reference with avatar and name */}
+    <div className="flex" style={{ height: ROW_HEIGHT + 20 }}>
+      {/* Technician sidebar - matching reference with avatar, name, utilization, progress bar */}
       <div
-        className="flex flex-shrink-0 items-center gap-3 border-b border-r border-border bg-secondary/30 px-3"
-        style={{ width: SIDEBAR_WIDTH }}
+        className="flex flex-shrink-0 flex-col justify-center gap-1 border-b border-r border-border bg-card px-3 py-2"
+        style={{ width: SIDEBAR_WIDTH + 40 }}
       >
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
-          <User className="h-4 w-4" />
+        <div className="flex items-center gap-3">
+          {/* Colored initials avatar */}
+          <div className={cn(
+            "flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold",
+            techColor.bg,
+            techColor.text
+          )}>
+            {initials}
+          </div>
+          
+          {/* Name and utilization */}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground truncate">
+              {technician.name}
+            </p>
+            <p className={cn(
+              "text-xs",
+              utilization.isOverbooked ? "text-red-500 font-medium" : "text-muted-foreground"
+            )}>
+              {utilization.totalHours} / {utilization.maxHours} часа 
+              {utilization.isOverbooked 
+                ? " (Overbooked)" 
+                : ` (${utilization.percentage}%)`
+              }
+            </p>
+          </div>
         </div>
-        <span className="text-sm font-medium text-foreground truncate">
-          {technician.name}
-        </span>
+        
+        {/* Utilization progress bar */}
+        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+          <div 
+            className={cn("h-full rounded-full transition-all", getProgressColor())}
+            style={{ width: `${Math.min(utilization.percentage, 100)}%` }}
+          />
+        </div>
       </div>
 
       {/* Timeline area - droppable */}
@@ -877,14 +1023,14 @@ const handleDragEnd = async (event: DragEndEvent) => {
           {/* Main Timeline Area */}
           <div className="flex-1 rounded-lg border border-border bg-card overflow-hidden">
             <ScrollArea className="h-full" ref={scrollRef}>
-            <div style={{ minWidth: SIDEBAR_WIDTH + HOURS.length * CELL_WIDTH }}>
-              {/* Header with hours */}
-              <div className="sticky top-0 z-20 flex border-b border-border bg-secondary/80 backdrop-blur">
+            <div style={{ minWidth: (SIDEBAR_WIDTH + 40) + HOURS.length * CELL_WIDTH }}>
+              {/* Header with hours - matching reference "ТЕХНИК" */}
+              <div className="sticky top-0 z-20 flex border-b border-border bg-card">
                 <div
-                  className="flex-shrink-0 border-r border-border px-3 py-2"
-                  style={{ width: SIDEBAR_WIDTH }}
+                  className="flex-shrink-0 border-r border-border px-3 py-3 flex items-center"
+                  style={{ width: SIDEBAR_WIDTH + 40 }}
                 >
-                  <span className="text-xs font-medium text-muted-foreground">Техник</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">ТЕХНИК</span>
                 </div>
                 <div className="flex">
                   {HOURS.map((hour) => (
@@ -903,10 +1049,11 @@ const handleDragEnd = async (event: DragEndEvent) => {
 
               {/* Technician rows */}
               <div className="relative">
-                {technicians.map((tech) => (
+                {technicians.map((tech, index) => (
                   <TechnicianRow
                     key={tech.id}
                     technician={tech}
+                    techIndex={index}
                     appointments={techAppointments[tech.name] || []}
                     isOver={overId === `tech-${tech.id}`}
                     dropHour={overId === `tech-${tech.id}` ? dropHour : null}
@@ -924,8 +1071,8 @@ const handleDragEnd = async (event: DragEndEvent) => {
                   <div
                     className="absolute top-0 z-10 w-0.5 bg-red-500 pointer-events-none"
                     style={{
-                      left: SIDEBAR_WIDTH + currentTimeOffset,
-                      height: technicians.length * ROW_HEIGHT,
+                      left: (SIDEBAR_WIDTH + 40) + currentTimeOffset,
+                      height: technicians.length * (ROW_HEIGHT + 20),
                     }}
                   >
                     <div className="absolute -left-2 -top-5 rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
