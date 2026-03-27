@@ -59,6 +59,7 @@ interface Technician {
 interface ServicePlanningCalendarProps {
   userRole?: "technician" | "admin";
   currentTechnicianId?: string;
+  viewMode?: "monthly" | "weekly";
 }
 
 // Constants
@@ -135,9 +136,10 @@ function getCapacityBgColor(percentage: number): string {
 export function ServicePlanningCalendar({
   userRole = "admin",
   currentTechnicianId,
+  viewMode: initialViewMode = "monthly",
 }: ServicePlanningCalendarProps) {
   // State
-  const [viewMode, setViewMode] = useState<"monthly" | "weekly">("monthly");
+  const [viewMode, setViewMode] = useState<"monthly" | "weekly">(initialViewMode);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [tasks, setTasks] = useState<PlanningTask[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
